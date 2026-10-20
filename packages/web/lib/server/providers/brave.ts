@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { isSafeHttpUrl } from "../../url";
 import { ApiError } from "../http";
 
 export interface RetrievedSource {
@@ -95,8 +97,20 @@ function minIntervalMs(): number {
   return Number.isFinite(raw) && raw >= 0 ? raw : 1100;
 }
 
+// Per-process spacing, keyed by a hash so plaintext keys are not kept in long-lived maps.
 const lastRequestAt = new Map<string, number>();
 const queues = new Map<string, Promise<void>>();
+
+function limiterKey(key: string): string {
+  return createHash("sha256").update(key).digest("hex");
+}
+
+function pruneLastRequests(now: number): void {
+  const horizon = Math.max(minIntervalMs(), 60_000);
+  for (const [key, at] of lastRequestAt) {
+    if (now - at > horizon && !queues.has(key)) lastRequestAt.delete(key);
+  }
+}
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -116,7 +130,9 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-async function withBraveSlot<T>(key: string, signal: AbortSignal | undefined, work: () => Promise<T>): Promise<T> {
+async function withBraveSlot<T>(apiKey: string, signal: AbortSignal | undefined, work: () => Promise<T>): Promise<T> {
+  const key = limiterKey(apiKey);
+  pruneLastRequests(Date.now());
   const previous = queues.get(key) ?? Promise.resolve();
   let release!: () => void;
   const current = new Promise<void>((resolve) => {
@@ -180,10 +196,12 @@ export async function searchBrave(
   const out: RetrievedSource[] = [];
 
   for (const item of results) {
-    if (!item.url || seen.has(item.url)) continue;
+    if (!item.url || seen.has(item.url) || !isSafeHttpUrl(item.url)) continue;
+    // A source is usable only with a non-empty snippet: it is the only evidence the model sees.
+    const snippet = plainText(item.description).slice(0, 1800);
+    if (!snippet) continue;
     seen.add(item.url);
     const domain = new URL(item.url).hostname.replace(/^www\./, "");
-    const snippet = plainText(item.description).slice(0, 1800);
     out.push({
       position: out.length + 1,
       title: plainText(item.title) || domain,

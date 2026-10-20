@@ -58,37 +58,14 @@ async function readError(response: Response): Promise<ApiError> {
   return new ApiError(mapped.code, message || mapped.message, response.status, "openrouter");
 }
 
-export interface OpenRouterKeyInfo {
-  label?: string;
-  limit?: number | null;
-  usage?: number;
-  limitRemaining?: number | null;
-  isFreeTier?: boolean;
-}
-
-export async function validateOpenRouterKey(key: string): Promise<OpenRouterKeyInfo> {
+export async function validateOpenRouterKey(key: string): Promise<void> {
   const response = await fetch("https://openrouter.ai/api/v1/key", {
     headers: headers(key),
     signal: AbortSignal.timeout(15_000),
     cache: "no-store",
   });
   if (!response.ok) throw await readError(response);
-  const body = (await response.json()) as {
-    data?: {
-      label?: string;
-      limit?: number | null;
-      usage?: number;
-      limit_remaining?: number | null;
-      is_free_tier?: boolean;
-    };
-  };
-  return {
-    label: body.data?.label,
-    limit: body.data?.limit ?? null,
-    usage: body.data?.usage,
-    limitRemaining: body.data?.limit_remaining ?? null,
-    isFreeTier: body.data?.is_free_tier,
-  };
+  await response.arrayBuffer();
 }
 
 interface ChatOptions {
@@ -183,6 +160,7 @@ export async function openRouterChat(options: ChatOptions): Promise<ChatResult> 
         break;
       }
     }
+    if (!streamError) parser.feed(decoder.decode());
   } finally {
     reader.releaseLock();
   }

@@ -1,38 +1,48 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useCallback } from "react";
+import { describeAnswerError } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
+import { useToast } from "@/lib/hooks/use-toast";
 import { llmModelName, SEARCH_PROVIDER_LABEL } from "@/lib/providers";
 import type { Message, Source } from "@/lib/types";
 import { formatCost, formatNumber } from "@/lib/utils";
+import { useSidebar } from "./chat-shell";
 import { Markdown } from "./markdown";
 import { Mascot } from "./mascot";
 import { Icon } from "./ui/icon";
-import { Toast } from "./ui/toast";
 
 interface AnswerCardProps {
   message: Message;
-  onCitation: (source: Source) => void;
-  onOpenSources: () => void;
-  onRetry?: () => void;
+  // Callbacks take the message id so the parent can pass stable functions and memo can skip re-renders.
+  onCitation: (messageId: string, source: Source) => void;
+  onOpenSources: (messageId: string) => void;
+  onRetry?: (messageId: string) => void;
 }
 
-export function AnswerCard({ message, onCitation, onOpenSources, onRetry }: AnswerCardProps) {
-  const [toast, setToast] = useState<string | null>(null);
+export const AnswerCard = memo(function AnswerCard({ message, onCitation, onOpenSources, onRetry }: AnswerCardProps) {
+  const { openSettings } = useSidebar();
+  const [toast, showToast] = useToast();
 
-  const sources = message.sources ?? [];
+  const sources = message.sources;
   const providerName = message.llmModel ? llmModelName(message.llmModel) : "";
   const searchName = SEARCH_PROVIDER_LABEL;
+  const retry = onRetry ? () => onRetry(message.id) : undefined;
 
   const copy = async () => {
     const copied = await copyText(message.content);
-    setToast(copied ? "Answer copied" : "Could not copy");
+    showToast(copied ? "Answer copied" : "Could not copy");
   };
 
-  const cite = (position: number) => {
-    const source = sources.find((s) => s.position === position);
-    if (source) onCitation(source);
-  };
+  const cite = useCallback(
+    (position: number) => {
+      const source = sources?.find((s) => s.position === position);
+      if (source) onCitation(message.id, source);
+    },
+    [sources, onCitation, message.id],
+  );
+
+  const error = message.status === "error" ? describeAnswerError(message.errorCode, message.errorMessage) : null;
 
   return (
     <article className="message message-assistant" aria-label="Beamling answer">
@@ -64,10 +74,11 @@ export function AnswerCard({ message, onCitation, onOpenSources, onRetry }: Answ
             <div>
               <strong>Generation stopped</strong>
               {message.content ? "The partial answer was kept." : "No text had been written yet."}
-              {onRetry ? (
+              {retry ? (
                 <div style={{ marginTop: 10 }}>
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={onRetry}>
-                    <Icon name="refresh" size={13} /> Resume
+                  {/* This starts a fresh answer to the same question; it does not continue the partial one. */}
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={retry}>
+                    <Icon name="refresh" size={13} /> Ask again
                   </button>
                 </div>
               ) : null}
@@ -75,26 +86,36 @@ export function AnswerCard({ message, onCitation, onOpenSources, onRetry }: Answ
           </div>
         ) : null}
 
-        {message.status === "error" ? (
+        {error ? (
           <div className="notice notice-error">
             <Icon name="alert" size={16} />
             <div>
-              <strong>{message.errorCode ?? "PROVIDER_ERROR"}</strong>
-              {message.errorMessage ?? "The provider could not complete this request."}
-              {onRetry ? (
-                <div style={{ marginTop: 10 }}>
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={onRetry}>
+              <strong>{error.title}</strong>
+              {error.message}
+              <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {error.action === "settings" ? (
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => openSettings("keys")}>
+                    <Icon name="key" size={13} /> Open settings
+                  </button>
+                ) : null}
+                {error.action === "reload" ? (
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => window.location.reload()}>
+                    <Icon name="refresh" size={13} /> Reload
+                  </button>
+                ) : null}
+                {retry && error.action !== "reload" ? (
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={retry}>
                     <Icon name="refresh" size={13} /> Retry
                   </button>
-                </div>
-              ) : null}
+                ) : null}
+              </div>
             </div>
           </div>
         ) : (
-          <Markdown text={message.content} citations={sources.length} onCitation={cite} />
+          <Markdown text={message.content} citations={sources?.length ?? 0} onCitation={cite} />
         )}
 
-        {message.status !== "error" ? (
+        {!error ? (
           <div className="answer-footer">
             <div className="meta">
               {providerName ? <span className="badge badge-mono">{providerName}</span> : null}
@@ -120,7 +141,12 @@ export function AnswerCard({ message, onCitation, onOpenSources, onRetry }: Answ
               <button type="button" className="btn btn-ghost btn-icon btn-sm" onClick={copy} aria-label="Copy answer">
                 <Icon name="copy" size={14} />
               </button>
-              <button type="button" className="btn btn-ghost btn-icon btn-sm" onClick={onOpenSources} aria-label={`Show ${sources.length} sources`}>
+              <button
+                type="button"
+                className="btn btn-ghost btn-icon btn-sm"
+                onClick={() => onOpenSources(message.id)}
+                aria-label={`Show ${sources?.length ?? 0} sources`}
+              >
                 <Icon name="panel-right" size={14} />
               </button>
             </div>
@@ -128,7 +154,7 @@ export function AnswerCard({ message, onCitation, onOpenSources, onRetry }: Answ
         ) : null}
       </div>
 
-      {toast ? <Toast message={toast} onDone={() => setToast(null)} /> : null}
+      {toast}
     </article>
   );
-}
+});

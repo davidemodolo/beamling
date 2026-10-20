@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useImperativeHandle, useMemo, useRef, type CSSProperties, type Ref } from "react";
-import { Beamling, markup, type Activity } from "./engine.js";
+import { Beamling, DEFAULTS, markup, type Activity } from "./engine.js";
 import type { Expression } from "./expressions.js";
 import { ANSWER_STATE_MOOD, type AnswerState } from "./states.js";
 
@@ -37,33 +37,34 @@ export function BeamlingMascot({
   expression,
   activity,
   state,
-  beams = true,
-  followPointer = false,
-  blink = true,
-  label = "Beamling",
-  reducedMotion = "auto",
-  room = false,
+  beams = DEFAULTS.beams,
+  followPointer = DEFAULTS.followPointer,
+  blink = DEFAULTS.blink,
+  label = DEFAULTS.label,
+  reducedMotion = DEFAULTS.reducedMotion,
+  room = DEFAULTS.room,
   className,
   style,
   ref,
 }: BeamlingMascotProps) {
   const mood = state ? ANSWER_STATE_MOOD[state] : undefined;
-  const exp = expression ?? mood?.expression ?? "neutral";
-  const act = activity ?? mood?.activity ?? "idle";
+  const exp = expression ?? mood?.expression ?? DEFAULTS.expression;
+  const act = activity ?? mood?.activity ?? DEFAULTS.activity;
 
   const id = "beamling-" + useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const host = useRef<HTMLDivElement>(null);
   const engine = useRef<Beamling | null>(null);
 
   // Markup only depends on structural props, so React never resets the
-  // nodes the engine animates. The initial expression is read once.
-  const initial = useRef(exp);
-  const html = useMemo(() => ({ __html: markup({ id, expression: initial.current, beams, label, room }) }), [id, beams, label, room]);
+  // nodes the engine animates. When it is rebuilt, it starts from the
+  // expression of that render, so the new scene does not morph from a stale pose.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const html = useMemo(() => ({ __html: markup({ id, expression: exp, beams, label, room }) }), [id, beams, label, room]);
 
   useEffect(() => {
     const el = host.current;
     if (!el) return;
-    const b = new Beamling(el, { expression: initial.current, activity: act, beams, followPointer, blink, label, reducedMotion, room });
+    const b = new Beamling(el, { expression: exp, activity: act, beams, followPointer, blink, label, reducedMotion, room });
     engine.current = b;
     return () => {
       b.destroy();

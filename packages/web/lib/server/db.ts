@@ -1,5 +1,6 @@
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
+import { databaseSsl, databaseUrl } from "./env";
 import * as schema from "./schema";
 
 const globalForDb = globalThis as unknown as {
@@ -9,11 +10,10 @@ const globalForDb = globalThis as unknown as {
 
 function createPool(): Pool {
   return new Pool({
-    connectionString:
-      process.env.DATABASE_URL ?? "postgres://beamling:beamling@127.0.0.1:5432/beamling",
+    connectionString: databaseUrl(),
     max: Number(process.env.DATABASE_POOL_MAX ?? 10),
     connectionTimeoutMillis: 10_000,
-    ssl: process.env.DATABASE_SSL === "true" ? { rejectUnauthorized: false } : undefined,
+    ssl: databaseSsl(),
   });
 }
 

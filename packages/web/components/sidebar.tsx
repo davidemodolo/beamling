@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type Ref } from "react";
 import { useStore } from "@/lib/store";
 import type { Conversation } from "@/lib/types";
 import { dayGroup } from "@/lib/utils";
@@ -139,9 +139,15 @@ function SidebarContent({ mobile, onNavigate }: SidebarProps) {
   );
 }
 
-export function Sidebar({ mobile, onNavigate }: SidebarProps) {
+export function Sidebar({ mobile, onNavigate, ref }: SidebarProps & { ref?: Ref<HTMLElement> }) {
   return (
-    <aside className={mobile ? "drawer" : "sidebar"} aria-label="Conversations">
+    <aside
+      ref={ref}
+      className={mobile ? "drawer" : "sidebar"}
+      aria-label="Conversations"
+      role={mobile ? "dialog" : undefined}
+      aria-modal={mobile ? true : undefined}
+    >
       <SidebarContent mobile={mobile} onNavigate={onNavigate} />
     </aside>
   );

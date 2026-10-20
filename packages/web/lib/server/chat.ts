@@ -1,31 +1,32 @@
 import { randomUUID } from "node:crypto";
-import { DEFAULT_LLM_MODEL } from "../providers";
-import { isAllowedModel } from "../providers";
-import type { Mode, Source, Usage } from "../types";
+import { DEFAULT_LLM_MODEL, isAllowedModel } from "../providers";
+import type { Message, Mode, Source, Usage } from "../types";
 import { hasValidCitation, newCitations, sanitizeCitations } from "./citations";
 import { decryptCredential } from "./crypto";
-import { ApiError } from "./http";
+import { ApiError, INTERNAL_ERROR_MESSAGE } from "./http";
 import {
   deepPrompt,
   gapPrompt,
   NO_SOURCES_ANSWER,
   plannerPrompt,
   quickPrompt,
+  type Prompt,
 } from "./prompts";
 import { chat, search } from "./providers";
+import type { ChatResult } from "./providers/openrouter";
 import {
   completeAssistant,
+  conversationExists,
   createConversation,
   createExchange,
-  getConversation,
+  ensureSettings,
   getCredentialRow,
   getHistory,
-  getSettings,
 } from "./repo";
 
 const BRAVE_COST_PER_REQUEST = 0.005;
 const QUICK_SOURCE_LIMIT = 8;
-const RECENCY_DAYS = 30;
+const DEEP_SOURCE_LIMIT = 20;
 
 type ChatEvent =
   | { event: "meta"; data: { conversationId: string; messageId: string } }
@@ -36,22 +37,34 @@ type ChatEvent =
   | { event: "delta"; data: { text: string } }
   | { event: "citation"; data: { position: number } }
   | { event: "usage"; data: Usage }
-  | { event: "done"; data: { noSources: boolean } }
+  | { event: "done"; data: { noSources: boolean; truncated?: boolean } }
   | { event: "error"; data: { code: string; message: string; provider?: string } };
 
-export interface RunChatInput {
+export type ChatEmit = <T extends ChatEvent>(event: T["event"], data: T["data"]) => void;
+
+export interface PreparedChat {
   userId: string;
-  conversationId?: string;
+  conversationId: string;
+  messageId: string;
   question: string;
   mode: Mode;
-  signal: AbortSignal;
-  emit: <T extends ChatEvent>(event: T["event"], data: T["data"]) => void;
+  model: string;
+  llmKey: string;
+  searchKey: string;
+  history: Message[];
+  startedAt: number;
 }
 
 interface AccumulatedUsage {
   promptTokens: number;
   completionTokens: number;
   costUsd: number;
+}
+
+function addUsage(total: AccumulatedUsage, result: ChatResult): void {
+  total.promptTokens += result.usage.promptTokens;
+  total.completionTokens += result.usage.completionTokens;
+  total.costUsd += result.usage.costUsd;
 }
 
 function withSearchCost(usage: AccumulatedUsage, searchRequests: number, latencyMs: number): Usage {
@@ -62,6 +75,13 @@ function withSearchCost(usage: AccumulatedUsage, searchRequests: number, latency
     latencyMs,
     searchRequests,
   };
+}
+
+function promptMessages(prompt: Prompt) {
+  return [
+    { role: "system" as const, content: prompt.system },
+    { role: "user" as const, content: prompt.user },
+  ];
 }
 
 function parseJsonObject(text: string): unknown {
@@ -75,13 +95,18 @@ function parseJsonObject(text: string): unknown {
   }
 }
 
+function normalizeQuery(query: string): string {
+  return query.replace(/\s+/g, " ").trim().slice(0, 180);
+}
+
 function parseQueries(text: string): string[] {
   const parsed = parseJsonObject(text) as { subqueries?: ({ query?: string } | string)[] } | null;
-  const raw =
-    parsed?.subqueries?.map((item) => (typeof item === "string" ? item : item.query ?? "")) ?? [];
+  const raw = Array.isArray(parsed?.subqueries)
+    ? parsed.subqueries.map((item) => (typeof item === "string" ? item : String(item?.query ?? "")))
+    : [];
   const seen = new Set<string>();
   return raw
-    .map((query) => query.replace(/\s+/g, " ").trim().slice(0, 180))
+    .map(normalizeQuery)
     .filter((query) => {
       const key = query.toLowerCase();
       if (!query || seen.has(key)) return false;
@@ -92,10 +117,11 @@ function parseQueries(text: string): string[] {
 }
 
 function parseGapQueries(text: string): string[] {
-  const parsed = parseJsonObject(text) as { followUpQueries?: string[] } | null;
-  if (!parsed?.followUpQueries) return [];
+  const parsed = parseJsonObject(text) as { followUpQueries?: unknown } | null;
+  if (!Array.isArray(parsed?.followUpQueries)) return [];
   return parsed.followUpQueries
-    .map((query) => query.replace(/\s+/g, " ").trim().slice(0, 180))
+    .filter((query): query is string => typeof query === "string")
+    .map(normalizeQuery)
     .filter(Boolean)
     .slice(0, 2);
 }
@@ -112,32 +138,43 @@ function dedupeSources(sources: Source[], limit: number): Source[] {
   return out.map((source, index) => ({ ...source, position: index + 1 }));
 }
 
-async function mapSearchResults(
-  key: string,
-  query: string,
-  mode: Mode,
-  signal: AbortSignal,
-): Promise<Source[]> {
-  const results = await search("brave", key, query, {
-    count: mode === "deep" ? 6 : QUICK_SOURCE_LIMIT,
-    freshnessDays: RECENCY_DAYS,
-    signal,
-  });
-  return results.map((source) => ({
-    id: randomUUID(),
-    position: source.position,
-    title: source.title,
-    url: source.url,
-    domain: source.domain,
-    snippet: source.snippet,
-    publishedAt: source.publishedAt,
-  }));
+const RECENCY_PATTERNS: [RegExp, number][] = [
+  [/(?<!\p{L})(today|tonight|oggi|stasera|hoy|aujourd'hui|heute)(?!\p{L})/iu, 1],
+  [/(?<!\p{L})(this week|questa settimana|esta semana|cette semaine|diese woche)(?!\p{L})/iu, 7],
+  [
+    /(?<!\p{L})(latest|recent|recently|news|breaking|this month|currently|ultim[aeio]|recent[ei]|notizie|attualmente|últim[oa]s?|noticias|derni[eè]res?|actualités|neueste[nrs]?|aktuell[e]?|nachrichten)(?!\p{L})/iu,
+    30,
+  ],
+];
+
+/** Brave freshness is applied only when the question asks for recent information. */
+export function freshnessDays(question: string): number | undefined {
+  return RECENCY_PATTERNS.find(([pattern]) => pattern.test(question))?.[1];
 }
 
-async function runBounded<T>(items: T[], limit: number, worker: (item: T, index: number) => Promise<void>) {
+async function searchSources(
+  key: string,
+  query: string,
+  options: { mode: Mode; freshnessDays?: number; signal: AbortSignal },
+): Promise<Source[]> {
+  const results = await search("brave", key, query, {
+    count: options.mode === "deep" ? 6 : QUICK_SOURCE_LIMIT,
+    freshnessDays: options.freshnessDays,
+    signal: options.signal,
+  });
+  return results.map((source) => ({ id: randomUUID(), ...source }));
+}
+
+/** Runs `worker` over `items` with at most `limit` in flight; stops picking new items once aborted. */
+async function runBounded<T>(
+  items: T[],
+  limit: number,
+  signal: AbortSignal,
+  worker: (item: T, index: number) => Promise<void>,
+) {
   let next = 0;
   const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (next < items.length) {
+    while (next < items.length && !signal.aborted) {
       const index = next++;
       await worker(items[index], index);
     }
@@ -145,235 +182,237 @@ async function runBounded<T>(items: T[], limit: number, worker: (item: T, index:
   await Promise.all(runners);
 }
 
-export async function runChat(input: RunChatInput): Promise<void> {
+/**
+ * Everything that can fail before streaming starts: settings, keys, conversation and the stored
+ * exchange. Errors here are returned as plain JSON responses.
+ */
+export async function prepareChat(input: {
+  userId: string;
+  conversationId?: string;
+  question: string;
+  mode: Mode;
+}): Promise<PreparedChat> {
   const startedAt = Date.now();
-  const settings = await getSettings(input.userId);
+  const settings = await ensureSettings(input.userId);
   const model = isAllowedModel(settings.llmModel) ? settings.llmModel : DEFAULT_LLM_MODEL;
 
-  let conversation = input.conversationId
-    ? await getConversation(input.userId, input.conversationId)
-    : null;
-  if (input.conversationId && !conversation) {
-    throw new ApiError("CONVERSATION_NOT_FOUND", "Conversation not found.", 404);
+  const [llmCredential, searchCredential] = await Promise.all([
+    getCredentialRow(input.userId, "llm", "openrouter"),
+    getCredentialRow(input.userId, "search", "brave"),
+  ]);
+  if (!llmCredential) {
+    throw new ApiError("MISSING_LLM_KEY", "Add an OpenRouter key before asking a question.", 400, "openrouter");
   }
-  if (!conversation) {
-    conversation = await createConversation(input.userId, input.mode);
+  if (!searchCredential) {
+    throw new ApiError("MISSING_SEARCH_KEY", "Add a Brave Search key before asking a question.", 400, "brave");
   }
-  const history = await getHistory(input.userId, conversation.id, new Date());
+  const llmKey = decryptCredential(input.userId, llmCredential);
+  const searchKey = decryptCredential(input.userId, searchCredential);
+
+  let conversationId = input.conversationId;
+  if (conversationId) {
+    if (!(await conversationExists(input.userId, conversationId))) {
+      throw new ApiError("CONVERSATION_NOT_FOUND", "Conversation not found.", 404);
+    }
+  } else {
+    conversationId = (await createConversation(input.userId, input.mode)).id;
+  }
+
+  const history = await getHistory(input.userId, conversationId, new Date());
   const { assistantMessage } = await createExchange({
     userId: input.userId,
-    conversationId: conversation.id,
+    conversationId,
     question: input.question,
     mode: input.mode,
     llmModel: model,
   });
 
-  input.emit("meta", {
-    conversationId: conversation.id,
+  return {
+    userId: input.userId,
+    conversationId,
     messageId: assistantMessage.id,
-  });
-  input.emit("stage", { stage: "queued", detail: input.mode === "deep" ? "Planning a research path" : "Understanding the question" });
+    question: input.question,
+    mode: input.mode,
+    model,
+    llmKey,
+    searchKey,
+    history,
+    startedAt,
+  };
+}
+
+export async function runChat(prepared: PreparedChat, options: { signal: AbortSignal; emit: ChatEmit }): Promise<void> {
+  const { signal, emit } = options;
+  const { mode, model, llmKey, searchKey, question } = prepared;
+  const sourceLimit = mode === "deep" ? DEEP_SOURCE_LIMIT : QUICK_SOURCE_LIMIT;
+  const freshness = freshnessDays(question);
+
+  emit("meta", { conversationId: prepared.conversationId, messageId: prepared.messageId });
+  emit("stage", { stage: "queued", detail: mode === "deep" ? "Planning a research path" : "Understanding the question" });
 
   const usage: AccumulatedUsage = { promptTokens: 0, completionTokens: 0, costUsd: 0 };
   let searchRequests = 0;
   let content = "";
-  let uncited = false;
   let sources: Source[] = [];
   let finished = false;
 
-  try {
-    const llmCredential = await getCredentialRow(input.userId, "llm", "openrouter");
-    const searchCredential = await getCredentialRow(input.userId, "search", "brave");
-    if (!llmCredential) {
-      throw new ApiError("MISSING_LLM_KEY", "Add an OpenRouter key before asking a question.", 400, "openrouter");
-    }
-    if (!searchCredential) {
-      throw new ApiError("MISSING_SEARCH_KEY", "Add a Brave Search key before asking a question.", 400, "brave");
-    }
-    const llmKey = decryptCredential(input.userId, llmCredential);
-    const searchKey = decryptCredential(input.userId, searchCredential);
+  const complete = async (
+    fields: Omit<Parameters<typeof completeAssistant>[0], "userId" | "messageId" | "usage" | "searchRequests">,
+  ) => {
+    const finalUsage = withSearchCost(usage, searchRequests, Date.now() - prepared.startedAt);
+    await completeAssistant({
+      ...fields,
+      userId: prepared.userId,
+      messageId: prepared.messageId,
+      usage: finalUsage,
+      searchRequests,
+    });
+    return finalUsage;
+  };
 
-    let queries = [input.question];
-    if (input.mode === "deep") {
-      input.emit("stage", { stage: "searching", detail: "Planning 3–5 sub-queries" });
-      const prompt = plannerPrompt(input.question);
+  try {
+    let queries = [question];
+    if (mode === "deep") {
+      emit("stage", { stage: "searching", detail: "Planning 3–5 sub-queries" });
       try {
         const plan = await chat({
           key: llmKey,
           model,
-          messages: [
-            { role: "system", content: prompt.system },
-            { role: "user", content: prompt.user },
-          ],
+          messages: promptMessages(plannerPrompt(question)),
           maxTokens: 400,
-          signal: input.signal,
+          signal,
         });
-        usage.promptTokens += plan.usage.promptTokens;
-        usage.completionTokens += plan.usage.completionTokens;
-        usage.costUsd += plan.usage.costUsd;
+        addUsage(usage, plan);
         queries = parseQueries(plan.content);
       } catch (error) {
-        if (input.signal.aborted) throw error;
+        if (signal.aborted) throw error;
       }
-      if (queries.length < 3) queries = [input.question];
-      input.emit("plan", { queries });
+      if (queries.length < 3) queries = [question];
+      emit("plan", { queries });
     }
 
-    input.emit("stage", {
+    emit("stage", {
       stage: "searching",
-      detail: input.mode === "deep" ? `Searching 0 of ${queries.length}` : "Searching the web",
+      detail: mode === "deep" ? `Searching 0 of ${queries.length}` : "Searching the web",
     });
 
+    // A failed sub-query must not sink the run; the answer fails only if every search failed.
     let completed = 0;
-    await runBounded(queries, 2, async (query) => {
-      const found = await mapSearchResults(searchKey, query, input.mode, input.signal);
-      searchRequests += 1;
-      sources = dedupeSources([...sources, ...found], input.mode === "deep" ? 20 : QUICK_SOURCE_LIMIT);
+    let firstSearchError: unknown;
+    await runBounded(queries, 2, signal, async (query) => {
+      try {
+        const found = await searchSources(searchKey, query, { mode, freshnessDays: freshness, signal });
+        searchRequests += 1;
+        sources = dedupeSources([...sources, ...found], sourceLimit);
+      } catch (error) {
+        if (signal.aborted) return;
+        firstSearchError ??= error;
+      }
       completed += 1;
-      input.emit("progress", { completed, total: queries.length });
-      input.emit("stage", {
+      emit("progress", { completed, total: queries.length });
+      emit("stage", {
         stage: "searching",
-        detail: input.mode === "deep" ? `Searching ${completed} of ${queries.length}` : "Searching the web",
+        detail: mode === "deep" ? `Searching ${completed} of ${queries.length}` : "Searching the web",
       });
     });
+    signal.throwIfAborted();
+    if (searchRequests === 0 && firstSearchError) throw firstSearchError;
 
-    if (input.mode === "deep" && sources.length < 4 && !input.signal.aborted) {
+    if (mode === "deep" && sources.length < 4) {
       try {
-        const gap = gapPrompt({ question: input.question, subqueries: queries, sources });
         const review = await chat({
           key: llmKey,
           model,
-          messages: [
-            { role: "system", content: gap.system },
-            { role: "user", content: gap.user },
-          ],
+          messages: promptMessages(gapPrompt({ question, subqueries: queries, sources })),
           maxTokens: 220,
-          signal: input.signal,
+          signal,
         });
-        usage.promptTokens += review.usage.promptTokens;
-        usage.completionTokens += review.usage.completionTokens;
-        usage.costUsd += review.usage.costUsd;
-        const followUps = parseGapQueries(review.content);
-        for (const query of followUps) {
-          const found = await mapSearchResults(searchKey, query, input.mode, input.signal);
+        addUsage(usage, review);
+        for (const query of parseGapQueries(review.content)) {
+          const found = await searchSources(searchKey, query, { mode, freshnessDays: freshness, signal });
           searchRequests += 1;
-          sources = dedupeSources([...sources, ...found], 20);
+          sources = dedupeSources([...sources, ...found], sourceLimit);
         }
       } catch (error) {
-        if (input.signal.aborted) throw error;
+        if (signal.aborted) throw error;
       }
     }
 
-    sources = dedupeSources(sources, input.mode === "deep" ? 20 : QUICK_SOURCE_LIMIT);
-    input.emit("stage", {
+    emit("stage", {
       stage: "reading",
       detail: `Reading ${sources.length} ${sources.length === 1 ? "source" : "sources"}`,
     });
-    input.emit("sources", sources);
+    emit("sources", sources);
 
     if (!sources.length) {
       content = NO_SOURCES_ANSWER;
-      input.emit("stage", { stage: "no-sources", detail: "No usable sources found" });
-      input.emit("delta", { text: content });
-      const finalUsage = withSearchCost(usage, searchRequests, Date.now() - startedAt);
-      await completeAssistant({
-        userId: input.userId,
-        messageId: assistantMessage.id,
-        content,
-        status: "complete",
-        usage: finalUsage,
-        noSources: true,
-        searchRequests,
-      });
-      input.emit("usage", finalUsage);
-      input.emit("done", { noSources: true });
+      emit("stage", { stage: "no-sources", detail: "No usable sources found" });
+      emit("delta", { text: content });
+      const finalUsage = await complete({ content, status: "complete", noSources: true });
       finished = true;
+      emit("usage", finalUsage);
+      emit("done", { noSources: true });
       return;
     }
 
     const prompt =
-      input.mode === "deep"
-        ? deepPrompt({
-            question: input.question,
-            sources,
-            subqueries: queries,
-            history,
-          })
-        : quickPrompt({
-            question: input.question,
-            sources,
-            history,
-          });
+      mode === "deep"
+        ? deepPrompt({ question, sources, subqueries: queries, history: prepared.history })
+        : quickPrompt({ question, sources, history: prepared.history });
 
-    input.emit("stage", { stage: "writing", detail: `Writing with ${model}` });
+    emit("stage", { stage: "writing", detail: `Writing with ${model}` });
     const seen = new Set<number>();
     const result = await chat({
       key: llmKey,
       model,
-      messages: [
-        { role: "system", content: prompt.system },
-        { role: "user", content: prompt.user },
-      ],
-      maxTokens: input.mode === "deep" ? 2500 : 1500,
-      signal: input.signal,
+      messages: promptMessages(prompt),
+      maxTokens: mode === "deep" ? 2500 : 1500,
+      signal,
       onDelta: (text) => {
         content += text;
-        input.emit("delta", { text });
+        emit("delta", { text });
+        // A citation can only complete on a delta that contains its closing bracket.
+        if (!text.includes("]")) return;
         for (const position of newCitations(content, sources.length, seen)) {
-          input.emit("citation", { position });
+          emit("citation", { position });
         }
       },
     });
 
+    addUsage(usage, result);
     content = sanitizeCitations(result.content || content, sources.length);
-    usage.promptTokens += result.usage.promptTokens;
-    usage.completionTokens += result.usage.completionTokens;
-    usage.costUsd += result.usage.costUsd;
-    uncited = !hasValidCitation(content, sources.length);
-    const finalUsage = withSearchCost(usage, searchRequests, Date.now() - startedAt);
-    await completeAssistant({
-      userId: input.userId,
-      messageId: assistantMessage.id,
+    const finalUsage = await complete({
       content,
       status: "complete",
       sources,
-      usage: finalUsage,
-      uncited,
-      searchRequests,
+      uncited: !hasValidCitation(content, sources.length),
     });
-    input.emit("usage", finalUsage);
-    input.emit("done", { noSources: false });
     finished = true;
+    emit("usage", finalUsage);
+    emit("done", { noSources: false, truncated: result.finishReason === "length" });
   } catch (error) {
-    if (finished) return;
-    const aborted = input.signal.aborted || (error instanceof Error && error.name === "AbortError");
-    const code = aborted ? "STOPPED" : error instanceof ApiError ? error.code : "INTERNAL";
-    const message = aborted
-      ? "Answer stopped."
-      : error instanceof ApiError
-        ? error.message
-        : "The answer could not be completed.";
-    const finalContent = sanitizeCitations(content, sources.length);
-    const finalUsage = withSearchCost(usage, searchRequests, Date.now() - startedAt);
-    await completeAssistant({
-      userId: input.userId,
-      messageId: assistantMessage.id,
-      content: finalContent,
+    if (finished) throw error;
+    const aborted = signal.aborted || (error instanceof Error && error.name === "AbortError");
+    const code = error instanceof ApiError ? error.code : "INTERNAL";
+    const message = error instanceof ApiError ? error.message : "The answer could not be completed.";
+    if (!aborted && !(error instanceof ApiError)) console.error(error);
+    await complete({
+      content: sanitizeCitations(content, sources.length),
       status: aborted ? "stopped" : "error",
       sources,
-      usage: finalUsage,
       errorCode: aborted ? undefined : code,
       errorMessage: aborted ? undefined : message,
-      searchRequests,
     });
-    if (!aborted) {
-      input.emit("error", {
-        code,
-        message,
-        provider: error instanceof ApiError ? error.provider : undefined,
-      });
+    if (aborted) {
+      emit("stage", { stage: "stopped", detail: "Answer stopped" });
     } else {
-      input.emit("stage", { stage: "stopped", detail: "Answer stopped" });
+      emit("error", { code, message, provider: error instanceof ApiError ? error.provider : undefined });
     }
   }
+}
+
+export function publicError(error: unknown): { code: string; message: string; provider?: string } {
+  if (error instanceof ApiError) return { code: error.code, message: error.message, provider: error.provider };
+  console.error(error);
+  return { code: "INTERNAL", message: INTERNAL_ERROR_MESSAGE };
 }

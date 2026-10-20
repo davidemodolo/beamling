@@ -4,9 +4,10 @@ services:
     environment:
       POSTGRES_DB: beamling
       POSTGRES_USER: beamling
-      POSTGRES_PASSWORD: beamling
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-beamling}
+    # Local development only: bound to loopback so the database is not reachable from the network.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - beamling-postgres:/var/lib/postgresql
     healthcheck:
@@ -21,7 +22,7 @@ services:
       dockerfile: Dockerfile
     command: ["node", "scripts/migrate.mjs"]
     environment:
-      DATABASE_URL: postgres://beamling:beamling@db:5432/beamling
+      DATABASE_URL: postgres://beamling:${POSTGRES_PASSWORD:-beamling}@db:5432/beamling
       BEAMLING_FAKE_PROVIDERS: ${BEAMLING_FAKE_PROVIDERS:-0}
     depends_on:
       db:
@@ -32,9 +33,9 @@ services:
       context: .
       dockerfile: Dockerfile
     environment:
-      DATABASE_URL: postgres://beamling:beamling@db:5432/beamling
+      DATABASE_URL: postgres://beamling:${POSTGRES_PASSWORD:-beamling}@db:5432/beamling
       CREDENTIAL_MASTER_KEY: ${CREDENTIAL_MASTER_KEY:?Set CREDENTIAL_MASTER_KEY}
-      OPENROUTER_APP_URL: ${OPENROUTER_APP_URL:-http://localhost:3000}
+      APP_URL: ${APP_URL:-http://localhost:3000}
       PORT: "3000"
       BEAMLING_FAKE_PROVIDERS: ${BEAMLING_FAKE_PROVIDERS:-0}
       BEAMLING_FAKE_DELAY_MS: ${BEAMLING_FAKE_DELAY_MS:-8}

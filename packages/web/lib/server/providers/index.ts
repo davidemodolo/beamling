@@ -3,8 +3,6 @@ import { searchBrave, validateBraveKey } from "./brave";
 import { fakeChat, fakeSearch, fakeValidateKey } from "./fake";
 import { openRouterChat, validateOpenRouterKey } from "./openrouter";
 
-export { openRouterChat };
-
 export async function validateProviderKey(
   provider: "openrouter" | "brave",
   key: string,

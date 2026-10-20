@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -111,9 +112,17 @@ export const messages = pgTable(
     latencyMs: integer("latency_ms"),
     errorCode: text("error_code"),
     errorMessage: text("error_message"),
+    stopRequested: boolean("stop_requested").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("messages_conversation_created_idx").on(table.conversationId, table.createdAt)],
+  (table) => [
+    index("messages_conversation_created_idx").on(table.conversationId, table.createdAt),
+    // One in-flight answer per conversation; the insert fails atomically across instances.
+    uniqueIndex("messages_one_streaming_per_conversation_idx")
+      .on(table.conversationId)
+      .where(sql`"status" = 'streaming'`),
+    index("messages_streaming_created_idx").on(table.createdAt).where(sql`"status" = 'streaming'`),
+  ],
 );
 
 export const sources = pgTable(
@@ -133,9 +142,13 @@ export const sources = pgTable(
   (table) => [uniqueIndex("sources_message_position_idx").on(table.messageId, table.position)],
 );
 
-export const rateLimits = pgTable("rate_limits", {
-  key: text("key").primaryKey(),
-  windowStart: timestamp("window_start", { withTimezone: true }).notNull(),
-  count: integer("count").notNull().default(0),
-  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-});
+export const rateLimits = pgTable(
+  "rate_limits",
+  {
+    key: text("key").primaryKey(),
+    windowStart: timestamp("window_start", { withTimezone: true }).notNull(),
+    count: integer("count").notNull().default(0),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [index("rate_limits_expires_idx").on(table.expiresAt)],
+);

@@ -52,6 +52,7 @@ CREATE TABLE "messages" (
 	"latency_ms" integer,
 	"error_code" text,
 	"error_message" text,
+	"stop_requested" boolean DEFAULT false NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
@@ -101,4 +102,7 @@ CREATE INDEX "conversations_user_updated_idx" ON "conversations" USING btree ("u
 CREATE UNIQUE INDEX "credentials_user_kind_provider_idx" ON "credentials" USING btree ("user_id","kind","provider");--> statement-breakpoint
 CREATE INDEX "credentials_user_idx" ON "credentials" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "messages_conversation_created_idx" ON "messages" USING btree ("conversation_id","created_at");--> statement-breakpoint
+CREATE UNIQUE INDEX "messages_one_streaming_per_conversation_idx" ON "messages" USING btree ("conversation_id") WHERE "status" = 'streaming';--> statement-breakpoint
+CREATE INDEX "messages_streaming_created_idx" ON "messages" USING btree ("created_at") WHERE "status" = 'streaming';--> statement-breakpoint
+CREATE INDEX "rate_limits_expires_idx" ON "rate_limits" USING btree ("expires_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "sources_message_position_idx" ON "sources" USING btree ("message_id","position");

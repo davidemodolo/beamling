@@ -1,7 +1,13 @@
-import { ACTIVITIES, Beamling, type Activity } from "./engine.js";
-import { EXPRESSIONS, type Expression } from "./expressions.js";
+import { Beamling, DEFAULTS, isActivity } from "./engine.js";
+import { isExpression } from "./expressions.js";
 
 const ATTRS = ["expression", "activity", "beams", "follow-pointer", "no-blink", "label", "room"] as const;
+
+/**
+ * `HTMLElement` does not exist on the server. Importing this module there is
+ * harmless: the class is only usable (and only defined) in a browser.
+ */
+const Base = (typeof HTMLElement === "undefined" ? class {} : HTMLElement) as typeof HTMLElement;
 
 /**
  * `<beamling-mascot expression="happy" activity="searching" follow-pointer>`
@@ -9,7 +15,7 @@ const ATTRS = ["expression", "activity", "beams", "follow-pointer", "no-blink", 
  * Framework-agnostic custom element. Size it with CSS `width`; the height
  * follows the aspect ratio. The colour comes from `--beamling-light`.
  */
-export class BeamlingElement extends HTMLElement {
+export class BeamlingElement extends Base {
   static observedAttributes = [...ATTRS];
   private engine: Beamling | null = null;
   private root: ShadowRoot;
@@ -37,10 +43,10 @@ export class BeamlingElement extends HTMLElement {
     if (!this.engine || prev === next) return;
     switch (name) {
       case "expression":
-        if (EXPRESSIONS.includes(next as Expression)) this.engine.setExpression(next as Expression);
+        if (isExpression(next)) this.engine.setExpression(next);
         break;
       case "activity":
-        if (ACTIVITIES.includes(next as Activity)) this.engine.setActivity(next as Activity);
+        if (isActivity(next)) this.engine.setActivity(next);
         break;
       case "follow-pointer":
         this.engine.setFollowPointer(next !== null);
@@ -58,22 +64,32 @@ export class BeamlingElement extends HTMLElement {
     this.engine?.destroy();
     const host = this.root.querySelector("div")!;
     host.innerHTML = "";
-    const expression = this.getAttribute("expression") as Expression | null;
-    const activity = this.getAttribute("activity") as Activity | null;
+    const expression = this.getAttribute("expression");
+    const activity = this.getAttribute("activity");
     this.engine = new Beamling(host, {
-      expression: expression && EXPRESSIONS.includes(expression) ? expression : "neutral",
-      activity: activity && ACTIVITIES.includes(activity) ? activity : "idle",
+      expression: isExpression(expression) ? expression : DEFAULTS.expression,
+      activity: isActivity(activity) ? activity : DEFAULTS.activity,
       beams: this.getAttribute("beams") !== "false",
       followPointer: this.hasAttribute("follow-pointer"),
       blink: !this.hasAttribute("no-blink"),
-      label: this.getAttribute("label") ?? "Beamling",
+      label: this.getAttribute("label") ?? DEFAULTS.label,
       room: this.hasAttribute("room"),
     });
   }
 }
 
+let baseDefined = false;
+
+/**
+ * Registers the element under `tag` (browser only; a no-op on the server).
+ * The first registration uses `BeamlingElement` itself; other tags get their
+ * own subclass, since one constructor can be registered only once.
+ */
 export function defineBeamlingElement(tag = "beamling-mascot") {
-  if (typeof customElements !== "undefined" && !customElements.get(tag)) customElements.define(tag, BeamlingElement);
+  if (typeof customElements === "undefined" || customElements.get(tag)) return;
+  const taken = baseDefined || customElements.getName?.(BeamlingElement) != null;
+  customElements.define(tag, taken ? class extends BeamlingElement {} : BeamlingElement);
+  baseDefined = true;
 }
 
 declare global {

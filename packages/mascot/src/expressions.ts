@@ -17,6 +17,8 @@ export const EXPRESSIONS = [
 
 export type Expression = (typeof EXPRESSIONS)[number];
 
+export const isExpression = (value: unknown): value is Expression => EXPRESSIONS.includes(value as Expression);
+
 export interface ExpressionPreset {
   left: EyeShape;
   right: EyeShape;

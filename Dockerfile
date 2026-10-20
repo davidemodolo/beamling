@@ -9,7 +9,8 @@ FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/web/package.json packages/web/package.json
 COPY packages/mascot/package.json packages/mascot/package.json
-RUN pnpm install --frozen-lockfile
+# Sources are not copied yet, so workspace lifecycle scripts (mascot "prepare") run in the build stage instead.
+RUN pnpm install --frozen-lockfile --ignore-scripts
 
 FROM deps AS build
 COPY . .

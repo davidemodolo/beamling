@@ -155,3 +155,57 @@ test("citation sanitization removes invalid markers and preserves code", () => {
   assert.equal(sanitizeCitations("One [1], bad [4], code `[9]`.", 3), "One [1], bad , code `[9]`.");
   assert.equal(stripCitations("Answer [1][2]."), "Answer .");
 });
+
+test("Brave drops unsafe URLs and results without a snippet", async () => {
+  const original = globalThis.fetch;
+  const previousInterval = process.env.BRAVE_MIN_INTERVAL_MS;
+  process.env.BRAVE_MIN_INTERVAL_MS = "0";
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        web: {
+          results: [
+            { title: "Script", url: "javascript:alert(1)", description: "Looks fine." },
+            { title: "Data", url: "data:text/html,hi", description: "Looks fine." },
+            { title: "Malformed", url: "not a url", description: "Looks fine." },
+            { title: "Empty", url: "https://example.org/empty", description: "<b></b>" },
+            { title: "Good", url: "https://example.org/good", description: "Real snippet." },
+          ],
+        },
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    )) as typeof fetch;
+  try {
+    const sources = await searchBrave("BSA-filter-unique", "test", { count: 5 });
+    assert.deepEqual(
+      sources.map((source) => [source.url, source.position]),
+      [["https://example.org/good", 1]],
+    );
+  } finally {
+    globalThis.fetch = original;
+    if (previousInterval === undefined) delete process.env.BRAVE_MIN_INTERVAL_MS;
+    else process.env.BRAVE_MIN_INTERVAL_MS = previousInterval;
+  }
+});
+
+test("search freshness applies only to questions about recent events", async () => {
+  const { freshnessDays } = await import("../lib/server/chat");
+  assert.equal(freshnessDays("How does photosynthesis work?"), undefined);
+  assert.equal(freshnessDays("Who won the 1998 World Cup?"), undefined);
+  assert.equal(freshnessDays("What happened in the markets today?"), 1);
+  assert.equal(freshnessDays("Le ultime notizie sul governo"), 30);
+  assert.equal(freshnessDays("¿Cuáles son las últimas noticias?"), 30);
+  assert.equal(freshnessDays("Is a newsletter worth it?"), undefined);
+});
+
+test("conversation history keeps citation-like text inside code", async () => {
+  const { quickPrompt } = await import("../lib/server/prompts");
+  const prompt = quickPrompt({
+    question: "Next?",
+    sources: [],
+    history: [
+      { id: "a", role: "assistant", content: "Use `arr[1]` here [2].", status: "complete", createdAt: "" },
+    ],
+  });
+  assert.match(prompt.user, /Use `arr\[1\]` here \./);
+});

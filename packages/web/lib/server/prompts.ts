@@ -1,4 +1,10 @@
 import type { Message, Source } from "../types";
+import { stripCitations } from "./citations";
+
+export interface Prompt {
+  system: string;
+  user: string;
+}
 
 export const NO_SOURCES_ANSWER =
   "I could not find reliable sources for this question, so I am not going to guess. Try rephrasing it, naming a specific entity, or widening the time window.";
@@ -15,15 +21,16 @@ function today(): { date: string; timezone: string } {
   };
 }
 
-function stripCitationMarkers(text: string): string {
-  return text.replace(/\[\d{1,2}\]/g, "");
+function attr(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function sourceBlocks(sources: Source[]): string {
   return sources
     .map((source) => {
       const content = source.snippet.replace(/<\/?source/gi, "").slice(0, 2200);
-      return `<source id="${source.position}" url="${source.url}" domain="${source.domain}" title="${source.title.replace(/"/g, "&quot;")}"${source.publishedAt ? ` published="${source.publishedAt.slice(0, 10)}"` : ""}>\n${content}\n</source>`;
+      const published = source.publishedAt ? ` published="${attr(source.publishedAt.slice(0, 10))}"` : "";
+      return `<source id="${source.position}" url="${attr(source.url)}" domain="${attr(source.domain)}" title="${attr(source.title)}"${published}>\n${content}\n</source>`;
     })
     .join("\n\n");
 }
@@ -35,7 +42,7 @@ function historyBlock(history: Message[]): string {
     .slice(-6)
     .map(
       (message) =>
-        `${message.role === "user" ? "User" : "Assistant"}: ${stripCitationMarkers(message.content).slice(0, 1200)}`,
+        `${message.role === "user" ? "User" : "Assistant"}: ${stripCitations(message.content).slice(0, 1200)}`,
     )
     .join("\n\n");
 }
@@ -44,7 +51,7 @@ export function quickPrompt(input: {
   question: string;
   sources: Source[];
   history: Message[];
-}): { system: string; user: string } {
+}): Prompt {
   const { date, timezone } = today();
   const system = `You are Beamling, a careful web answer engine. The current date is ${date} (${timezone}). Answer in the user's language.
 
@@ -79,7 +86,7 @@ export function deepPrompt(input: {
   sources: Source[];
   subqueries: string[];
   history: Message[];
-}): { system: string; user: string } {
+}): Prompt {
   const { date, timezone } = today();
   const system = `You are Beamling, a careful research analyst. The current date is ${date} (${timezone}). Answer in the user's language.
 
@@ -110,7 +117,7 @@ STRUCTURE
   return { system, user };
 }
 
-export function plannerPrompt(question: string): { system: string; user: string } {
+export function plannerPrompt(question: string): Prompt {
   const { date, timezone } = today();
   return {
     system: `You are Beamling's research planner. Return JSON only, without markdown fences.
@@ -134,7 +141,7 @@ export function gapPrompt(input: {
   question: string;
   subqueries: string[];
   sources: Source[];
-}): { system: string; user: string } {
+}): Prompt {
   const { date } = today();
   return {
     system: `You are Beamling's evidence reviewer. Return JSON only, without markdown fences.

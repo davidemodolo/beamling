@@ -46,6 +46,7 @@ export function LandingDemo() {
     setStage("queued");
     setWritten("");
     setVisibleSources(0);
+    // Every step is scheduled up front, each `ms` after the previous one.
     let at = 0;
     const step = (fn: () => void, ms: number) => {
       at += ms;
@@ -55,13 +56,11 @@ export function LandingDemo() {
     step(() => setVisibleSources(1), 500);
     step(() => setVisibleSources(3), 700);
     step(() => setStage("reading"), 950);
-    step(() => {
-      setStage("writing");
-      const words = ANSWER.split(" ");
-      words.forEach((word, index) => {
-        step(() => setWritten(words.slice(0, index + 1).join(" ")), 24 + (index % 4) * 9);
-      });
-    }, 800);
+    step(() => setStage("writing"), 800);
+    const words = ANSWER.split(" ");
+    words.forEach((_, index) => {
+      step(() => setWritten(words.slice(0, index + 1).join(" ")), 24 + (index % 4) * 9);
+    });
     step(() => setStage("done"), 260);
   };
 
@@ -76,7 +75,7 @@ export function LandingDemo() {
       (entries) => {
         if (!entries[0]?.isIntersecting || played.current) return;
         played.current = true;
-        window.setTimeout(play, 450);
+        timers.current.push(window.setTimeout(play, 450));
         observer.disconnect();
       },
       { threshold: 0.35 },
