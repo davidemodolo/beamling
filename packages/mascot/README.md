@@ -6,10 +6,10 @@ Beamling floats inside an imaginary room (a box) seen through a perspective came
 
 - **No light simulation.** Each eye's outline is pushed through the room in 3D and projected, and the light is drawn as one SVG path per eye. A frame costs about 0.15 ms.
 - **Light runtime.** No dependencies, about 6 kB gzipped. Renders on the server and animates on the client.
-- **Sleeps when idle.** The animation runs only while something moves. Between blinks and glances it sleeps until the next event, and it skips DOM writes when nothing changed. It pauses off screen and in hidden tabs.
+- **Sleeps when idle.** The animation runs only while something moves. Between blinks and glances it sleeps until the next event, and it skips DOM writes when nothing changed. The slow `sleepy` drift redraws at about 20 fps instead of every frame. It pauses off screen and in hidden tabs.
 - **Mark.** With `beams={false}`, it's an eyes-only mark with a soft glow, facing the viewer.
 - **Motion.** 12 expressions × 6 activities, spring-morphed: blinks, glances, searchlight sweeps, reading saccades, typing flicker, looking around the room.
-- **Reduced motion.** Respects `prefers-reduced-motion`: static poses, no blinking or drifting.
+- **Reduced motion.** Respects `prefers-reduced-motion` (or the `reducedMotion` option): static poses, no blinking, drifting or pointer following. An explicit `lookAt()` still turns the eyes, without animation, and they return to centre when it ends.
 
 ## Usage
 
@@ -23,6 +23,8 @@ import { BeamlingMascot } from "@beamling/mascot/react";
 <BeamlingMascot beams={false} label="" style={{ width: 28 }} />          // small mark next to the wordmark
 ```
 
+Props: `state`, `expression`, `activity`, `beams` (default `true`), `followPointer`, `blink` (spontaneous blinking, default `true`), `label` (`""` for decorative), `reducedMotion` (`"auto"` follows the media query, or `true`/`false`), `room`, `className`, `style`. Changing `beams`, `label`, `room` or `reducedMotion` rebuilds the scene from the current expression; the other props are applied in place.
+
 Imperative extras through `ref`: `blink()`, `pulse(strength)` (e.g. when a citation arrives), `lookAt(x, y)`.
 
 ### Any page (custom element)
@@ -32,7 +34,11 @@ Imperative extras through `ref`: `blink()`, `pulse(strength)` (e.g. when a citat
 <beamling-mascot expression="curious" activity="thinking" follow-pointer style="width: 320px"></beamling-mascot>
 ```
 
+A bare specifier like `@beamling/mascot/define` needs a bundler or an [import map](https://developer.mozilla.org/docs/Web/HTML/Element/script/type/importmap); without one, import the file by URL.
+
 Attributes: `expression`, `activity`, `beams="false"`, `follow-pointer`, `no-blink`, `label`, `room`. Use `el.mascot` for the engine.
+
+The element is browser-only. `@beamling/mascot/element` can be imported on the server (nothing runs there), and `defineBeamlingElement(tag)` is a no-op there. In the browser it can register more than one tag name; each extra tag gets its own subclass.
 
 ### Vanilla
 
@@ -41,6 +47,8 @@ import { Beamling } from "@beamling/mascot";
 const b = new Beamling(container, { expression: "neutral" });
 b.setActivity("searching");
 ```
+
+`Beamling` needs the DOM; on the server use `markup(options)` for a static SVG string, which the engine reuses when mounted on the same container with the same `beams` and `room`. `DEFAULTS`, `isExpression()` and `isActivity()` are exported for validating input.
 
 ## Vocabulary
 
@@ -73,9 +81,10 @@ The background is transparent. The mascot is designed for dark surfaces (brand I
 ## Development
 
 ```sh
-pnpm install
+pnpm install                           # also builds dist/ (prepare script)
 pnpm --filter @beamling/mascot dev     # demo at http://localhost:5173
 pnpm --filter @beamling/mascot build   # dist/ (ESM + .d.ts)
+pnpm --filter @beamling/mascot watch   # rebuild dist/ on change, for packages/web
 ```
 
 Tuning a shape or a mood's gaze (`look`) means editing `src/expressions.ts`. Camera, room size and head constants (perspective, turn range) live at the top of `src/scene.ts`. Eyes are written for the left eye, with x pointing toward the nose, and are mirrored for the right eye. Lids are parabolas: `y = h + tilt·x + curve·x²`.

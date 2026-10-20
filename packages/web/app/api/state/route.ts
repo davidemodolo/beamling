@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const user = await getOrCreateUser();
-    return NextResponse.json(await getState(user.id, user.createdAt));
+    return NextResponse.json(await getState(user));
   } catch (error) {
     return errorResponse(error);
   }

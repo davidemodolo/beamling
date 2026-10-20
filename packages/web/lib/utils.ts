@@ -29,3 +29,8 @@ export function createId(prefix = "id"): string {
   const uuid = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : Math.random().toString(36).slice(2, 10);
   return `${prefix}-${uuid}`;
 }
+
+/** Collapse runs of whitespace (including newlines) into single spaces and trim the ends. */
+export function collapseWhitespace(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}

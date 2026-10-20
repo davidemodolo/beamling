@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, type RefObject } from "react";
 import { Icon } from "./ui/icon";
 import type { Mode } from "@/lib/types";
 
@@ -14,30 +14,15 @@ interface ComposerProps {
   onModeChange: (mode: Mode) => void;
   modelLabel: string;
   inputRef: RefObject<HTMLTextAreaElement | null>;
-  placeholder?: string;
 }
 
-export function Composer({
-  value,
-  onChange,
-  onSubmit,
-  onStop,
-  busy,
-  mode,
-  onModeChange,
-  modelLabel,
-  inputRef,
-  placeholder = "Ask anything. Beamling will show you where the answer comes from.",
-}: ComposerProps) {
-  const internalRef = useRef<HTMLTextAreaElement>(null);
-  const ref = inputRef ?? internalRef;
-
+export function Composer({ value, onChange, onSubmit, onStop, busy, mode, onModeChange, modelLabel, inputRef }: ComposerProps) {
   useEffect(() => {
-    const el = ref.current;
+    const el = inputRef.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 190)}px`;
-  }, [value, ref]);
+  }, [value, inputRef]);
 
   return (
     <div className="composer-wrap">
@@ -51,7 +36,7 @@ export function Composer({
       >
         <div className="composer-row">
           <textarea
-            ref={ref}
+            ref={inputRef}
             value={value}
             onChange={(event) => onChange(event.target.value)}
             onKeyDown={(event) => {
@@ -60,7 +45,7 @@ export function Composer({
                 if (!busy && value.trim()) onSubmit();
               }
             }}
-            placeholder={placeholder}
+            placeholder="Ask anything. Beamling will show you where the answer comes from."
             rows={1}
             aria-label="Your question"
             enterKeyHint="send"

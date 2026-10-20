@@ -1,13 +1,15 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { StoreProvider } from "@/lib/store";
-import { SettingsModal } from "./settings-modal";
+import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import { useFocusTrap } from "@/lib/hooks/use-focus-trap";
+import { StoreProvider, useStore } from "@/lib/store";
+import { SettingsModal, type SettingsTab } from "./settings-modal";
 import { Sidebar } from "./sidebar";
+import { WorkspaceError } from "./workspace-error";
 
 interface SidebarContextValue {
   openSidebar: () => void;
-  openSettings: () => void;
+  openSettings: (tab?: SettingsTab) => void;
 }
 
 const SidebarContext = createContext<SidebarContextValue>({ openSidebar: () => {}, openSettings: () => {} });
@@ -17,19 +19,22 @@ export function useSidebar() {
 }
 
 function Frame({ children }: { children: ReactNode }) {
+  const { user, error } = useStore();
   const [open, setOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open]);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("keys");
+  const drawerRef = useRef<HTMLElement>(null);
+  const closeDrawer = useCallback(() => setOpen(false), []);
+  useFocusTrap(drawerRef, open, closeDrawer);
 
-  const value = useMemo(
-    () => ({ openSidebar: () => setOpen(true), openSettings: () => setSettingsOpen(true) }),
+  const value = useMemo<SidebarContextValue>(
+    () => ({
+      openSidebar: () => setOpen(true),
+      openSettings: (tab) => {
+        if (tab) setSettingsTab(tab);
+        setSettingsOpen(true);
+      },
+    }),
     [],
   );
 
@@ -37,15 +42,26 @@ function Frame({ children }: { children: ReactNode }) {
     <SidebarContext.Provider value={value}>
       <div className="app-shell">
         <Sidebar />
-        {children}
+        {error && !user ? (
+          <main className="main-pane" id="main">
+            <WorkspaceError message={error} />
+          </main>
+        ) : (
+          children
+        )}
       </div>
       {open ? (
         <>
-          <button type="button" className="overlay" aria-label="Close menu" onClick={() => setOpen(false)} />
-          <Sidebar mobile onNavigate={() => setOpen(false)} />
+          <button type="button" className="overlay" aria-label="Close menu" onClick={closeDrawer} tabIndex={-1} />
+          <Sidebar mobile ref={drawerRef} onNavigate={closeDrawer} />
         </>
       ) : null}
-      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        tab={settingsTab}
+        onTabChange={setSettingsTab}
+      />
     </SidebarContext.Provider>
   );
 }

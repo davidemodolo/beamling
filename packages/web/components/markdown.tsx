@@ -1,4 +1,7 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { memo, useMemo, type MouseEvent, type ReactNode } from "react";
+import { isSafeHttpUrl } from "@/lib/url";
 
 interface MarkdownProps {
   text: string;
@@ -7,7 +10,9 @@ interface MarkdownProps {
   streaming?: boolean;
 }
 
-function inline(text: string, key: string, ctx: MarkdownProps): ReactNode[] {
+const HR = /^---+$/;
+
+function inline(text: string, key: string, citations: number): ReactNode[] {
   const nodes: ReactNode[] = [];
   const pattern = /(\*\*[^*]+\*\*|`[^`]+`|\*[^*\s][^*]*\*|\[[^\]]+\]\([^)\s]+\)|\[\d+\])/g;
   let last = 0;
@@ -18,18 +23,17 @@ function inline(text: string, key: string, ctx: MarkdownProps): ReactNode[] {
     const token = match[0];
     const k = `${key}-${i++}`;
     if (token.startsWith("**")) {
-      nodes.push(<strong key={k}>{token.slice(2, -2)}</strong>);
+      nodes.push(<strong key={k}>{inline(token.slice(2, -2), k, citations)}</strong>);
     } else if (token.startsWith("`")) {
       nodes.push(<code key={k}>{token.slice(1, -1)}</code>);
     } else if (token.startsWith("*")) {
-      nodes.push(<em key={k}>{token.slice(1, -1)}</em>);
-    } else if (token.startsWith("[")) {
+      nodes.push(<em key={k}>{inline(token.slice(1, -1), k, citations)}</em>);
+    } else {
       const link = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(token);
       if (link) {
-        const href = link[2];
-        if (/^https?:\/\//i.test(href)) {
+        if (isSafeHttpUrl(link[2])) {
           nodes.push(
-            <a key={k} href={href} target="_blank" rel="noopener noreferrer">
+            <a key={k} href={link[2]} target="_blank" rel="noopener noreferrer">
               {link[1]}
             </a>,
           );
@@ -38,18 +42,15 @@ function inline(text: string, key: string, ctx: MarkdownProps): ReactNode[] {
         }
       } else {
         const position = Number(token.slice(1, -1));
-        if (Number.isInteger(position) && position >= 1 && position <= (ctx.citations ?? 0)) {
+        if (Number.isInteger(position) && position >= 1 && position <= citations) {
           nodes.push(
-            <button
-              key={k}
-              type="button"
-              className="citation"
-              onClick={() => ctx.onCitation?.(position)}
-              aria-label={`Show source ${position}`}
-            >
+            <button key={k} type="button" className="citation" data-citation={position} aria-label={`Show source ${position}`}>
               {position}
             </button>,
           );
+        } else {
+          // Not a source we know about: keep the text rather than silently dropping it.
+          nodes.push(token);
         }
       }
     }
@@ -59,9 +60,7 @@ function inline(text: string, key: string, ctx: MarkdownProps): ReactNode[] {
   return nodes;
 }
 
-/** A small, safe markdown subset: headings, lists, quotes, code, bold, italics and [n] citations. */
-export function Markdown({ text, citations, onCitation, streaming }: MarkdownProps) {
-  const ctx: MarkdownProps = { text, citations, onCitation };
+function parse(text: string, citations: number): ReactNode[] {
   const lines = text.split("\n");
   const blocks: ReactNode[] = [];
   let i = 0;
@@ -90,7 +89,7 @@ export function Markdown({ text, citations, onCitation, streaming }: MarkdownPro
     const heading = /^(#{2,4})\s+(.+)$/.exec(line);
     if (heading) {
       const level = heading[1].length;
-      const content = inline(heading[2], `h${key}`, ctx);
+      const content = inline(heading[2], `h${key}`, citations);
       if (level === 2) blocks.push(<h2 key={`k${key++}`}>{content}</h2>);
       else if (level === 3) blocks.push(<h3 key={`k${key++}`}>{content}</h3>);
       else blocks.push(<h4 key={`k${key++}`}>{content}</h4>);
@@ -98,7 +97,7 @@ export function Markdown({ text, citations, onCitation, streaming }: MarkdownPro
       continue;
     }
 
-    if (/^---+$/.test(line.trim())) {
+    if (HR.test(line.trim())) {
       blocks.push(<hr key={`k${key++}`} />);
       i++;
       continue;
@@ -110,7 +109,7 @@ export function Markdown({ text, citations, onCitation, streaming }: MarkdownPro
       blocks.push(
         <ul key={`k${key++}`}>
           {items.map((item, n) => (
-            <li key={n}>{inline(item, `u${key}-${n}`, ctx)}</li>
+            <li key={n}>{inline(item, `u${key}-${n}`, citations)}</li>
           ))}
         </ul>,
       );
@@ -123,7 +122,7 @@ export function Markdown({ text, citations, onCitation, streaming }: MarkdownPro
       blocks.push(
         <ol key={`k${key++}`}>
           {items.map((item, n) => (
-            <li key={n}>{inline(item, `o${key}-${n}`, ctx)}</li>
+            <li key={n}>{inline(item, `o${key}-${n}`, citations)}</li>
           ))}
         </ol>,
       );
@@ -133,7 +132,7 @@ export function Markdown({ text, citations, onCitation, streaming }: MarkdownPro
     if (line.startsWith("> ")) {
       const quote: string[] = [];
       while (i < lines.length && lines[i].startsWith("> ")) quote.push(lines[i++].slice(2));
-      blocks.push(<blockquote key={`k${key++}`}>{inline(quote.join(" "), `q${key}`, ctx)}</blockquote>);
+      blocks.push(<blockquote key={`k${key++}`}>{inline(quote.join(" "), `q${key}`, citations)}</blockquote>);
       continue;
     }
 
@@ -145,18 +144,32 @@ export function Markdown({ text, citations, onCitation, streaming }: MarkdownPro
       !/^(#{2,4})\s+/.test(lines[i]) &&
       !/^[-*]\s+/.test(lines[i]) &&
       !/^\d+\.\s+/.test(lines[i]) &&
+      !HR.test(lines[i].trim()) &&
       !lines[i].startsWith("> ") &&
       !lines[i].startsWith("```")
     ) {
       paragraph.push(lines[i++]);
     }
-    blocks.push(<p key={`k${key++}`}>{inline(paragraph.join(" "), `p${key}`, ctx)}</p>);
+    blocks.push(<p key={`k${key++}`}>{inline(paragraph.join(" "), `p${key}`, citations)}</p>);
   }
 
+  return blocks;
+}
+
+/** A small, safe markdown subset: headings, lists, quotes, code, bold, italics and [n] citations. */
+export const Markdown = memo(function Markdown({ text, citations = 0, onCitation, streaming }: MarkdownProps) {
+  // The parse only depends on the text, so citation clicks are handled by delegation instead of per-button closures.
+  const blocks = useMemo(() => parse(text, citations), [text, citations]);
+
+  const onClick = (event: MouseEvent<HTMLDivElement>) => {
+    const button = (event.target as HTMLElement).closest<HTMLElement>("[data-citation]");
+    if (button) onCitation?.(Number(button.dataset.citation));
+  };
+
   return (
-    <div className="answer-prose">
+    <div className="answer-prose" onClick={onClick}>
       {blocks}
       {streaming ? <span className="cursor" aria-hidden="true" /> : null}
     </div>
   );
-}
+});

@@ -1,10 +1,12 @@
-import { PRESETS, type Expression } from "./expressions.js";
+import { PRESETS, isExpression, type Expression } from "./expressions.js";
 import type { BeamShape, EyeShape } from "./geometry.js";
 import { sceneMarkup, scenePaths, type Frame } from "./scene.js";
 
 /** What Beamling is doing, independent of how it feels. */
 export const ACTIVITIES = ["idle", "thinking", "searching", "reading", "writing", "exploring"] as const;
 export type Activity = (typeof ACTIVITIES)[number];
+
+export const isActivity = (value: unknown): value is Activity => ACTIVITIES.includes(value as Activity);
 
 export interface BeamlingOptions {
   expression?: Expression;
@@ -23,6 +25,18 @@ export interface BeamlingOptions {
   room?: boolean;
 }
 
+/** Option defaults shared by the engine, the custom element and the React wrapper. */
+export const DEFAULTS = {
+  expression: "neutral",
+  activity: "idle",
+  beams: true,
+  followPointer: false,
+  blink: true,
+  label: "Beamling",
+  reducedMotion: "auto",
+  room: false,
+} as const satisfies Required<BeamlingOptions>;
+
 const SHAPE_KEYS = ["rx", "ry", "top", "topTilt", "topCurve", "bottom", "bottomTilt", "bottomCurve", "rot", "dx", "dy"] as const;
 const BEAM_KEYS = ["length", "spread", "intensity"] as const;
 
@@ -36,6 +50,23 @@ const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 
 /** Activities whose motion never rests; the others let the loop sleep between events. */
 const CONTINUOUS: readonly Activity[] = ["searching", "reading", "writing", "exploring"];
+
+/** The sleepy drift is slow, so it redraws at a low rate instead of every frame. */
+const SLEEPY_FRAME_MS = 1000 / 20;
+
+/** Exploring: a slow tour of the room as [gazeX, gazeY, hold seconds]. */
+const TOUR: readonly (readonly [number, number, number])[] = [
+  [-1, 0.1, 1.5],
+  [-1, -0.45, 1.3],
+  [-0.7, 0.75, 1.3],
+  [0, 0.9, 1.2],
+  [0.7, 0.75, 1.3],
+  [1, 0.1, 1.5],
+  [1, -0.45, 1.3],
+  [0, -0.3, 1.3],
+  [0, 0, 1.4],
+];
+const TOUR_TOTAL = TOUR.reduce((a, w) => a + w[2], 0);
 
 /** Where the mood makes Beamling look. The mark has no beams to show, so it faces the viewer. */
 const lookOf = (expression: Expression, beams: boolean) => (beams ? PRESETS[expression].look : ([0, 0] as const));
@@ -66,7 +97,7 @@ function unpack(v: Float64Array, openness: number, brightness: number): Frame {
 }
 
 /** Frame for a resting pose; used for server rendering and first paint. */
-export function staticFrame(expression: Expression = "neutral", beams = true): Frame {
+export function staticFrame(expression: Expression = DEFAULTS.expression, beams: boolean = DEFAULTS.beams): Frame {
   return unpack(pack(expression, beams, 0, 0), 1, 1);
 }
 
@@ -74,11 +105,11 @@ let counter = 0;
 const uid = () => `beamling-${(++counter).toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 
 export function markup(options: BeamlingOptions & { id?: string } = {}): string {
-  const beams = options.beams ?? true;
+  const beams = options.beams ?? DEFAULTS.beams;
   return sceneMarkup(options.id ?? uid(), staticFrame(options.expression, beams), {
     beams,
-    room: options.room ?? false,
-    label: options.label ?? "Beamling",
+    room: options.room ?? DEFAULTS.room,
+    label: options.label ?? DEFAULTS.label,
   });
 }
 
@@ -97,6 +128,8 @@ export class Beamling {
   private target: Float64Array;
 
   private raf = 0;
+  private pointerRaf = 0;
+  private destroyed = false;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private last = 0;
   /** Seconds since creation, on the wall clock so the loop can sleep between events. */
@@ -118,27 +151,21 @@ export class Beamling {
   private pointerUntil = -Infinity;
   private pointerX = 0;
   private pointerY = 0;
+  /** Latest pointer position, read once per frame. */
+  private pointerEvent = { x: 0, y: 0 };
   private typing = 0;
 
   constructor(host: Element, options: BeamlingOptions = {}) {
     this.host = host;
-    this.opts = {
-      expression: "neutral",
-      activity: "idle",
-      beams: true,
-      followPointer: false,
-      blink: true,
-      label: "Beamling",
-      reducedMotion: "auto",
-      room: false,
-      ...options,
-    };
+    this.opts = { ...DEFAULTS, ...options, followPointer: false };
+    if (!isExpression(this.opts.expression)) this.opts.expression = DEFAULTS.expression;
+    if (!isActivity(this.opts.activity)) this.opts.activity = DEFAULTS.activity;
     this.target = pack(this.opts.expression, this.opts.beams, 0, 0);
     this.current = this.target.slice();
     this.mount();
     this.setupMotionPreference();
     this.setupVisibility();
-    if (this.opts.followPointer) window.addEventListener("pointermove", this.onPointer, { passive: true });
+    this.setFollowPointer(options.followPointer ?? DEFAULTS.followPointer);
     document.addEventListener("visibilitychange", this.onVisibility);
     this.draw();
     this.start();
@@ -153,13 +180,13 @@ export class Beamling {
   }
 
   setExpression(expression: Expression): void {
-    if (!(expression in PRESETS) || expression === this.opts.expression) return;
+    if (!isExpression(expression) || expression === this.opts.expression) return;
     this.opts.expression = expression;
     this.retarget();
   }
 
   setActivity(activity: Activity): void {
-    if (!ACTIVITIES.includes(activity) || activity === this.opts.activity) return;
+    if (!isActivity(activity) || activity === this.opts.activity) return;
     this.opts.activity = activity;
     this.nextGlance = 0;
     this.retarget();
@@ -187,7 +214,7 @@ export class Beamling {
   }
 
   setFollowPointer(on: boolean): void {
-    if (on === this.opts.followPointer) return;
+    if (this.destroyed || on === this.opts.followPointer) return;
     this.opts.followPointer = on;
     if (on) window.addEventListener("pointermove", this.onPointer, { passive: true });
     else window.removeEventListener("pointermove", this.onPointer);
@@ -198,9 +225,12 @@ export class Beamling {
   }
 
   destroy(): void {
+    this.destroyed = true;
     cancelAnimationFrame(this.raf);
+    cancelAnimationFrame(this.pointerRaf);
     clearTimeout(this.timer);
     this.raf = 0;
+    this.pointerRaf = 0;
     window.removeEventListener("pointermove", this.onPointer);
     document.removeEventListener("visibilitychange", this.onVisibility);
     this.mql?.removeEventListener("change", this.onMotionChange);
@@ -212,8 +242,8 @@ export class Beamling {
   private mount() {
     let svg = this.host.querySelector<SVGSVGElement>("svg[data-beamling]");
     // Reuse server-rendered markup only if it was made for the same variant.
-    const hasBeams = !!svg && !svg.querySelector("filter");
-    if (!svg || hasBeams !== this.opts.beams) {
+    const { beams, room } = this.opts;
+    if (!svg || svg.dataset.beams !== String(beams) || svg.dataset.room !== String(beams && room)) {
       this.host.innerHTML = sceneMarkup(uid(), unpack(this.current, 1, 1), this.opts);
       svg = this.host.querySelector<SVGSVGElement>("svg[data-beamling]")!;
     }
@@ -249,20 +279,38 @@ export class Beamling {
 
   private onMotionChange = () => {
     this.reduce = !!this.mql?.matches;
+    this.stopTransients();
     this.retarget();
   };
+
+  /** Drops in-flight blinks and flashes; reduced motion never advances them. */
+  private stopTransients() {
+    this.blinkStart = -1;
+    this.doubleBlink = false;
+    this.flash = 0;
+  }
 
   private onVisibility = () => {
     if (!document.hidden) this.start();
   };
 
   private onPointer = (e: PointerEvent) => {
+    // Following the pointer is motion triggered by the user: off with reduced motion.
+    if (this.reduce) return;
+    this.pointerEvent.x = e.clientX;
+    this.pointerEvent.y = e.clientY;
+    // Layout is read at most once per frame, however often the pointer moves.
+    if (!this.pointerRaf) this.pointerRaf = requestAnimationFrame(this.followPointer);
+  };
+
+  private followPointer = () => {
+    this.pointerRaf = 0;
     const r = this.svg.getBoundingClientRect();
     // Eyes sit in the upper third of the full scene.
     const cx = r.left + r.width / 2;
     const cy = r.top + r.height * (this.opts.beams ? 0.26 : 0.5);
     const reach = Math.max(r.width, 240);
-    this.lookAt((e.clientX - cx) / reach, (e.clientY - cy) / reach, 2);
+    this.lookAt((this.pointerEvent.x - cx) / reach, (this.pointerEvent.y - cy) / reach, 2);
   };
 
   /** Current time in seconds, also valid while the loop sleeps. */
@@ -279,7 +327,7 @@ export class Beamling {
   private start() {
     clearTimeout(this.timer);
     this.timer = undefined;
-    if (this.raf || !this.visible) return;
+    if (this.destroyed || this.raf || !this.visible) return;
     this.last = performance.now();
     this.raf = requestAnimationFrame(this.tick);
   }
@@ -303,17 +351,19 @@ export class Beamling {
       !settled ||
       this.blinkStart >= 0 ||
       this.flash > 0.002 ||
-      (!this.reduce && (this.opts.expression === "sleepy" || (t >= this.pointerUntil && CONTINUOUS.includes(this.opts.activity))));
+      (!this.reduce && t >= this.pointerUntil && CONTINUOUS.includes(this.opts.activity));
     if (moving) {
       this.raf = requestAnimationFrame(this.tick);
       return;
     }
-    if (this.reduce) return;
     let next = Infinity;
-    if (this.opts.blink) next = Math.min(next, this.nextBlink);
-    if (t < this.pointerUntil) next = Math.min(next, this.pointerUntil);
-    else next = Math.min(next, this.nextGlance);
-    if (next < Infinity) this.timer = setTimeout(() => this.start(), Math.max(0, (next - t) * 1000));
+    // With reduced motion only the end of a lookAt changes the pose (back to centre).
+    if (t < this.pointerUntil) next = this.pointerUntil;
+    else if (!this.reduce) next = this.nextGlance;
+    if (!this.reduce && this.opts.blink) next = Math.min(next, this.nextBlink);
+    let delay = (next - t) * 1000;
+    if (!this.reduce && this.opts.expression === "sleepy") delay = Math.min(delay, SLEEPY_FRAME_MS);
+    if (delay < Infinity) this.timer = setTimeout(() => this.start(), Math.max(0, delay));
   };
 
   /** Activity-driven gaze, blinking, and brightness for this frame. */
@@ -322,12 +372,14 @@ export class Beamling {
     let brightness = 1;
     let openness = 1;
 
-    if (this.reduce) {
-      this.gazeX = this.time < this.pointerUntil ? this.pointerX : 0;
-      this.gazeY = this.time < this.pointerUntil ? this.pointerY : 0;
-    } else if (t < this.pointerUntil) {
+    if (this.reduce) this.stopTransients();
+
+    if (t < this.pointerUntil) {
       this.gazeX = this.pointerX;
       this.gazeY = this.pointerY;
+    } else if (this.reduce) {
+      this.gazeX = 0;
+      this.gazeY = 0;
     } else {
       switch (this.opts.activity) {
         case "idle":
@@ -363,20 +415,8 @@ export class Beamling {
         }
         case "exploring": {
           // A slow tour of the room: left wall, floor, right wall, then back to the viewer.
-          const tour: [number, number, number][] = [
-            [-1, 0.1, 1.5],
-            [-1, -0.45, 1.3],
-            [-0.7, 0.75, 1.3],
-            [0, 0.9, 1.2],
-            [0.7, 0.75, 1.3],
-            [1, 0.1, 1.5],
-            [1, -0.45, 1.3],
-            [0, -0.3, 1.3],
-            [0, 0, 1.4],
-          ];
-          const total = tour.reduce((a, w) => a + w[2], 0);
-          let at = t % total;
-          for (const [x, y, hold] of tour) {
+          let at = t % TOUR_TOTAL;
+          for (const [x, y, hold] of TOUR) {
             if (at < hold) {
               this.gazeX = x;
               this.gazeY = y;

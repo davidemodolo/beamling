@@ -1,8 +1,11 @@
 "use client";
 
+import { useRef } from "react";
 import { Icon } from "./ui/icon";
 import { Mascot } from "./mascot";
+import { useFocusTrap } from "@/lib/hooks/use-focus-trap";
 import type { Source } from "@/lib/types";
+import { isSafeHttpUrl } from "@/lib/url";
 import { shortDate } from "@/lib/utils";
 
 interface SourceListProps {
@@ -13,26 +16,42 @@ interface SourceListProps {
 }
 
 function SourceCard({ source, active, onSelect }: { source: Source; active: boolean; onSelect?: (position: number) => void }) {
+  const shared = {
+    id: `source-${source.position}`,
+    className: `source-card ${active ? "is-active" : ""}`,
+    onMouseEnter: () => onSelect?.(source.position),
+    onFocus: () => onSelect?.(source.position),
+    "aria-label": `Source ${source.position}: ${source.title} — ${source.domain}`,
+  };
+  // Only http(s) URLs become links; anything else (javascript:, data:, …) is shown as plain text.
+  if (!isSafeHttpUrl(source.url)) {
+    return (
+      <div {...shared}>
+        <SourceCardBody source={source} external={false} />
+      </div>
+    );
+  }
   return (
-    <a
-      id={`source-${source.position}`}
-      href={source.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className={`source-card ${active ? "is-active" : ""}`}
-      onMouseEnter={() => onSelect?.(source.position)}
-      onFocus={() => onSelect?.(source.position)}
-      aria-label={`Source ${source.position}: ${source.title} — ${source.domain}`}
-    >
+    <a {...shared} href={source.url} target="_blank" rel="noopener noreferrer">
+      <SourceCardBody source={source} external />
+    </a>
+  );
+}
+
+function SourceCardBody({ source, external }: { source: Source; external: boolean }) {
+  return (
+    <>
       <div className="source-top">
         <span className="source-num">{String(source.position).padStart(2, "0")}</span>
         <span className="fav" aria-hidden="true">
           {source.domain.slice(0, 1)}
         </span>
         <span className="source-domain">{source.domain}</span>
-        <span className="source-ext" aria-hidden="true">
-          <Icon name="external" size={12} />
-        </span>
+        {external ? (
+          <span className="source-ext" aria-hidden="true">
+            <Icon name="external" size={12} />
+          </span>
+        ) : null}
       </div>
       <div className="source-title">{source.title}</div>
       <div className="source-snippet">{source.snippet}</div>
@@ -42,7 +61,7 @@ function SourceCard({ source, active, onSelect }: { source: Source; active: bool
           {shortDate(source.publishedAt)}
         </div>
       ) : null}
-    </a>
+    </>
   );
 }
 
@@ -86,21 +105,37 @@ interface SourcesPanelProps extends SourceListProps {
   onClose?: () => void;
 }
 
+function SourcesHeader({
+  count,
+  provider,
+  onClose,
+  closeLabel,
+}: {
+  count: number;
+  provider: string;
+  onClose?: () => void;
+  closeLabel: string;
+}) {
+  return (
+    <div className="sources-head">
+      <h2>
+        Sources <span className="count">{count}</span>
+      </h2>
+      <span className="badge badge-mono">{provider}</span>
+      <span className="spacer" />
+      {onClose ? (
+        <button type="button" className="btn btn-ghost btn-icon btn-sm" onClick={onClose} aria-label={closeLabel}>
+          <Icon name="x" size={15} />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 export function SourcesPanel({ sources, active, loading, onSelect, provider, onClose }: SourcesPanelProps) {
   return (
-    <aside className="sources-pane" aria-label="Sources">
-      <div className="sources-head">
-        <h2>
-          Sources <span className="count">{sources.length}</span>
-        </h2>
-        <span className="badge badge-mono">{provider}</span>
-        <span className="spacer" />
-        {onClose ? (
-          <button type="button" className="btn btn-ghost btn-icon btn-sm" onClick={onClose} aria-label="Hide sources">
-            <Icon name="x" size={15} />
-          </button>
-        ) : null}
-      </div>
+    <aside className="sources-pane" id="sources-pane" aria-label="Sources">
+      <SourcesHeader count={sources.length} provider={provider} onClose={onClose} closeLabel="Hide sources" />
       <SourceList sources={sources} active={active} loading={loading} onSelect={onSelect} />
       <div className="sources-foot">
         <Icon name="shield" size={12} />
@@ -119,22 +154,15 @@ export function SourcesSheet({
   onSelect,
   provider,
 }: SourcesPanelProps & { open: boolean; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useFocusTrap(ref, open, onClose);
   if (!open) return null;
   return (
     <>
-      <button type="button" className="overlay" onClick={onClose} aria-label="Close sources" />
-      <div className="sheet" role="dialog" aria-modal="true" aria-label={`Sources, ${sources.length}`}>
+      <button type="button" className="overlay" onClick={onClose} aria-label="Close sources" tabIndex={-1} />
+      <div ref={ref} className="sheet" id="sources-sheet" role="dialog" aria-modal="true" aria-label={`Sources, ${sources.length}`}>
         <div className="sheet-handle" aria-hidden="true" />
-        <div className="sources-head">
-          <h2>
-            Sources <span className="count">{sources.length}</span>
-          </h2>
-          <span className="badge badge-mono">{provider}</span>
-          <span className="spacer" />
-          <button type="button" className="btn btn-ghost btn-icon btn-sm" onClick={onClose} aria-label="Close sources">
-            <Icon name="x" size={15} />
-          </button>
-        </div>
+        <SourcesHeader count={sources.length} provider={provider} onClose={onClose} closeLabel="Close sources" />
         <SourceList sources={sources} active={active} loading={loading} onSelect={onSelect} />
       </div>
     </>

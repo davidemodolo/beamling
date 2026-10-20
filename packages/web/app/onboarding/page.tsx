@@ -2,28 +2,31 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
+import { SecretKeyInput } from "@/components/secret-key-input";
 import { Icon } from "@/components/ui/icon";
 import { Wordmark } from "@/components/wordmark";
+import { WorkspaceError } from "@/components/workspace-error";
+import { errorMessage } from "@/lib/api";
 import { DEFAULT_LLM_MODEL, OPENROUTER_MODELS } from "@/lib/providers";
 import { useStore } from "@/lib/store";
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const { addCredential, credentials, ready, updateSettings } = useStore();
+  const { addCredential, credentials, ready, updateSettings, error, user } = useStore();
   const [llmModel, setLlmModel] = useState(DEFAULT_LLM_MODEL);
   const [llmKey, setLlmKey] = useState("");
   const [searchKey, setSearchKey] = useState("");
-  const [showLlmKey, setShowLlmKey] = useState(false);
-  const [showSearchKey, setShowSearchKey] = useState(false);
   const [llmError, setLlmError] = useState("");
   const [searchError, setSearchError] = useState("");
+  const [formError, setFormError] = useState("");
   const [pending, setPending] = useState(false);
 
   const hasLlm = credentials.some((credential) => credential.kind === "llm");
   const hasSearch = credentials.some((credential) => credential.kind === "search");
 
-  const finish = async () => {
+  const finish = async (event: FormEvent) => {
+    event.preventDefault();
     if (pending) return;
     const nextLlm = llmKey.trim();
     const nextSearch = searchKey.trim();
@@ -38,31 +41,50 @@ export default function OnboardingPage() {
     setPending(true);
     setLlmError("");
     setSearchError("");
-    try {
-      if (nextLlm) {
-        try {
-          await addCredential({ kind: "llm", provider: "openrouter", key: nextLlm });
-        } catch (cause) {
-          setLlmError(cause instanceof Error ? cause.message : "OpenRouter rejected this key.");
-          setPending(false);
-          return;
-        }
+    setFormError("");
+    // Saved keys are cleared from the form, so a retry after a later failure doesn't re-submit them.
+    if (nextLlm) {
+      try {
+        await addCredential({ kind: "llm", provider: "openrouter", key: nextLlm });
+        setLlmKey("");
+      } catch (cause) {
+        setLlmError(errorMessage(cause, "OpenRouter rejected this key."));
+        setPending(false);
+        return;
       }
-      if (nextSearch) {
-        try {
-          await addCredential({ kind: "search", provider: "brave", key: nextSearch });
-        } catch (cause) {
-          setSearchError(cause instanceof Error ? cause.message : "Brave rejected this key.");
-          setPending(false);
-          return;
-        }
-      }
-      await updateSettings({ llmModel, defaultMode: "quick" });
-      router.push("/chat");
-    } catch {
-      setPending(false);
     }
+    if (nextSearch) {
+      try {
+        await addCredential({ kind: "search", provider: "brave", key: nextSearch });
+        setSearchKey("");
+      } catch (cause) {
+        setSearchError(errorMessage(cause, "Brave rejected this key."));
+        setPending(false);
+        return;
+      }
+    }
+    try {
+      await updateSettings({ llmModel, defaultMode: "quick" });
+    } catch (cause) {
+      setFormError(`Your keys are saved, but the default model could not be saved. ${errorMessage(cause, "Try again.")}`);
+      setPending(false);
+      return;
+    }
+    router.push("/chat");
   };
+
+  if (error && !user) {
+    return (
+      <div className="onboard-shell">
+        <header className="onboard-top">
+          <Wordmark href="/chat" />
+        </header>
+        <main className="onboard-main">
+          <WorkspaceError message={error} />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="onboard-shell">
@@ -75,7 +97,7 @@ export default function OnboardingPage() {
       </header>
 
       <main className="onboard-main">
-        <div className="onboard-step">
+        <form className="onboard-step" onSubmit={(event) => void finish(event)} noValidate>
           <span className="badge badge-beam" style={{ width: "fit-content" }}>Setup</span>
           <h1>Connect your keys</h1>
           <p className="lead">
@@ -104,30 +126,16 @@ export default function OnboardingPage() {
                     Get a key
                   </a>
                 </label>
-                <div className="input-wrap">
-                  <input
-                    id="llm-key"
-                    className="input mono"
-                    type={showLlmKey ? "text" : "password"}
-                    value={llmKey}
-                    onChange={(event) => {
-                      setLlmKey(event.target.value);
-                      setLlmError("");
-                    }}
-                    placeholder={hasLlm ? "Connected · paste a new key to replace it" : "sk-or-v1-..."}
-                    autoComplete="off"
-                    spellCheck={false}
-                    aria-invalid={!!llmError}
-                  />
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-icon btn-sm input-action"
-                    onClick={() => setShowLlmKey((shown) => !shown)}
-                    aria-label={showLlmKey ? "Hide key" : "Show key"}
-                  >
-                    <Icon name={showLlmKey ? "eye-off" : "eye"} size={14} />
-                  </button>
-                </div>
+                <SecretKeyInput
+                  id="llm-key"
+                  value={llmKey}
+                  onChange={(value) => {
+                    setLlmKey(value);
+                    setLlmError("");
+                  }}
+                  placeholder={hasLlm ? "Connected · paste a new key to replace it" : "sk-or-v1-..."}
+                  invalid={!!llmError}
+                />
                 {llmError ? (
                   <p className="validation-err" role="alert">
                     <Icon name="alert" size={12} /> {llmError}
@@ -168,30 +176,16 @@ export default function OnboardingPage() {
                     Get a key
                   </a>
                 </label>
-                <div className="input-wrap">
-                  <input
-                    id="search-key"
-                    className="input mono"
-                    type={showSearchKey ? "text" : "password"}
-                    value={searchKey}
-                    onChange={(event) => {
-                      setSearchKey(event.target.value);
-                      setSearchError("");
-                    }}
-                    placeholder={hasSearch ? "Connected · paste a new key to replace it" : "BSA..."}
-                    autoComplete="off"
-                    spellCheck={false}
-                    aria-invalid={!!searchError}
-                  />
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-icon btn-sm input-action"
-                    onClick={() => setShowSearchKey((shown) => !shown)}
-                    aria-label={showSearchKey ? "Hide key" : "Show key"}
-                  >
-                    <Icon name={showSearchKey ? "eye-off" : "eye"} size={14} />
-                  </button>
-                </div>
+                <SecretKeyInput
+                  id="search-key"
+                  value={searchKey}
+                  onChange={(value) => {
+                    setSearchKey(value);
+                    setSearchError("");
+                  }}
+                  placeholder={hasSearch ? "Connected · paste a new key to replace it" : "BSA..."}
+                  invalid={!!searchError}
+                />
                 {searchError ? (
                   <p className="validation-err" role="alert">
                     <Icon name="alert" size={12} /> {searchError}
@@ -203,13 +197,19 @@ export default function OnboardingPage() {
             </div>
           </section>
 
+          {formError ? (
+            <p className="validation-err" role="alert">
+              <Icon name="alert" size={12} /> {formError}
+            </p>
+          ) : null}
+
           <div className="onboard-actions">
-            <button type="button" className="btn btn-primary btn-lg" onClick={() => void finish()} disabled={pending || !ready}>
+            <button type="submit" className="btn btn-primary btn-lg" disabled={pending || !ready}>
               {pending ? <Icon name="loader" size={15} className="spin" /> : <Icon name="sparkles" size={15} />}
               {pending ? "Validating…" : "Start asking"}
             </button>
           </div>
-        </div>
+        </form>
       </main>
     </div>
   );

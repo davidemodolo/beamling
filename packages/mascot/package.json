@@ -31,6 +31,8 @@
   "scripts": {
     "dev": "vite demo",
     "build": "tsc -p tsconfig.json",
+    "watch": "tsc -p tsconfig.json --watch",
+    "prepare": "tsc -p tsconfig.json",
     "build:demo": "vite build demo --outDir ../demo-dist --emptyOutDir",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

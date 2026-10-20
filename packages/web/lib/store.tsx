@@ -1,7 +1,7 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { api } from "./api";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { api, errorMessage } from "./api";
 import { DEFAULT_SETTINGS } from "./data";
 import type {
   AppState,
@@ -13,6 +13,7 @@ import type {
   Mode,
   Settings,
 } from "./types";
+import { collapseWhitespace } from "./utils";
 
 interface StoreValue {
   user: GuestUser | null;
@@ -25,6 +26,7 @@ interface StoreValue {
   refreshConversation: (id: string) => Promise<void>;
   createConversation: (mode: Mode) => Promise<Conversation>;
   addMessage: (conversationId: string, message: Message) => void;
+  updateMessage: (conversationId: string, messageId: string, update: (message: Message) => Message) => void;
   deleteConversation: (id: string) => void;
   setConversationMode: (id: string, mode: Mode) => void;
   updateSettings: (patch: Partial<Settings>) => Promise<Settings>;
@@ -49,6 +51,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<Settings>(EMPTY.settings);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const settingsRef = useRef(settings);
+
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
 
   const applyState = useCallback((state: AppState) => {
     setUser(state.user);
@@ -63,7 +70,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       applyState(state);
       setError(null);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not load the workspace.");
+      setError(errorMessage(cause, "Could not load the workspace."));
     } finally {
       setReady(true);
     }
@@ -102,7 +109,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               messages: [...conversation.messages, message],
               title:
                 conversation.title === "New conversation" && message.role === "user"
-                  ? message.content.replace(/\s+/g, " ").trim().slice(0, 48) || "New conversation"
+                  ? collapseWhitespace(message.content).slice(0, 48) || "New conversation"
                   : conversation.title,
               updatedAt: message.createdAt,
             }
@@ -110,6 +117,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ),
     );
   }, []);
+
+  const updateMessage = useCallback(
+    (conversationId: string, messageId: string, update: (message: Message) => Message) => {
+      setConversations((current) =>
+        current.map((conversation) =>
+          conversation.id === conversationId
+            ? {
+                ...conversation,
+                messages: conversation.messages.map((message) => (message.id === messageId ? update(message) : message)),
+              }
+            : conversation,
+        ),
+      );
+    },
+    [],
+  );
 
   const deleteConversation = useCallback(
     (id: string) => {
@@ -134,7 +157,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const updateSettings = useCallback(
     async (patch: Partial<Settings>) => {
-      const previous = settings;
+      // Roll back only the keys this call changed, so a concurrent update is not clobbered.
+      const previous = Object.fromEntries(
+        (Object.keys(patch) as (keyof Settings)[]).map((key) => [key, settingsRef.current[key]]),
+      ) as Partial<Settings>;
       setSettings((current) => ({ ...current, ...patch }));
       try {
         const { settings: saved } = await api<{ settings: Settings }>("/api/settings", {
@@ -144,12 +170,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setSettings(saved);
         return saved;
       } catch (cause) {
-        setSettings(previous);
+        setSettings((current) => ({ ...current, ...previous }));
         void refresh();
         throw cause;
       }
     },
-    [settings, refresh],
+    [refresh],
   );
 
   const addCredential = useCallback(async (input: { kind: CredentialKind; provider: string; key: string }) => {
@@ -197,6 +223,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       refreshConversation,
       createConversation,
       addMessage,
+      updateMessage,
       deleteConversation,
       setConversationMode,
       updateSettings,
@@ -216,6 +243,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       refreshConversation,
       createConversation,
       addMessage,
+      updateMessage,
       deleteConversation,
       setConversationMode,
       updateSettings,

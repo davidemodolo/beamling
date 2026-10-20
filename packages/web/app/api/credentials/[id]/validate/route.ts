@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { decryptCredential } from "@/lib/server/crypto";
-import { ApiError, assertSameOrigin, errorResponse } from "@/lib/server/http";
+import { ApiError, assertSameOrigin, errorResponse, idParam, notFound } from "@/lib/server/http";
 import { validateProviderKey } from "@/lib/server/providers";
-import { getCredentialById, updateCredentialValidation } from "@/lib/server/repo";
-import { getOrCreateUser } from "@/lib/server/session";
+import { consumeRateLimit, getCredentialById, updateCredentialValidation } from "@/lib/server/repo";
+import { requireUser } from "@/lib/server/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,12 +11,11 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     assertSameOrigin(request);
-    const user = await getOrCreateUser();
-    const { id } = await context.params;
+    const user = await requireUser();
+    const id = await idParam(context);
+    await consumeRateLimit(`credentials:${user.id}`, 20, 3600);
     const row = await getCredentialById(user.id, id);
-    if (!row) {
-      return NextResponse.json({ error: { code: "NOT_FOUND", message: "Credential not found." } }, { status: 404 });
-    }
+    if (!row) throw notFound("Credential not found.");
     const key = decryptCredential(user.id, row);
     try {
       await validateProviderKey(row.provider === "brave" ? "brave" : "openrouter", key);

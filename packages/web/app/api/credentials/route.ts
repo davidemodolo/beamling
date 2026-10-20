@@ -3,8 +3,8 @@ import { z } from "zod";
 import { encryptCredential } from "@/lib/server/crypto";
 import { ApiError, assertSameOrigin, errorResponse, parseBody } from "@/lib/server/http";
 import { validateProviderKey } from "@/lib/server/providers";
-import { consumeRateLimit, deleteCredential, getCredentialRow, saveCredential } from "@/lib/server/repo";
-import { getOrCreateUser } from "@/lib/server/session";
+import { consumeRateLimit, saveCredential } from "@/lib/server/repo";
+import { requireUser } from "@/lib/server/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,14 +18,12 @@ const schema = z.object({
 export async function POST(request: Request) {
   try {
     assertSameOrigin(request);
-    const user = await getOrCreateUser();
-    await consumeRateLimit(`credentials:${user.id}`, 20, 3600);
+    const user = await requireUser();
     const input = await parseBody(request, schema);
+    await consumeRateLimit(`credentials:${user.id}`, 20, 3600);
     if ((input.kind === "llm") !== (input.provider === "openrouter")) {
       throw new ApiError("INVALID_PROVIDER", "Provider does not match credential kind.", 400);
     }
-
-    const existing = await getCredentialRow(user.id, input.kind, input.provider);
 
     try {
       await validateProviderKey(input.provider, input.key);
@@ -34,10 +32,7 @@ export async function POST(request: Request) {
       throw new ApiError("INVALID_KEY", `Could not validate the ${input.provider} key.`, 400, input.provider);
     }
 
-    if (existing) {
-      await deleteCredential(user.id, existing.id);
-    }
-
+    // saveCredential replaces any existing key for this provider in one atomic upsert.
     const encrypted = encryptCredential(user.id, input.kind, input.provider, input.key);
     const credential = await saveCredential({
       userId: user.id,
