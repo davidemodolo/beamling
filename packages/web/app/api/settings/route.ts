@@ -1,9 +1,8 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import { isAllowedModel } from "@/lib/providers";
-import { ApiError, assertSameOrigin, errorResponse, parseBody } from "@/lib/server/http";
+import { ApiError, json, parseBody } from "@/lib/server/http";
 import { updateSettings } from "@/lib/server/repo";
-import { requireUser } from "@/lib/server/session";
+import { apiRoute } from "@/lib/server/route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,16 +12,10 @@ const schema = z.object({
   defaultMode: z.enum(["quick", "deep"]).optional(),
 });
 
-export async function PATCH(request: Request) {
-  try {
-    assertSameOrigin(request);
-    const user = await requireUser();
-    const patch = await parseBody(request, schema);
-    if (patch.llmModel && !isAllowedModel(patch.llmModel)) {
-      throw new ApiError("MODEL_NOT_ALLOWED", "That model is not in the Alpha 1 allowlist.", 400);
-    }
-    return NextResponse.json({ settings: await updateSettings(user.id, patch) });
-  } catch (error) {
-    return errorResponse(error);
+export const PATCH = apiRoute(async ({ request, user }) => {
+  const patch = await parseBody(request, schema);
+  if (patch.llmModel && !isAllowedModel(patch.llmModel)) {
+    throw new ApiError("MODEL_NOT_ALLOWED", "That model is not in the Alpha 1 allowlist.", 400);
   }
-}
+  return json({ settings: await updateSettings(user.id, patch) });
+});

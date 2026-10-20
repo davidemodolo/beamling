@@ -1,34 +1,41 @@
-import { NextResponse } from "next/server";
 import { decryptCredential } from "@/lib/server/crypto";
-import { ApiError, assertSameOrigin, errorResponse, idParam, notFound } from "@/lib/server/http";
+import { ApiError, idParam, json, notFound } from "@/lib/server/http";
 import { validateProviderKey } from "@/lib/server/providers";
+import { credentialStatusFor } from "@/lib/server/providers/errors";
 import { consumeRateLimit, getCredentialById, updateCredentialValidation } from "@/lib/server/repo";
-import { requireUser } from "@/lib/server/session";
+import { apiRoute } from "@/lib/server/route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
+export const POST = apiRoute<{ params: Promise<{ id: string }> }>(async ({ context, user }) => {
+  const id = await idParam(context);
+  await consumeRateLimit(`credentials:${user.id}`, 20, 3600);
+  const row = await getCredentialById(user.id, id);
+  if (!row) throw notFound("Credential not found.");
+  const provider = row.provider === "brave" ? "brave" : "openrouter";
+
+  let key: string;
   try {
-    assertSameOrigin(request);
-    const user = await requireUser();
-    const id = await idParam(context);
-    await consumeRateLimit(`credentials:${user.id}`, 20, 3600);
-    const row = await getCredentialById(user.id, id);
-    if (!row) throw notFound("Credential not found.");
-    const key = decryptCredential(user.id, row);
-    try {
-      await validateProviderKey(row.provider === "brave" ? "brave" : "openrouter", key);
-      const credential = await updateCredentialValidation(user.id, id, "active");
-      return NextResponse.json({ credential });
-    } catch (error) {
-      const code = error instanceof ApiError ? error.code : "INVALID_KEY";
-      const status = code === "PROVIDER_RATE_LIMITED" ? "rate_limited" : "invalid";
-      await updateCredentialValidation(user.id, id, status);
-      if (error instanceof ApiError) throw error;
-      throw new ApiError("INVALID_KEY", "The provider rejected this key.", 400, row.provider);
-    }
-  } catch (error) {
-    return errorResponse(error);
+    key = decryptCredential(user.id, row);
+  } catch {
+    const credential = await updateCredentialValidation(user.id, id, "invalid");
+    throw new ApiError("CREDENTIAL_UNREADABLE", "This saved key can no longer be read. Replace it.", 400, provider, {
+      credential,
+    });
   }
-}
+
+  try {
+    await validateProviderKey(provider, key);
+  } catch (error) {
+    const status = credentialStatusFor(error);
+    // The response carries the stored credential, so the UI shows the status the server recorded.
+    const credential = status ? await updateCredentialValidation(user.id, id, status) : null;
+    if (error instanceof ApiError) {
+      error.extra = { ...error.extra, ...(credential ? { credential } : {}) };
+      throw error;
+    }
+    throw new ApiError("PROVIDER_UNAVAILABLE", "The key could not be checked right now. Try again shortly.", 502, provider);
+  }
+  return json({ credential: await updateCredentialValidation(user.id, id, "active") });
+});

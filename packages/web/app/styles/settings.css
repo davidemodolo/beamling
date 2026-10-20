@@ -1,0 +1,132 @@
+/* ---------- settings ---------- */
+
+.settings-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.settings-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.settings-card-head h2 {
+  font-size: 13.5px;
+  font-weight: 650;
+  flex: 1;
+}
+.settings-card-head p {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 3px;
+}
+.settings-card-body {
+  padding: 18px;
+  display: grid;
+  gap: 16px;
+}
+.settings-card-body.tight {
+  padding: 0;
+  gap: 0;
+}
+
+.settings-stack {
+  display: grid;
+  gap: 14px;
+}
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.setting-row:last-child {
+  border-bottom: 0;
+}
+.setting-row .grow {
+  flex: 1;
+  min-width: 0;
+}
+.setting-row .row-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+.setting-row .row-hint {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted-2);
+  flex: none;
+}
+.status-dot.active {
+  background: var(--success);
+  box-shadow: 0 0 8px color-mix(in oklab, var(--success) 60%, transparent);
+}
+.status-dot.invalid {
+  background: var(--error);
+}
+.status-dot.rate_limited {
+  background: var(--warning);
+}
+.key-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 15px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.key-card:last-child {
+  border-bottom: 0;
+}
+.key-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--muted);
+  position: relative;
+  flex: none;
+}
+.key-icon .dot {
+  position: absolute;
+  right: -2px;
+  top: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+}
+.key-main {
+  flex: 1;
+  min-width: 0;
+}
+.key-main strong {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.key-main span {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--muted);
+  font-family: var(--font-code);
+}
+.key-actions {
+  display: flex;
+  gap: 2px;
+}

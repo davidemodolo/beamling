@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: beamling_test
+          POSTGRES_USER: beamling
+          POSTGRES_PASSWORD: beamling
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U beamling -d beamling_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://beamling:beamling@localhost:5432/beamling_test
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @beamling/mascot typecheck
+      - run: pnpm --filter @beamling/web typecheck
+      - run: pnpm --filter @beamling/web lint
+      - run: pnpm db:migrate
+      - name: Unit and integration tests
+        run: pnpm test
+      - run: pnpm --filter @beamling/web build
+      - name: Install Playwright Chromium
+        run: pnpm --filter @beamling/web exec playwright install --with-deps chromium
+      - name: End-to-end tests
+        run: pnpm --filter @beamling/web test:e2e
+      - uses: actions/upload-artifact@v7.0.2
+        if: failure()
+        with:
+          name: playwright-traces
+          path: packages/web/test-results
+          retention-days: 7

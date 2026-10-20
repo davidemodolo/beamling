@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
-import { assertSameOrigin, errorResponse, idParam, notFound, parseBody } from "@/lib/server/http";
+import { abortChats } from "@/lib/server/active-chats";
+import { idParam, json, notFound, parseBody } from "@/lib/server/http";
 import { deleteConversation, getConversation, setConversationMode } from "@/lib/server/repo";
-import { requireUser } from "@/lib/server/session";
+import { apiRoute } from "@/lib/server/route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,39 +13,26 @@ type Context = { params: Promise<{ id: string }> };
 
 const conversationNotFound = () => notFound("Conversation not found.", "CONVERSATION_NOT_FOUND");
 
-export async function GET(_request: Request, context: Context) {
-  try {
-    const user = await requireUser();
-    const conversation = await getConversation(user.id, await idParam(context));
-    if (!conversation) throw conversationNotFound();
-    return NextResponse.json({ conversation });
-  } catch (error) {
-    return errorResponse(error);
-  }
-}
+/** The conversation with its newest page of messages. */
+export const GET = apiRoute<Context>(async ({ context, user }) => {
+  const conversation = await getConversation(user.id, await idParam(context));
+  if (!conversation) throw conversationNotFound();
+  return json({ conversation });
+});
 
-export async function PATCH(request: Request, context: Context) {
-  try {
-    assertSameOrigin(request);
-    const user = await requireUser();
-    const id = await idParam(context);
-    const { mode } = await parseBody(request, schema);
-    const conversation = await setConversationMode(user.id, id, mode);
-    if (!conversation) throw conversationNotFound();
-    return NextResponse.json({ conversation });
-  } catch (error) {
-    return errorResponse(error);
-  }
-}
+export const PATCH = apiRoute<Context>(async ({ request, context, user }) => {
+  const id = await idParam(context);
+  const { mode } = await parseBody(request, schema);
+  const conversation = await setConversationMode(user.id, id, mode);
+  if (!conversation) throw conversationNotFound();
+  return json({ conversation });
+});
 
-export async function DELETE(request: Request, context: Context) {
-  try {
-    assertSameOrigin(request);
-    const user = await requireUser();
-    const deleted = await deleteConversation(user.id, await idParam(context));
-    if (!deleted) throw conversationNotFound();
-    return NextResponse.json({ ok: true });
-  } catch (error) {
-    return errorResponse(error);
-  }
-}
+export const DELETE = apiRoute<Context>(async ({ context, user }) => {
+  const id = await idParam(context);
+  const deleted = await deleteConversation(user.id, id);
+  if (!deleted) throw conversationNotFound();
+  // Answers running elsewhere notice the deleted row on their next stop-flag poll.
+  abortChats({ userId: user.id, conversationId: id });
+  return json({ ok: true });
+});

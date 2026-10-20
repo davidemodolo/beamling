@@ -1,16 +1,9 @@
-import { NextResponse } from "next/server";
-import { errorResponse } from "@/lib/server/http";
+import { json } from "@/lib/server/http";
 import { getState } from "@/lib/server/repo";
-import { getOrCreateUser } from "@/lib/server/session";
+import { apiRoute } from "@/lib/server/route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  try {
-    const user = await getOrCreateUser();
-    return NextResponse.json(await getState(user));
-  } catch (error) {
-    return errorResponse(error);
-  }
-}
+/** Bootstraps the guest workspace: settings, keys and the first page of conversations. */
+export const GET = apiRoute(async ({ user }) => json(await getState(user)), { session: "create" });

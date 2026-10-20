@@ -10,13 +10,22 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { DEFAULT_CONVERSATION_TITLE } from "../data";
+import { DEFAULT_LLM_MODEL } from "../providers";
 
-export const users = pgTable("users", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  isGuest: boolean("is_guest").notNull().default(true),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+// Millisecond precision matches JavaScript dates, so timestamps round-trip exactly as pagination cursors.
+const timestampMs = (name: string) => timestamp(name, { withTimezone: true, precision: 3 });
+
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    isGuest: boolean("is_guest").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("users_guest_created_idx").on(table.createdAt).where(sql`"is_guest"`)],
+);
 
 export const authSessions = pgTable(
   "auth_sessions",
@@ -45,6 +54,8 @@ export const credentials = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     kind: text("kind").notNull(),
     provider: text("provider").notNull(),
+    // Identifies the master key that wrapped the DEK, so the master key can be rotated.
+    keyId: text("key_id").notNull(),
     wrappedDek: text("wrapped_dek").notNull(),
     dekNonce: text("dek_nonce").notNull(),
     dekTag: text("dek_tag").notNull(),
@@ -68,7 +79,7 @@ export const settings = pgTable("settings", {
   userId: uuid("user_id")
     .primaryKey()
     .references(() => users.id, { onDelete: "cascade" }),
-  llmModel: text("llm_model").notNull().default("deepseek/deepseek-v4.1-flash"),
+  llmModel: text("llm_model").notNull().default(DEFAULT_LLM_MODEL),
   defaultMode: text("default_mode").notNull().default("quick"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -80,12 +91,12 @@ export const conversations = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    title: text("title").notNull().default("New conversation"),
+    title: text("title").notNull().default(DEFAULT_CONVERSATION_TITLE),
     mode: text("mode").notNull().default("quick"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestampMs("created_at").notNull().defaultNow(),
+    updatedAt: timestampMs("updated_at").notNull().defaultNow(),
   },
-  (table) => [index("conversations_user_updated_idx").on(table.userId, table.updatedAt)],
+  (table) => [index("conversations_user_updated_idx").on(table.userId, table.updatedAt, table.id)],
 );
 
 export const messages = pgTable(
@@ -104,19 +115,31 @@ export const messages = pgTable(
     mode: text("mode"),
     uncited: boolean("uncited").notNull().default(false),
     noSources: boolean("no_sources").notNull().default(false),
+    truncated: boolean("truncated").notNull().default(false),
+    // Deep planner output was unusable, so the run searched the question directly.
+    degraded: boolean("degraded").notNull().default(false),
+    // The model the user selected; OpenRouter may resolve it to a specific model and upstream provider.
     llmModel: text("llm_model"),
+    resolvedModel: text("resolved_model"),
+    upstreamProvider: text("upstream_provider"),
     searchRequests: integer("search_requests").notNull().default(0),
+    searchFailures: integer("search_failures").notNull().default(0),
     tokensIn: integer("tokens_in"),
     tokensOut: integer("tokens_out"),
+    // Generation cost reported by OpenRouter (actual).
     costUsd: numeric("cost_usd", { precision: 12, scale: 6 }),
+    // Brave cost from the plan's list price (estimated).
+    searchCostUsd: numeric("search_cost_usd", { precision: 12, scale: 6 }),
     latencyMs: integer("latency_ms"),
     errorCode: text("error_code"),
     errorMessage: text("error_message"),
     stopRequested: boolean("stop_requested").notNull().default(false),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestampMs("created_at").notNull().defaultNow(),
   },
   (table) => [
-    index("messages_conversation_created_idx").on(table.conversationId, table.createdAt),
+    index("messages_conversation_created_idx").on(table.conversationId, table.createdAt, table.id),
+    // Deleting a user cascades to its messages; without this index every delete scans the table.
+    index("messages_user_idx").on(table.userId),
     // One in-flight answer per conversation; the insert fails atomically across instances.
     uniqueIndex("messages_one_streaming_per_conversation_idx")
       .on(table.conversationId)
@@ -151,4 +174,17 @@ export const rateLimits = pgTable(
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   },
   (table) => [index("rate_limits_expires_idx").on(table.expiresAt)],
+);
+
+/**
+ * Next free request slot per provider key (hashed), shared by every instance. Spaces requests
+ * for plans with a per-second limit.
+ */
+export const providerSlots = pgTable(
+  "provider_slots",
+  {
+    key: text("key").primaryKey(),
+    nextAt: timestamp("next_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [index("provider_slots_next_at_idx").on(table.nextAt)],
 );

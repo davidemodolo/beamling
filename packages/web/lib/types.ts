@@ -27,9 +27,15 @@ export interface Source {
 export interface Usage {
   tokensIn: number;
   tokensOut: number;
+  /** Generation cost reported by OpenRouter. */
   costUsd: number;
+  /** Search cost estimated from Brave's list price. */
+  searchCostUsd?: number;
   latencyMs?: number;
   searchRequests?: number;
+  /** The model and upstream provider OpenRouter actually used, when it reports them. */
+  resolvedModel?: string;
+  upstreamProvider?: string;
 }
 
 export interface Message {
@@ -46,15 +52,28 @@ export interface Message {
   errorMessage?: string;
   noSources?: boolean;
   uncited?: boolean;
+  truncated?: boolean;
+  degraded?: boolean;
+  searchFailures?: number;
 }
 
-export interface Conversation {
+export interface ConversationSummary {
   id: string;
   title: string;
   mode: Mode;
-  messages: Message[];
   createdAt: string;
   updatedAt: string;
+}
+
+/** A conversation with its newest page of messages, oldest first. */
+export interface Conversation extends ConversationSummary {
+  messages: Message[];
+  hasMoreMessages: boolean;
+}
+
+export interface ConversationPage {
+  conversations: ConversationSummary[];
+  nextCursor: string | null;
 }
 
 export interface Credential {
@@ -77,9 +96,17 @@ export interface GuestUser {
   createdAt: string;
 }
 
-export interface AppState {
+export interface AppState extends ConversationPage {
   user: GuestUser;
-  conversations: Conversation[];
+  conversationCount: number;
   credentials: Credential[];
   settings: Settings;
+}
+
+/** Final event of an answer stream. */
+export interface DoneEvent {
+  noSources: boolean;
+  truncated?: boolean;
+  degraded?: boolean;
+  searchFailures?: number;
 }

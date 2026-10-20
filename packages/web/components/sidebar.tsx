@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState, type Ref } from "react";
 import { useStore } from "@/lib/store";
-import type { Conversation } from "@/lib/types";
+import type { ConversationSummary } from "@/lib/types";
 import { dayGroup } from "@/lib/utils";
 import { useSidebar } from "./chat-shell";
 import { Icon } from "./ui/icon";
@@ -17,11 +17,25 @@ interface SidebarProps {
 }
 
 function SidebarContent({ mobile, onNavigate }: SidebarProps) {
-  const { conversations, deleteConversation } = useStore();
+  const { conversations, hasMoreConversations, loadMoreConversations, deleteConversation } = useStore();
   const { openSettings } = useSidebar();
   const pathname = usePathname();
   const router = useRouter();
-  const [deleting, setDeleting] = useState<Conversation | null>(null);
+  const [deleting, setDeleting] = useState<ConversationSummary | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreFailed, setLoadMoreFailed] = useState(false);
+
+  const loadMore = async () => {
+    setLoadingMore(true);
+    setLoadMoreFailed(false);
+    try {
+      await loadMoreConversations();
+    } catch {
+      setLoadMoreFailed(true);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const activeId = pathname.startsWith("/chat/") ? decodeURIComponent(pathname.slice(6)) : null;
 
@@ -85,6 +99,17 @@ function SidebarContent({ mobile, onNavigate }: SidebarProps) {
         ) : (
           <p className="history-empty">No conversations yet.</p>
         )}
+        {hasMoreConversations ? (
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm history-more"
+            onClick={() => void loadMore()}
+            disabled={loadingMore}
+          >
+            {loadingMore ? <Icon name="loader" size={13} className="spin" /> : null}
+            {loadMoreFailed ? "Could not load. Try again" : "Show older conversations"}
+          </button>
+        ) : null}
       </div>
 
       <div className="sidebar-foot">

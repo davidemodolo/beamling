@@ -1,0 +1,72 @@
+/* ---------- responsive ---------- */
+
+@media (max-width: 1080px) {
+  .app-shell {
+    grid-template-columns: 240px minmax(0, 1fr);
+  }
+  .chat-layout.with-sources {
+    grid-template-columns: minmax(0, 1fr) 320px;
+  }
+}
+
+@media (max-width: 900px) {
+  .mobile-only {
+    display: inline-flex !important;
+  }
+  .app-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .sidebar {
+    display: none;
+  }
+  .chat-layout,
+  .chat-layout.with-sources {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .sources-pane {
+    display: none;
+  }
+  .thread {
+    padding: 26px 18px 20px;
+  }
+  .assistant-body {
+    padding-left: 0;
+  }
+  .skeleton-answer {
+    padding-left: 0;
+  }
+  .composer-wrap {
+    padding: 8px 14px max(12px, env(safe-area-inset-bottom));
+  }
+  .composer-tools {
+    padding-left: 14px;
+  }
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    padding: 0 10px;
+  }
+  .topbar-title strong {
+    font-size: 12.5px;
+  }
+  .empty-mascot {
+    width: min(240px, 64vw);
+  }
+  .composer-tools .badge:last-child {
+    display: none;
+  }
+  .message-user .bubble {
+    max-width: 92%;
+  }
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

@@ -5,12 +5,13 @@ import {
   randomBytes,
   randomUUID,
 } from "node:crypto";
-import { credentialMasterKey } from "./env";
+import { currentMasterKey, masterKeyById } from "./env";
 
 const ALGORITHM = "aes-256-gcm";
 
 export interface EncryptedSecret {
   id: string;
+  keyId: string;
   wrappedDek: string;
   dekNonce: string;
   dekTag: string;
@@ -21,9 +22,7 @@ export interface EncryptedSecret {
   last4: string;
 }
 
-export interface StoredSecret extends Omit<EncryptedSecret, "id" | "fingerprint" | "last4"> {
-  id: string;
-}
+export type StoredSecret = Omit<EncryptedSecret, "fingerprint" | "last4">;
 
 function seal(key: Buffer, plaintext: Buffer, aad: Buffer): { nonce: string; ciphertext: string; tag: string } {
   const nonce = randomBytes(12);
@@ -51,7 +50,8 @@ function open(
   ]);
 }
 
-function credentialAad(userId: string, credentialId: string, kind: string, provider: string): Buffer {
+// scripts/rewrap-credentials.mjs builds the same AAD; keep the two in sync.
+export function credentialAad(userId: string, credentialId: string, kind: string, provider: string): Buffer {
   return Buffer.from(`beamling:v1:${userId}:${credentialId}:${kind}:${provider}`, "utf8");
 }
 
@@ -65,9 +65,11 @@ export function encryptCredential(
   const aad = credentialAad(userId, credentialId, kind, provider);
   const dek = randomBytes(32);
   const secret = seal(dek, Buffer.from(plaintext, "utf8"), aad);
-  const wrapped = seal(credentialMasterKey(), dek, aad);
+  const master = currentMasterKey();
+  const wrapped = seal(master.key, dek, aad);
   return {
     id: credentialId,
+    keyId: master.id,
     wrappedDek: wrapped.ciphertext,
     dekNonce: wrapped.nonce,
     dekTag: wrapped.tag,
@@ -85,7 +87,7 @@ export function decryptCredential(
 ): string {
   const aad = credentialAad(userId, credential.id, credential.kind, credential.provider);
   const dek = open(
-    credentialMasterKey(),
+    masterKeyById(credential.keyId),
     { nonce: credential.dekNonce, ciphertext: credential.wrappedDek, tag: credential.dekTag },
     aad,
   );

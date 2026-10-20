@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import { isSafeHttpUrl } from "../../url";
 import { ApiError } from "../http";
+import { log } from "../log";
+import { reserveProviderSlot } from "../repo";
+import { providerFetch, unavailable } from "./errors";
 
 export interface RetrievedSource {
   position: number;
@@ -21,6 +24,15 @@ interface BraveWebResponse {
     }[];
   };
 }
+
+interface BraveErrorBody {
+  error?: { code?: string; detail?: string; message?: string };
+}
+
+const REQUEST_TIMEOUT_MS = 30_000;
+/** A 429 is retried once, and only when the provider asks for a short wait. */
+const MAX_RETRY_WAIT_MS = 5_000;
+const DEFAULT_RETRY_WAIT_MS = 1_000;
 
 function normalizedDate(value: string | undefined): string | undefined {
   if (!value) return undefined;
@@ -43,35 +55,33 @@ function plainText(value: string | undefined): string {
     .trim();
 }
 
-function mapStatus(status: number): { code: string; message: string } {
-  if (status === 401) return { code: "INVALID_KEY", message: "Brave Search rejected this key." };
-  if (status === 402) return { code: "INSUFFICIENT_CREDITS", message: "Brave Search has no remaining quota." };
-  if (status === 429) {
-    return { code: "PROVIDER_RATE_LIMITED", message: "Brave Search is rate-limiting this key." };
+/** Maps a Brave HTTP status and error body to a stable Beamling error. */
+export function braveError(status: number, body: BraveErrorBody["error"] = {}): ApiError {
+  const detail = body.detail ?? body.message ?? "";
+  const error = (code: string, message: string, httpStatus: number) => new ApiError(code, message, httpStatus, "brave");
+  if (/not included in the plan/i.test(detail) || body.code === "OPTION_NOT_IN_PLAN") {
+    return error(
+      "BRAVE_PLAN_MISSING_SEARCH",
+      `This key is not attached to Brave's Search plan. Create or select a Search-plan key at https://api-dashboard.search.brave.com/app/keys.${detail ? ` Brave said: ${detail}` : ""}`,
+      400,
+    );
   }
-  if (status >= 500) {
-    return { code: "PROVIDER_UNAVAILABLE", message: "Brave Search is temporarily unavailable." };
+  if (status === 401 || status === 403 || body.code === "SUBSCRIPTION_TOKEN_INVALID") {
+    return error("CREDENTIAL_INVALID", "Brave Search rejected this key.", 400);
   }
-  return { code: "PROVIDER_ERROR", message: `Brave Search returned HTTP ${status}.` };
+  if (status === 402) return error("INSUFFICIENT_CREDITS", "Brave Search has no remaining quota.", 402);
+  if (status === 429) return error("PROVIDER_RATE_LIMITED", "Brave Search is rate-limiting this key.", 429);
+  if (status === 408 || status >= 500) return unavailable("brave");
+  return error("PROVIDER_ERROR", detail || `Brave Search returned HTTP ${status}.`, 502);
 }
 
 async function readError(response: Response): Promise<ApiError> {
-  let message = "";
+  let body: BraveErrorBody["error"];
   try {
-    const body = (await response.json()) as { error?: { detail?: string; message?: string } };
-    message = body.error?.detail ?? body.error?.message ?? "";
+    body = ((await response.json()) as BraveErrorBody).error;
   } catch {}
-  if (message) console.warn("Brave request failed", { status: response.status, detail: message.slice(0, 300) });
-  if (/not included in the plan/i.test(message)) {
-    return new ApiError(
-      "BRAVE_PLAN_MISSING_SEARCH",
-      `This key is not attached to Brave's Search plan. Create or select a Search-plan key at https://api-dashboard.search.brave.com/app/keys. Brave said: ${message}`,
-      400,
-      "brave",
-    );
-  }
-  const mapped = mapStatus(response.status);
-  return new ApiError(mapped.code, message || mapped.message, response.status, "brave");
+  if (body?.detail) log.warn("Brave request failed", { status: response.status, detail: body.detail.slice(0, 300) });
+  return braveError(response.status, body);
 }
 
 function clampQuery(query: string): string {
@@ -88,28 +98,13 @@ function freshnessValue(days?: number): string | undefined {
 }
 
 function requestSignal(signal?: AbortSignal): AbortSignal {
-  const timeout = AbortSignal.timeout(30_000);
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
   return signal ? AbortSignal.any([signal, timeout]) : timeout;
 }
 
 function minIntervalMs(): number {
   const raw = Number(process.env.BRAVE_MIN_INTERVAL_MS ?? "1100");
   return Number.isFinite(raw) && raw >= 0 ? raw : 1100;
-}
-
-// Per-process spacing, keyed by a hash so plaintext keys are not kept in long-lived maps.
-const lastRequestAt = new Map<string, number>();
-const queues = new Map<string, Promise<void>>();
-
-function limiterKey(key: string): string {
-  return createHash("sha256").update(key).digest("hex");
-}
-
-function pruneLastRequests(now: number): void {
-  const horizon = Math.max(minIntervalMs(), 60_000);
-  for (const [key, at] of lastRequestAt) {
-    if (now - at > horizon && !queues.has(key)) lastRequestAt.delete(key);
-  }
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
@@ -130,29 +125,32 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-async function withBraveSlot<T>(apiKey: string, signal: AbortSignal | undefined, work: () => Promise<T>): Promise<T> {
-  const key = limiterKey(apiKey);
-  pruneLastRequests(Date.now());
-  const previous = queues.get(key) ?? Promise.resolve();
-  let release!: () => void;
-  const current = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const tail = previous.then(() => current);
-  queues.set(key, tail);
-  await previous;
+/**
+ * Waits for this key's next request slot. Slots are reserved in the database, so the spacing holds
+ * across every instance; the key is stored only as a hash.
+ */
+async function waitForSlot(apiKey: string, signal?: AbortSignal): Promise<void> {
+  const interval = minIntervalMs();
+  if (interval <= 0) return;
+  const key = `brave:${createHash("sha256").update(apiKey).digest("hex").slice(0, 32)}`;
+  const wait = await reserveProviderSlot(key, interval);
+  if (wait > 0) await sleep(wait, signal);
+  if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+}
 
-  try {
-    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
-    const wait = (lastRequestAt.get(key) ?? 0) + minIntervalMs() - Date.now();
-    if (wait > 0) await sleep(wait, signal);
-    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
-    lastRequestAt.set(key, Date.now());
-    return await work();
-  } finally {
-    release();
-    if (queues.get(key) === tail) queues.delete(key);
+/** Milliseconds Brave asks us to wait, from Retry-After or the per-second reset header. */
+function retryWaitMs(headers: Headers, now = Date.now()): number {
+  const retryAfter = headers.get("retry-after");
+  if (retryAfter) {
+    const seconds = Number(retryAfter);
+    if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+    const date = Date.parse(retryAfter);
+    if (!Number.isNaN(date)) return Math.max(0, date - now);
   }
+  // X-RateLimit-Reset lists seconds until each window resets; the first is the per-second window.
+  const reset = Number(headers.get("x-ratelimit-reset")?.split(",")[0]?.trim());
+  if (Number.isFinite(reset) && reset >= 0) return reset * 1000;
+  return DEFAULT_RETRY_WAIT_MS;
 }
 
 async function requestWebSearch(
@@ -160,27 +158,39 @@ async function requestWebSearch(
   query: string,
   options: { count: number; freshnessDays?: number; signal?: AbortSignal },
 ): Promise<Response> {
-  return withBraveSlot(key, options.signal, async () => {
-    const url = new URL("https://api.search.brave.com/res/v1/web/search");
-    url.searchParams.set("q", clampQuery(query));
-    url.searchParams.set("count", String(Math.min(20, Math.max(1, options.count))));
-    const freshness = freshnessValue(options.freshnessDays);
-    if (freshness) url.searchParams.set("freshness", freshness);
-    return fetch(url, {
-      headers: {
-        Accept: "application/json",
-        "X-Subscription-Token": key,
+  const url = new URL("https://api.search.brave.com/res/v1/web/search");
+  url.searchParams.set("q", clampQuery(query));
+  url.searchParams.set("count", String(Math.min(20, Math.max(1, options.count))));
+  const freshness = freshnessValue(options.freshnessDays);
+  if (freshness) url.searchParams.set("freshness", freshness);
+
+  const send = async () => {
+    await waitForSlot(key, options.signal);
+    return providerFetch(
+      "brave",
+      url,
+      {
+        headers: { Accept: "application/json", "X-Subscription-Token": key },
+        signal: requestSignal(options.signal),
+        cache: "no-store",
       },
-      signal: requestSignal(options.signal),
-      cache: "no-store",
-    });
-  });
+      options.signal,
+    );
+  };
+
+  const response = await send();
+  if (response.status !== 429) return response;
+  const wait = retryWaitMs(response.headers);
+  if (wait > MAX_RETRY_WAIT_MS) return response;
+  await response.arrayBuffer().catch(() => {});
+  await sleep(wait, options.signal);
+  return send();
 }
 
 export async function validateBraveKey(key: string): Promise<void> {
   const response = await requestWebSearch(key, "Beamling connectivity test", { count: 1 });
   if (!response.ok) throw await readError(response);
-  await response.arrayBuffer();
+  await response.arrayBuffer().catch(() => {});
 }
 
 export async function searchBrave(
@@ -190,7 +200,13 @@ export async function searchBrave(
 ): Promise<RetrievedSource[]> {
   const response = await requestWebSearch(key, query, options);
   if (!response.ok) throw await readError(response);
-  const body = (await response.json()) as BraveWebResponse;
+  let body: BraveWebResponse;
+  try {
+    body = (await response.json()) as BraveWebResponse;
+  } catch (error) {
+    if (options.signal?.aborted) throw error;
+    throw unavailable("brave", "Brave Search returned an unreadable response.");
+  }
   const results = body.web?.results ?? [];
   const seen = new Set<string>();
   const out: RetrievedSource[] = [];

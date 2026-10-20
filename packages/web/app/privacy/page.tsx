@@ -16,7 +16,7 @@ export default function PrivacyPage() {
       </header>
       <main className="legal">
         <h1>Privacy</h1>
-        <p className="updated">Draft · last updated 20 October 2026</p>
+        <p className="updated">Draft · last updated 21 October 2026</p>
         <p>
           Beamling is a hosted answer engine with bring-your-own-key credentials. We keep the product small, and we keep the
           data we hold small too. This page describes what the Alpha guest workspace collects and stores.
@@ -28,7 +28,9 @@ export default function PrivacyPage() {
           <li>Content: conversations, messages and retrieved sources.</li>
           <li>Credentials: encrypted provider keys, a masked fingerprint, and the last validation time. Plaintext keys are never stored or returned.</li>
           <li>Usage: token counts, model, recorded cost and latency. Retained with your conversations until deleted.</li>
-          <li>Logs: structured application logs for 30 days, with secrets and headers redacted.</li>
+          <li>
+            Logs: error logs without keys, session tokens, request bodies or message text, kept for at most 30 days.
+          </li>
         </ul>
 
         <h2>Your keys</h2>
@@ -40,8 +42,11 @@ export default function PrivacyPage() {
 
         <h2>Retention and deletion</h2>
         <p>
-          Conversations stay until you delete them. Deleting the workspace hard-deletes conversations, messages, sources,
-          credentials and usage records. Backups expire within 30 days.
+          Conversations stay until you delete them or the workspace expires. A guest workspace has no login: it lives in
+          this browser&apos;s session cookie, which expires after 30 days without use. Once it expires nobody can open the
+          workspace again, so it is deleted automatically with everything in it. Deleting the workspace yourself
+          hard-deletes conversations, messages, sources, credentials and usage records immediately. Database backups
+          expire within 30 days.
         </p>
 
         <h2>Subprocessors</h2>
