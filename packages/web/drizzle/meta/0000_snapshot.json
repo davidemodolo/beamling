@@ -1,5 +1,5 @@
 {
-  "id": "2847c27b-e7a5-4984-acfe-8f53d18b6c7d",
+  "id": "dfa0e754-d698-4bff-9d6e-ac86bb8affac",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -481,6 +481,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "stop_requested": {
+          "name": "stop_requested",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -507,6 +514,38 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "messages_one_streaming_per_conversation_idx": {
+          "name": "messages_one_streaming_per_conversation_idx",
+          "columns": [
+            {
+              "expression": "conversation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"status\" = 'streaming'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "messages_streaming_created_idx": {
+          "name": "messages_streaming_created_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"status\" = 'streaming'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -576,7 +615,23 @@
           "notNull": true
         }
       },
-      "indexes": {},
+      "indexes": {
+        "rate_limits_expires_idx": {
+          "name": "rate_limits_expires_idx",
+          "columns": [
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
