@@ -1,0 +1,14 @@
+{
+  "name": "beamling",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "mascot:dev": "pnpm --filter @beamling/mascot dev",
+    "mascot:build": "pnpm --filter @beamling/mascot build",
+    "web:dev": "pnpm mascot:build && pnpm --filter @beamling/web dev",
+    "web:build": "pnpm mascot:build && pnpm --filter @beamling/web build",
+    "web:start": "pnpm --filter @beamling/web start",
+    "test": "pnpm --filter @beamling/web test",
+    "db:migrate": "pnpm --filter @beamling/web db:migrate"
+  }
+}

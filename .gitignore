@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+.next/
+out/
+build/
+dist/
+demo-dist/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Tests and coverage
+coverage/
+
+# Tooling caches
+.turbo/
+.vercel/
+.eslintcache
+.cache/
+
+# Editors and OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

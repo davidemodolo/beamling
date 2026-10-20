@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Beamling mascot</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main>
+      <section class="hero">
+        <beamling-mascot id="hero" room activity="exploring" label="Beamling"></beamling-mascot>
+        <p class="caption" id="caption">neutral · idle</p>
+      </section>
+
+      <section class="controls" aria-label="Controls">
+        <div class="group">
+          <h2>Expression</h2>
+          <div class="chips" id="expressions"></div>
+        </div>
+        <div class="group">
+          <h2>Activity</h2>
+          <div class="chips" id="activities"></div>
+        </div>
+        <div class="group">
+          <h2>Answer flow</h2>
+          <div class="chips">
+            <button id="simulate">Simulate an answer</button>
+            <button id="simulate-error">Simulate an error</button>
+            <button id="blink">Blink</button>
+            <button id="pulse">Pulse</button>
+          </div>
+          <div class="chips">
+            <button id="toggle-room" aria-pressed="true">Room edges</button>
+            <button id="toggle-pointer" aria-pressed="false">Follow pointer</button>
+
+          </div>
+          <p class="hint" id="flow">Pick an expression or activity, or run a simulated answer. Toggle the room edges or pointer tracking below.</p>
+        </div>
+      </section>
+
+      <section>
+        <h2 class="section-title">Expressions</h2>
+        <div class="grid" id="grid"></div>
+      </section>
+
+      <section>
+        <h2 class="section-title">Mark (no beams)</h2>
+        <div class="marks">
+          <div><beamling-mascot beams="false" style="width: 96px"></beamling-mascot><span>96</span></div>
+          <div><beamling-mascot beams="false" expression="happy" style="width: 48px"></beamling-mascot><span>48</span></div>
+          <div><beamling-mascot beams="false" expression="curious" style="width: 32px"></beamling-mascot><span>32</span></div>
+          <div class="inline">
+            <beamling-mascot beams="false" activity="thinking" style="width: 28px" label=""></beamling-mascot>
+            <span class="wordmark">Beamling</span>
+          </div>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,51 @@
+{
+  "name": "@beamling/mascot",
+  "version": "0.1.0",
+  "description": "Beamling's mascot: two eyes made of light, casting beams shaped like themselves.",
+  "type": "module",
+  "sideEffects": [
+    "./dist/define.js",
+    "./src/define.ts"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "default": "./dist/react.js"
+    },
+    "./element": {
+      "types": "./dist/element.d.ts",
+      "default": "./dist/element.js"
+    },
+    "./define": {
+      "types": "./dist/define.d.ts",
+      "default": "./dist/define.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "vite demo",
+    "build": "tsc -p tsconfig.json",
+    "build:demo": "vite build demo --outDir ../demo-dist --emptyOutDir",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "peerDependencies": {
+    "react": ">=19"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "react": "19.3.1",
+    "typescript": "7.0.2",
+    "vite": "8.3.4"
+  }
+}
