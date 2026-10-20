@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import { AnswerStreamsProvider } from "@/lib/answer-streams";
 import { useFocusTrap } from "@/lib/hooks/use-focus-trap";
 import { StoreProvider, useStore } from "@/lib/store";
 import { SettingsModal, type SettingsTab } from "./settings-modal";
@@ -69,7 +70,9 @@ function Frame({ children }: { children: ReactNode }) {
 export function ChatShell({ children }: { children: ReactNode }) {
   return (
     <StoreProvider>
-      <Frame>{children}</Frame>
+      <AnswerStreamsProvider>
+        <Frame>{children}</Frame>
+      </AnswerStreamsProvider>
     </StoreProvider>
   );
 }

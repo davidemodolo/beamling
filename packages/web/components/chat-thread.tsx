@@ -1,38 +1,48 @@
 "use client";
 
 import Link from "next/link";
-import type { RefObject } from "react";
+import { useEffect, useRef } from "react";
 import type { BeamlingHandle } from "@beamling/mascot/react";
-import { STAGE_LABEL, type LiveAnswer } from "@/lib/hooks/use-answer-stream";
-import type { ChatStage, Message, Source } from "@/lib/types";
+import { STAGE_LABEL, type LiveAnswer } from "@/lib/answer-streams";
+import type { ThreadMessage } from "@/lib/store";
+import type { ChatStage, Source } from "@/lib/types";
 import { AnswerCard } from "./answer-card";
 import { Markdown } from "./markdown";
 import { Mascot } from "./mascot";
 import { Icon } from "./ui/icon";
 
+export function UserBubble({ content }: { content: string }) {
+  return (
+    <div className="message message-user">
+      <div className="bubble">{content}</div>
+    </div>
+  );
+}
+
 export function Thread({
   messages,
+  retryId,
   onCitation,
   onOpenSources,
   onRetry,
 }: {
-  messages: Message[];
+  messages: ThreadMessage[];
+  /** The one answer that can be retried: the latest, when it failed or was stopped. */
+  retryId?: string;
   onCitation: (messageId: string, source: Source) => void;
   onOpenSources: (messageId: string) => void;
   onRetry: (messageId: string) => void;
 }) {
   return messages.map((message) =>
     message.role === "user" ? (
-      <div className="message message-user" key={message.id}>
-        <div className="bubble">{message.content}</div>
-      </div>
+      <UserBubble key={message.id} content={message.content} />
     ) : (
       <AnswerCard
         key={message.id}
         message={message}
         onCitation={onCitation}
         onOpenSources={onOpenSources}
-        onRetry={onRetry}
+        onRetry={message.id === retryId ? onRetry : undefined}
       />
     ),
   );
@@ -40,48 +50,53 @@ export function Thread({
 
 export function WorkingAnswer({
   live,
-  stage,
-  detail,
   providerName,
   modelName,
-  mascotRef,
   onStop,
   onCitation,
 }: {
   live: LiveAnswer;
-  stage: ChatStage;
-  detail: string;
   providerName: string;
   modelName: string;
-  mascotRef: RefObject<BeamlingHandle | null>;
   onStop: () => void;
   onCitation: (position: number) => void;
 }) {
+  const mascotRef = useRef<BeamlingHandle>(null);
+  const hasSources = live.sources.length > 0;
+
+  useEffect(() => {
+    if (hasSources) mascotRef.current?.pulse(0.25);
+  }, [hasSources]);
+
+  useEffect(() => {
+    if (live.citations) mascotRef.current?.pulse();
+  }, [live.citations]);
+
   return (
     <article className="message message-assistant">
       <div className="working">
         <div className="working-mascot" aria-hidden="true">
           <Mascot
             ref={mascotRef}
-            state={stage}
-            beams={stage === "searching" || stage === "reading" || stage === "queued"}
+            state={live.stage}
+            beams={live.stage === "searching" || live.stage === "reading" || live.stage === "queued"}
             label=""
             style={{ width: 64 }}
           />
         </div>
         <div className="working-text">
           <strong>
-            {STAGE_LABEL[stage]}
+            {live.stopping ? "Stopping" : STAGE_LABEL[live.stage]}
             <span className="dots" aria-hidden="true" style={{ marginLeft: 8 }}>
               <i />
               <i />
               <i />
             </span>
           </strong>
-          <span>{workingDetail(stage, detail, providerName, modelName, live.sources.length)}</span>
+          <span>{workingDetail(live.stage, live.detail, providerName, modelName, live.sources.length)}</span>
         </div>
-        <button type="button" className="btn btn-secondary btn-sm" onClick={onStop}>
-          <Icon name="stop" size={11} /> Stop
+        <button type="button" className="btn btn-secondary btn-sm" onClick={onStop} disabled={live.stopping}>
+          <Icon name="stop" size={11} /> {live.stopping ? "Stopping…" : "Stop"}
         </button>
       </div>
       {live.content ? (
@@ -119,6 +134,25 @@ export function NotFoundState() {
         <Link href="/chat" className="btn btn-secondary btn-sm">
           <Icon name="plus" size={14} /> New question
         </Link>
+      </div>
+    </div>
+  );
+}
+
+export function LoadErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div style={{ paddingTop: 60 }}>
+      <div className="notice notice-error" role="alert">
+        <Icon name="alert" size={16} />
+        <div>
+          <strong>Could not load this conversation</strong>
+          {message}
+          <div style={{ marginTop: 10 }}>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={onRetry}>
+              <Icon name="refresh" size={13} /> Try again
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

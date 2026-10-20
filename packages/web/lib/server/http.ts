@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z, type ZodType } from "zod";
 import { hashToken } from "./crypto";
 import { trustedProxyHops } from "./env";
+import { log } from "./log";
 
 export class ApiError extends Error {
   constructor(
@@ -9,6 +10,8 @@ export class ApiError extends Error {
     message: string,
     public status = 400,
     public provider?: string,
+    /** Extra top-level fields for the error response, e.g. the record the failed request changed. */
+    public extra?: Record<string, unknown>,
   ) {
     super(message);
   }
@@ -16,28 +19,60 @@ export class ApiError extends Error {
 
 export const INTERNAL_ERROR_MESSAGE = "Something went wrong.";
 
+/** Authenticated responses must never be stored by browsers or intermediaries. */
+export const PRIVATE_HEADERS = { "Cache-Control": "private, no-store", Vary: "Cookie" } as const;
+
+export function json(data: unknown, init?: { status?: number }): NextResponse {
+  return NextResponse.json(data, { status: init?.status, headers: PRIVATE_HEADERS });
+}
+
 export function errorResponse(error: unknown): NextResponse {
   if (error instanceof ApiError) {
-    return NextResponse.json(
-      { error: { code: error.code, message: error.message, provider: error.provider } },
+    return json(
+      { ...error.extra, error: { code: error.code, message: error.message, provider: error.provider } },
       { status: error.status },
     );
   }
-  console.error(error);
-  return NextResponse.json(
-    { error: { code: "INTERNAL", message: INTERNAL_ERROR_MESSAGE } },
-    { status: 500 },
-  );
+  log.error("Unhandled API error", error);
+  return json({ error: { code: "INTERNAL", message: INTERNAL_ERROR_MESSAGE } }, { status: 500 });
 }
 
 export function notFound(message: string, code = "NOT_FOUND"): ApiError {
   return new ApiError(code, message, 404);
 }
 
+/** JSON bodies are small; anything larger is refused before it is buffered. */
+export const MAX_BODY_BYTES = 64 * 1024;
+
+function tooLarge(): ApiError {
+  return new ApiError("PAYLOAD_TOO_LARGE", "The request body is too large.", 413);
+}
+
+async function readLimitedText(request: Request): Promise<string> {
+  const declared = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) throw tooLarge();
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > MAX_BODY_BYTES) {
+      await reader.cancel().catch(() => {});
+      throw tooLarge();
+    }
+    chunks.push(value);
+  }
+  return new TextDecoder().decode(Buffer.concat(chunks));
+}
+
 export async function parseBody<T>(request: Request, schema: ZodType<T>): Promise<T> {
+  const text = await readLimitedText(request);
   let body: unknown;
   try {
-    body = await request.json();
+    body = JSON.parse(text);
   } catch {
     throw new ApiError("INVALID_JSON", "Request body must be valid JSON.", 400);
   }
@@ -48,6 +83,19 @@ export async function parseBody<T>(request: Request, schema: ZodType<T>): Promis
   return result.data;
 }
 
+// C0 control characters except tab, newline and carriage return. Postgres text cannot store NUL.
+const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
+
+/** Removes control characters from user input. */
+export function cleanText(value: string): string {
+  return value.replace(CONTROL_CHARS, "");
+}
+
+/** Removes NUL, the one character Postgres text rejects, from provider output before it is stored. */
+export function storableText(value: string): string {
+  return value.replace(/\u0000/g, "");
+}
+
 const uuidSchema = z.string().uuid();
 
 /** Reads the `id` route param and rejects anything that is not a UUID before it reaches Postgres. */
@@ -55,6 +103,10 @@ export async function idParam(context: { params: Promise<{ id: string }> }): Pro
   const { id } = await context.params;
   if (!uuidSchema.safeParse(id).success) throw new ApiError("INVALID_ID", "Invalid id.", 400);
   return id;
+}
+
+export function isUuid(value: string): boolean {
+  return uuidSchema.safeParse(value).success;
 }
 
 export function assertSameOrigin(request: Request): void {
@@ -72,17 +124,19 @@ export function assertSameOrigin(request: Request): void {
   }
 }
 
-/** Hashed client IP for rate limiting. Proxies append to X-Forwarded-For, so earlier entries are client-controlled. */
+/**
+ * Hashed client IP for rate limiting. Each trusted proxy appends the address it received the
+ * request from, so only the entry written by the outermost trusted proxy is reliable; everything
+ * before it is client-controlled. A request with fewer entries than trusted hops did not come
+ * through the proxies and gets no address.
+ */
 export function clientIpKey(headers: Headers): string {
   const forwarded = (headers.get("x-forwarded-for") ?? "")
     .split(",")
     .map((part) => part.trim())
     .filter(Boolean);
   const hops = trustedProxyHops();
-  const ip =
-    (hops > 0 ? forwarded[forwarded.length - hops] ?? forwarded[0] : undefined) ??
-    headers.get("x-real-ip") ??
-    "unknown";
+  const ip = hops > 0 && forwarded.length >= hops ? forwarded[forwarded.length - hops] : "unknown";
   return hashToken(`ip:${ip}`).slice(0, 32);
 }
 

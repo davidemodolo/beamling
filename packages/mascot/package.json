@@ -34,7 +34,8 @@
     "watch": "tsc -p tsconfig.json --watch",
     "prepare": "tsc -p tsconfig.json",
     "build:demo": "vite build demo --outDir ../demo-dist --emptyOutDir",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test test/*.test.mjs"
   },
   "peerDependencies": {
     "react": ">=19"

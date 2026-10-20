@@ -1,0 +1,108 @@
+/* ---------- form ---------- */
+
+.field {
+  display: grid;
+  gap: 7px;
+}
+
+.label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text);
+}
+
+.hint {
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.input,
+.select,
+.textarea {
+  width: 100%;
+  background: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  color: var(--text);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.input {
+  height: 42px;
+}
+.textarea {
+  resize: vertical;
+  min-height: 92px;
+}
+.input:focus,
+.select:focus,
+.textarea:focus {
+  outline: none;
+  border-color: color-mix(in oklab, var(--beam) 55%, var(--line));
+  box-shadow: 0 0 0 3px var(--beam-glow);
+}
+.input[aria-invalid="true"] {
+  border-color: var(--error);
+}
+.select {
+  height: 42px;
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 18px) 18px, calc(100% - 13px) 18px;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 36px;
+}
+
+.input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.input-wrap .input {
+  padding-right: 42px;
+}
+.input-wrap .input-action {
+  position: absolute;
+  right: 4px;
+  top: 4px;
+}
+
+.segmented {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+.segmented button {
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.segmented button:hover {
+  color: var(--text);
+}
+.segmented button[aria-pressed="true"],
+.segmented button[aria-selected="true"] {
+  background: var(--raised);
+  color: var(--text);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}

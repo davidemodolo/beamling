@@ -10,13 +10,30 @@ interface ComposerProps {
   onSubmit: () => void;
   onStop: () => void;
   busy: boolean;
+  /** A stop was requested and is waiting for the server to confirm. */
+  stopping?: boolean;
+  /** The workspace is not ready (still loading, or the conversation does not exist). */
+  disabled?: boolean;
   mode: Mode;
   onModeChange: (mode: Mode) => void;
   modelLabel: string;
   inputRef: RefObject<HTMLTextAreaElement | null>;
 }
 
-export function Composer({ value, onChange, onSubmit, onStop, busy, mode, onModeChange, modelLabel, inputRef }: ComposerProps) {
+export function Composer({
+  value,
+  onChange,
+  onSubmit,
+  onStop,
+  busy,
+  stopping = false,
+  disabled = false,
+  mode,
+  onModeChange,
+  modelLabel,
+  inputRef,
+}: ComposerProps) {
+  const canSubmit = !busy && !disabled && !!value.trim();
   useEffect(() => {
     const el = inputRef.current;
     if (!el) return;
@@ -30,7 +47,7 @@ export function Composer({ value, onChange, onSubmit, onStop, busy, mode, onMode
         className="composer"
         onSubmit={(event) => {
           event.preventDefault();
-          if (!busy && value.trim()) onSubmit();
+          if (canSubmit) onSubmit();
         }}
         aria-label="Ask a question"
       >
@@ -42,7 +59,7 @@ export function Composer({ value, onChange, onSubmit, onStop, busy, mode, onMode
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                 event.preventDefault();
-                if (!busy && value.trim()) onSubmit();
+                if (canSubmit) onSubmit();
               }
             }}
             placeholder="Ask anything. Beamling will show you where the answer comes from."
@@ -51,11 +68,17 @@ export function Composer({ value, onChange, onSubmit, onStop, busy, mode, onMode
             enterKeyHint="send"
           />
           {busy ? (
-            <button type="button" className="send stop" onClick={onStop} aria-label="Stop generating">
+            <button
+              type="button"
+              className="send stop"
+              onClick={onStop}
+              disabled={stopping}
+              aria-label={stopping ? "Stopping" : "Stop generating"}
+            >
               <Icon name="stop" size={15} />
             </button>
           ) : (
-            <button type="submit" className="send" disabled={!value.trim()} aria-label="Send question">
+            <button type="submit" className="send" disabled={!canSubmit} aria-label="Send question">
               <Icon name="arrow-up" size={17} />
             </button>
           )}

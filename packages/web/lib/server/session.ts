@@ -2,8 +2,9 @@ import { and, eq, gt } from "drizzle-orm";
 import { cookies, headers } from "next/headers";
 import { db } from "./db";
 import { hashToken, newSessionToken } from "./crypto";
-import { SESSION_COOKIE, SESSION_TTL_DAYS, secureCookies } from "./env";
+import { guestsPerHour, guestsPerIpPerHour, SESSION_TTL_DAYS, secureCookies, sessionCookieName } from "./env";
 import { ApiError, clientIpKey } from "./http";
+import { log } from "./log";
 import { consumeRateLimit } from "./repo";
 import { authSessions, settings, users } from "./schema";
 
@@ -14,7 +15,6 @@ export interface SessionUser {
 }
 
 const DAY_MS = 86_400_000;
-const GUESTS_PER_IP_PER_HOUR = 20;
 
 function expiry(): Date {
   return new Date(Date.now() + SESSION_TTL_DAYS * DAY_MS);
@@ -22,12 +22,23 @@ function expiry(): Date {
 
 async function setSessionCookie(token: string): Promise<void> {
   const store = await cookies();
-  store.set(SESSION_COOKIE, token, {
+  store.set(sessionCookieName(), token, {
     httpOnly: true,
     sameSite: "lax",
     secure: secureCookies(),
     path: "/",
     maxAge: SESSION_TTL_DAYS * 86_400,
+  });
+}
+
+export async function clearSessionCookie(): Promise<void> {
+  const store = await cookies();
+  store.set(sessionCookieName(), "", {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: secureCookies(),
+    path: "/",
+    maxAge: 0,
   });
 }
 
@@ -52,7 +63,7 @@ async function readSession(token: string) {
 /** Returns the session user, extending the session (at most once a day) while it is in use. */
 export async function getCurrentUser(): Promise<SessionUser | null> {
   const store = await cookies();
-  const token = store.get(SESSION_COOKIE)?.value;
+  const token = store.get(sessionCookieName())?.value;
   if (!token) return null;
   const session = await readSession(token);
   if (!session) return null;
@@ -68,7 +79,13 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
 /** Every route except the workspace bootstrap requires an existing session. */
 export async function requireUser(): Promise<SessionUser> {
   const user = await getCurrentUser();
-  if (!user) throw new ApiError("NO_SESSION", "Your session expired. Reload the page to start a new workspace.", 401);
+  if (!user) {
+    throw new ApiError(
+      "GUEST_SESSION_FAILED",
+      "Your session expired. Reload the page to start a new workspace.",
+      401,
+    );
+  }
   return user;
 }
 
@@ -76,7 +93,21 @@ export async function getOrCreateUser(): Promise<SessionUser> {
   const existing = await getCurrentUser();
   if (existing) return existing;
 
-  await consumeRateLimit(`guest:${clientIpKey(await headers())}`, GUESTS_PER_IP_PER_HOUR, 3600);
+  const requestHeaders = await headers();
+  // Another site embedding /api/state must not mint workspaces (and use up the global cap).
+  if (requestHeaders.get("sec-fetch-site") === "cross-site") {
+    throw new ApiError("GUEST_SESSION_FAILED", "Open Beamling directly to start a workspace.", 403);
+  }
+  // The per-IP limit depends on proxy configuration; the global cap bounds growth regardless.
+  await consumeRateLimit(`guest:${clientIpKey(requestHeaders)}`, guestsPerIpPerHour(), 3600);
+  try {
+    await consumeRateLimit("guest:all", guestsPerHour(), 3600);
+  } catch (error) {
+    if (error instanceof ApiError && error.code === "RATE_LIMITED") {
+      log.warn("Global guest cap reached: new visitors are refused until the hour resets", { cap: guestsPerHour() });
+    }
+    throw error;
+  }
   const token = newSessionToken();
   const user = await db.transaction(async (tx) => {
     const [created] = await tx

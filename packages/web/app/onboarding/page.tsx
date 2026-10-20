@@ -8,13 +8,15 @@ import { Icon } from "@/components/ui/icon";
 import { Wordmark } from "@/components/wordmark";
 import { WorkspaceError } from "@/components/workspace-error";
 import { errorMessage } from "@/lib/api";
-import { DEFAULT_LLM_MODEL, OPENROUTER_MODELS } from "@/lib/providers";
+import { OPENROUTER_MODELS } from "@/lib/providers";
 import { useStore } from "@/lib/store";
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const { addCredential, credentials, ready, updateSettings, error, user } = useStore();
-  const [llmModel, setLlmModel] = useState(DEFAULT_LLM_MODEL);
+  const { addCredential, credentials, ready, settings, updateSettings, error, user } = useStore();
+  // Null until the user picks a model: the select shows the saved one and nothing else is changed.
+  const [pickedModel, setPickedModel] = useState<string | null>(null);
+  const llmModel = pickedModel ?? settings.llmModel;
   const [llmKey, setLlmKey] = useState("");
   const [searchKey, setSearchKey] = useState("");
   const [llmError, setLlmError] = useState("");
@@ -64,7 +66,7 @@ export default function OnboardingPage() {
       }
     }
     try {
-      await updateSettings({ llmModel, defaultMode: "quick" });
+      if (pickedModel && pickedModel !== settings.llmModel) await updateSettings({ llmModel: pickedModel });
     } catch (cause) {
       setFormError(`Your keys are saved, but the default model could not be saved. ${errorMessage(cause, "Try again.")}`);
       setPending(false);
@@ -146,7 +148,13 @@ export default function OnboardingPage() {
               </div>
               <div className="field">
                 <label className="label" htmlFor="llm-model">Default model</label>
-                <select id="llm-model" className="select" value={llmModel} onChange={(event) => setLlmModel(event.target.value)}>
+                <select
+                  id="llm-model"
+                  className="select"
+                  value={llmModel}
+                  disabled={!ready}
+                  onChange={(event) => setPickedModel(event.target.value)}
+                >
                   {OPENROUTER_MODELS.map((model) => (
                     <option key={model.id} value={model.id}>{model.name}</option>
                   ))}

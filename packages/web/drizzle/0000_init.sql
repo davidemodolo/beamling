@@ -11,8 +11,8 @@ CREATE TABLE "conversations" (
 	"user_id" uuid NOT NULL,
 	"title" text DEFAULT 'New conversation' NOT NULL,
 	"mode" text DEFAULT 'quick' NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp (3) with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp (3) with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "credentials" (
@@ -20,6 +20,7 @@ CREATE TABLE "credentials" (
 	"user_id" uuid NOT NULL,
 	"kind" text NOT NULL,
 	"provider" text NOT NULL,
+	"key_id" text NOT NULL,
 	"wrapped_dek" text NOT NULL,
 	"dek_nonce" text NOT NULL,
 	"dek_tag" text NOT NULL,
@@ -44,16 +45,27 @@ CREATE TABLE "messages" (
 	"mode" text,
 	"uncited" boolean DEFAULT false NOT NULL,
 	"no_sources" boolean DEFAULT false NOT NULL,
+	"truncated" boolean DEFAULT false NOT NULL,
+	"degraded" boolean DEFAULT false NOT NULL,
 	"llm_model" text,
+	"resolved_model" text,
+	"upstream_provider" text,
 	"search_requests" integer DEFAULT 0 NOT NULL,
+	"search_failures" integer DEFAULT 0 NOT NULL,
 	"tokens_in" integer,
 	"tokens_out" integer,
 	"cost_usd" numeric(12, 6),
+	"search_cost_usd" numeric(12, 6),
 	"latency_ms" integer,
 	"error_code" text,
 	"error_message" text,
 	"stop_requested" boolean DEFAULT false NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp (3) with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "provider_slots" (
+	"key" text PRIMARY KEY NOT NULL,
+	"next_at" timestamp with time zone NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "rate_limits" (
@@ -98,11 +110,14 @@ ALTER TABLE "sources" ADD CONSTRAINT "sources_message_id_messages_id_fk" FOREIGN
 CREATE UNIQUE INDEX "auth_sessions_token_hash_idx" ON "auth_sessions" USING btree ("token_hash");--> statement-breakpoint
 CREATE INDEX "auth_sessions_user_idx" ON "auth_sessions" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "auth_sessions_expires_idx" ON "auth_sessions" USING btree ("expires_at");--> statement-breakpoint
-CREATE INDEX "conversations_user_updated_idx" ON "conversations" USING btree ("user_id","updated_at");--> statement-breakpoint
+CREATE INDEX "conversations_user_updated_idx" ON "conversations" USING btree ("user_id","updated_at","id");--> statement-breakpoint
 CREATE UNIQUE INDEX "credentials_user_kind_provider_idx" ON "credentials" USING btree ("user_id","kind","provider");--> statement-breakpoint
 CREATE INDEX "credentials_user_idx" ON "credentials" USING btree ("user_id");--> statement-breakpoint
-CREATE INDEX "messages_conversation_created_idx" ON "messages" USING btree ("conversation_id","created_at");--> statement-breakpoint
+CREATE INDEX "messages_conversation_created_idx" ON "messages" USING btree ("conversation_id","created_at","id");--> statement-breakpoint
+CREATE INDEX "messages_user_idx" ON "messages" USING btree ("user_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "messages_one_streaming_per_conversation_idx" ON "messages" USING btree ("conversation_id") WHERE "status" = 'streaming';--> statement-breakpoint
 CREATE INDEX "messages_streaming_created_idx" ON "messages" USING btree ("created_at") WHERE "status" = 'streaming';--> statement-breakpoint
+CREATE INDEX "provider_slots_next_at_idx" ON "provider_slots" USING btree ("next_at");--> statement-breakpoint
 CREATE INDEX "rate_limits_expires_idx" ON "rate_limits" USING btree ("expires_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "sources_message_position_idx" ON "sources" USING btree ("message_id","position");
+CREATE UNIQUE INDEX "sources_message_position_idx" ON "sources" USING btree ("message_id","position");--> statement-breakpoint
+CREATE INDEX "users_guest_created_idx" ON "users" USING btree ("created_at") WHERE "is_guest";

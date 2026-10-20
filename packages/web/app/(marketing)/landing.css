@@ -1,14 +1,14 @@
 /* Cinematic landing page. */
 
 .lp {
-  --l-bg: #0a0c10;
+  --l-bg: #0c0c0d;
   --l-fg: #f4f1ea;
-  --l-muted: #9aa3b2;
-  --l-muted-2: #808a9c;
+  --l-muted: #a3a3a7;
+  --l-muted-2: #87878c;
   --l-line: rgba(244, 241, 234, 0.12);
   --l-line-strong: rgba(244, 241, 234, 0.24);
-  --l-surface: #121620;
-  --l-surface-2: #1a1f2b;
+  --l-surface: #151516;
+  --l-surface-2: #1f1f21;
   --l-accent: #ffc86b;
   --l-accent-soft: #ffe3b0;
   --l-accent-ink: #241802;
@@ -531,7 +531,7 @@
 /* ---------- v1 cinematic ---------- */
 
 .v1 {
-  background: #0a0c10;
+  background: #0c0c0d;
 }
 
 .v1 .lp-nav {

@@ -1,5 +1,12 @@
+import { ApiError } from "../http";
 import type { RetrievedSource } from "./brave";
-import type { ChatMessage, ChatResult } from "./openrouter";
+import type { ChatMessage, ChatPurpose, ChatResult } from "./openrouter";
+
+// Fixture switches for tests: put the marker in the question.
+const BROKEN_PLAN = "[fixture:broken-plan]";
+const BAD_FIRST_PLAN = "[fixture:bad-plan]";
+const PARTIAL_SEARCH = "[fixture:partial-search]";
+const FAILING_QUERY = "fixture failing search";
 
 function delay(ms: number): number {
   return Number(process.env.BEAMLING_FAKE_DELAY_MS ?? ms);
@@ -9,16 +16,23 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, delay(ms)));
 }
 
-export async function fakeValidateKey(key: string): Promise<void> {
+function aborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+}
+
+export async function fakeValidateKey(key: string, provider: "openrouter" | "brave"): Promise<void> {
   await sleep(20);
   if (!key.startsWith("test-")) {
-    throw new Error("Fake providers accept keys that start with test-");
+    throw new ApiError("CREDENTIAL_INVALID", "Fixture providers accept keys that start with test-.", 400, provider);
   }
 }
 
 export async function fakeSearch(query: string, count: number, signal?: AbortSignal): Promise<RetrievedSource[]> {
   await sleep(30);
-  if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+  aborted(signal);
+  if (query.includes(FAILING_QUERY)) {
+    throw new ApiError("PROVIDER_UNAVAILABLE", "Brave Search is temporarily unavailable.", 502, "brave");
+  }
   if (/\bno sources\b/i.test(query)) return [];
   const base = [
     {
@@ -56,46 +70,49 @@ export async function fakeSearch(query: string, count: number, signal?: AbortSig
   }));
 }
 
+function result(content: string, usage: ChatResult["usage"]): ChatResult {
+  return { content, model: "deepseek/deepseek-v4.1-flash", provider: "fixture", finishReason: "stop", usage };
+}
+
+function planJson(question: string): string {
+  const queries = ["fixture topic overview", "fixture recent developments", "fixture limitations"];
+  if (question.includes(PARTIAL_SEARCH)) queries[2] = FAILING_QUERY;
+  return JSON.stringify({ subqueries: queries.map((query) => ({ query, intent: "fixture" })) });
+}
+
 export async function fakeChat(options: {
+  purpose: ChatPurpose;
   messages: ChatMessage[];
   signal?: AbortSignal;
   onDelta?: (text: string) => void;
 }): Promise<ChatResult> {
-  const system = options.messages.find((message) => message.role === "system")?.content ?? "";
-  if (system.includes("research planner") || system.includes("evidence reviewer")) {
-    const content = JSON.stringify({
-      subqueries: [
-        { query: "fixture topic overview", intent: "overview" },
-        { query: "fixture recent developments", intent: "recency" },
-        { query: "fixture limitations", intent: "limitations" },
-      ],
-      sufficient: true,
-      followUpQueries: [],
+  await sleep(20);
+  aborted(options.signal);
+  const question = options.messages.find((message) => message.role === "user")?.content ?? "";
+
+  if (options.purpose === "plan") {
+    const isRepair = options.messages.some((message) => message.role === "assistant");
+    const broken = question.includes(BROKEN_PLAN) || (question.includes(BAD_FIRST_PLAN) && !isRepair);
+    return result(broken ? "Here are some searches you could run." : planJson(question), {
+      promptTokens: 120,
+      completionTokens: 40,
+      costUsd: 0.00002,
     });
-    await sleep(20);
-    if (options.signal?.aborted) throw new DOMException("Aborted", "AbortError");
-    options.onDelta?.(content);
-    return {
-      content,
-      model: "deepseek/deepseek-v4.1-flash",
-      provider: "fixture",
-      finishReason: "stop",
-      usage: { promptTokens: 120, completionTokens: 40, costUsd: 0.00002 },
-    };
+  }
+  if (options.purpose === "gap") {
+    return result(JSON.stringify({ sufficient: true, followUpQueries: [] }), {
+      promptTokens: 90,
+      completionTokens: 12,
+      costUsd: 0.00001,
+    });
   }
 
   const content =
     "This is a fixture answer for local testing. It demonstrates the streaming pipeline, source numbering and citations [1]. The second source adds a recent development [2], while the third records a limitation [3].";
   for (const word of content.split(" ")) {
-    if (options.signal?.aborted) throw new DOMException("Aborted", "AbortError");
+    aborted(options.signal);
     options.onDelta?.(`${word} `);
     await sleep(8);
   }
-  return {
-    content,
-    model: "deepseek/deepseek-v4.1-flash",
-    provider: "fixture",
-    finishReason: "stop",
-    usage: { promptTokens: 420, completionTokens: 80, costUsd: 0.00005 },
-  };
+  return result(content, { promptTokens: 420, completionTokens: 80, costUsd: 0.00005 });
 }

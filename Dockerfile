@@ -19,10 +19,12 @@ RUN pnpm mascot:build && pnpm --filter @beamling/web build
 FROM node:24-alpine AS runner
 RUN addgroup -S beamling && adduser -S beamling -G beamling
 WORKDIR /app
+# NEXT_MANUAL_SIG_HANDLE hands SIGTERM to lib/server/startup.ts, which stores running answers before exiting.
 ENV NODE_ENV=production \
     PORT=3000 \
     HOSTNAME=0.0.0.0 \
     NEXT_TELEMETRY_DISABLED=1 \
+    NEXT_MANUAL_SIG_HANDLE=true \
     NODE_PATH=/app/node_modules/.pnpm/node_modules
 
 COPY --from=build --chown=beamling:beamling /app/packages/web/.next/standalone ./
@@ -30,6 +32,7 @@ COPY --from=build --chown=beamling:beamling /app/packages/web/.next/static ./pac
 COPY --from=build --chown=beamling:beamling /app/packages/web/public ./packages/web/public
 COPY --from=build --chown=beamling:beamling /app/packages/web/drizzle ./drizzle
 COPY --from=build --chown=beamling:beamling /app/packages/web/scripts/migrate.mjs ./scripts/migrate.mjs
+COPY --from=build --chown=beamling:beamling /app/packages/web/scripts/rewrap-credentials.mjs ./scripts/rewrap-credentials.mjs
 
 USER beamling
 EXPOSE 3000

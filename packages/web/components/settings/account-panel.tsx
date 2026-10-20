@@ -10,7 +10,7 @@ import { shortDate } from "@/lib/utils";
 
 export function AccountPanel() {
   const router = useRouter();
-  const { user, conversations, credentials, deleteAccount } = useStore();
+  const { user, conversationCount, credentials, deleteAccount } = useStore();
   const [confirm, setConfirm] = useState("");
   const [pending, setPending] = useState(false);
   const [toast, showToast] = useToast();
@@ -54,14 +54,16 @@ export function AccountPanel() {
             <div className="grow">
               <div className="row-title">Storage</div>
               <div className="row-hint">
-                {conversations.length} conversations · {credentials.length} encrypted keys
+                {conversationCount} {conversationCount === 1 ? "conversation" : "conversations"} · {credentials.length} encrypted keys
               </div>
             </div>
           </div>
           <div className="setting-row">
             <div className="grow">
               <div className="row-title">Cookie</div>
-              <div className="row-hint">HttpOnly, SameSite=Lax, 30-day expiry.</div>
+              <div className="row-hint">
+                HttpOnly, SameSite=Lax. Expires after 30 days without use, and the workspace is then deleted.
+              </div>
             </div>
           </div>
         </div>
@@ -99,8 +101,8 @@ export function AccountPanel() {
       </section>
 
       <p className="hint">
-        By using Beamling you agree to the <a href="/terms" style={{ color: "var(--accent)" }}>terms</a> and{" "}
-        <a href="/privacy" style={{ color: "var(--accent)" }}>privacy policy</a>.
+        By using Beamling you agree to the <a href="/terms" style={{ color: "var(--accent)", textDecoration: "underline" }}>terms</a> and{" "}
+        <a href="/privacy" style={{ color: "var(--accent)", textDecoration: "underline" }}>privacy policy</a>.
       </p>
 
       {toast}

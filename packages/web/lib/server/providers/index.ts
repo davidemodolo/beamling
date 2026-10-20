@@ -1,14 +1,14 @@
 import { isFakeProviders } from "../env";
 import { searchBrave, validateBraveKey } from "./brave";
 import { fakeChat, fakeSearch, fakeValidateKey } from "./fake";
-import { openRouterChat, validateOpenRouterKey } from "./openrouter";
+import { openRouterChat, validateOpenRouterKey, type ChatMessage, type ChatPurpose } from "./openrouter";
 
 export async function validateProviderKey(
   provider: "openrouter" | "brave",
   key: string,
 ): Promise<void> {
   if (isFakeProviders()) {
-    await fakeValidateKey(key);
+    await fakeValidateKey(key, provider);
     return;
   }
   if (provider === "openrouter") {
@@ -29,15 +29,21 @@ export async function search(
 }
 
 export async function chat(options: {
+  purpose: ChatPurpose;
   key: string;
   model: string;
-  messages: Parameters<typeof openRouterChat>[0]["messages"];
+  messages: ChatMessage[];
   maxTokens: number;
   signal?: AbortSignal;
   onDelta?: (text: string) => void;
 }) {
   if (isFakeProviders()) {
-    return fakeChat({ messages: options.messages, signal: options.signal, onDelta: options.onDelta });
+    return fakeChat({
+      purpose: options.purpose,
+      messages: options.messages,
+      signal: options.signal,
+      onDelta: options.onDelta,
+    });
   }
   return openRouterChat(options);
 }

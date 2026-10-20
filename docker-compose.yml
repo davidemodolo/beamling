@@ -35,13 +35,23 @@ services:
     environment:
       DATABASE_URL: postgres://beamling:${POSTGRES_PASSWORD:-beamling}@db:5432/beamling
       CREDENTIAL_MASTER_KEY: ${CREDENTIAL_MASTER_KEY:?Set CREDENTIAL_MASTER_KEY}
-      APP_URL: ${APP_URL:-http://localhost:3000}
+      CREDENTIAL_MASTER_KEY_ID: ${CREDENTIAL_MASTER_KEY_ID:-k1}
+      CREDENTIAL_PREVIOUS_MASTER_KEYS: ${CREDENTIAL_PREVIOUS_MASTER_KEYS:-}
+      # No default: a forgotten APP_URL must not silently run with localhost settings (non-Secure cookies).
+      APP_URL: ${APP_URL:?Set APP_URL, e.g. http://localhost:3000 for a local run}
       PORT: "3000"
+      # Empty unless set: the server then uses 1 locally, and refuses to start outside localhost.
+      TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-}
+      MAX_CONCURRENT_CHATS: ${MAX_CONCURRENT_CHATS:-50}
       BEAMLING_FAKE_PROVIDERS: ${BEAMLING_FAKE_PROVIDERS:-0}
       BEAMLING_FAKE_DELAY_MS: ${BEAMLING_FAKE_DELAY_MS:-8}
       BRAVE_MIN_INTERVAL_MS: ${BRAVE_MIN_INTERVAL_MS:-1100}
+    # Running answers get time to store their partial text on shutdown.
+    stop_grace_period: 15s
+    # Local only: bound to loopback. Without a reverse proxy, X-Forwarded-For comes from the client,
+    # so do not publish this port to a network; put a TLS proxy in front instead.
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
       migrate:
         condition: service_completed_successfully

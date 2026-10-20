@@ -46,7 +46,7 @@ export default function TermsPage() {
         <h2>Your data</h2>
         <p>
           You can delete the guest workspace and all of its conversations at any time. See the{" "}
-          <Link href="/privacy" style={{ color: "var(--accent)" }}>privacy policy</Link> for details.
+          <Link href="/privacy">privacy policy</Link> for details.
         </p>
 
         <h2>Changes</h2>
