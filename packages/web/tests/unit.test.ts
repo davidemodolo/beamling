@@ -8,7 +8,7 @@ import {
   createAnalytics,
 } from "../lib/server/analytics";
 import { newCitations, sanitizeCitations, stripCitations } from "../lib/server/citations";
-import { decryptCredential, encryptCredential } from "../lib/server/crypto";
+import { decryptCredential, encryptCredential, isDecryptIntegrityError } from "../lib/server/crypto";
 import { ApiError } from "../lib/server/http";
 import { searchBrave, validateBraveKey } from "../lib/server/providers/brave";
 import { exaError, searchExa, validateExaKey } from "../lib/server/providers/exa";
@@ -79,6 +79,21 @@ test("credential envelope is bound to its owner", async () => {
   await assert.rejects(decryptCredential("user-b", { ...encrypted, kind: "search", provider: "brave" }));
 });
 
+test("a tampered credential is an integrity failure, a KMS outage is not", async () => {
+  const encrypted = await encryptCredential("user-a", "search", "brave", "BSA-secret-9999");
+  const error = await decryptCredential("user-b", { ...encrypted, kind: "search", provider: "brave" }).catch((cause) => cause);
+  assert.equal(isDecryptIntegrityError(error), true);
+  assert.equal(isDecryptIntegrityError(Object.assign(new Error("14 UNAVAILABLE: connection reset"), { code: 14 })), false);
+  assert.equal(isDecryptIntegrityError(new TypeError("fetch failed")), false);
+});
+
+test("short keys do not reveal their last four characters", async () => {
+  const short = await encryptCredential("user-a", "search", "exa", "abcd1234");
+  assert.equal(short.last4, "••••");
+  const long = await encryptCredential("user-a", "llm", "openrouter", "sk-or-v1-0123456789abcdef");
+  assert.equal(long.last4, "cdef");
+});
+
 test("credentials survive a master key rotation and re-wrap", async (t) => {
   const { loadKeys, rewrapRow } = await import("../scripts/rewrap-credentials.mjs");
   const oldKey = process.env.CREDENTIAL_MASTER_KEY as string;
@@ -121,6 +136,37 @@ test("credentials survive a master key rotation and re-wrap", async (t) => {
   process.env.CREDENTIAL_PREVIOUS_MASTER_KEYS = "";
   assert.equal(await decryptCredential(userId, rewrapped), "sk-or-v1-rotate-me");
   await assert.rejects(decryptCredential(userId, { ...encrypted, kind: "llm", provider: "openrouter" }));
+});
+
+test("workspace keys survive a master key rotation and re-wrap", async (t) => {
+  const { loadKeys, rewrapWorkspaceRow } = await import("../scripts/rewrap-credentials.mjs");
+  const { unwrapKey, wrapKey } = await import("../lib/server/kms");
+  const oldKey = process.env.CREDENTIAL_MASTER_KEY as string;
+  const userId = "0f2b6a50-58a3-4d8c-8a52-7d7a4c8ab002";
+  const aad = `beamling:wdk:v1:${userId}`;
+  const workspaceKey = randomBytes(32);
+  const wrapped = await wrapKey(workspaceKey, aad);
+
+  withEnv(t, {
+    CREDENTIAL_MASTER_KEY: randomBytes(32).toString("base64"),
+    CREDENTIAL_MASTER_KEY_ID: "k2",
+    CREDENTIAL_PREVIOUS_MASTER_KEYS: `k1:${oldKey}`,
+  });
+  const next = rewrapWorkspaceRow(
+    {
+      user_id: userId,
+      key_id: wrapped.keyId,
+      wrapped_key: wrapped.wrappedKey,
+      wrap_nonce: wrapped.nonce as string,
+      wrap_tag: wrapped.tag as string,
+    },
+    loadKeys(),
+  );
+  assert.equal(next.key_id, "k2");
+  process.env.CREDENTIAL_PREVIOUS_MASTER_KEYS = "";
+  const opened = await unwrapKey({ keyId: next.key_id, wrappedKey: next.wrapped_key, nonce: next.wrap_nonce, tag: next.wrap_tag }, aad);
+  assert.deepEqual(opened, workspaceKey);
+  await assert.rejects(unwrapKey(wrapped, aad));
 });
 
 test("Brave validates and searches only the base Web Search endpoint", async (t) => {
@@ -584,6 +630,22 @@ test("same-origin checks trust only APP_URL, not proxy or host headers", async (
     "a client-supplied forwarded host must not become the expected origin",
   );
   assert.throws(() => assertSameOrigin(request("not a URL")), isApiError("INVALID_ORIGIN"));
+  // Fetch metadata rejects a cross-site request even when it carries no Origin header.
+  assert.throws(() => assertSameOrigin(request(undefined, { "Sec-Fetch-Site": "cross-site" })), isApiError("INVALID_ORIGIN"));
+  assert.throws(() => assertSameOrigin(request(undefined, { "Sec-Fetch-Site": "same-site" })), isApiError("INVALID_ORIGIN"));
+  assert.doesNotThrow(() => assertSameOrigin(request("https://beamling.example", { "Sec-Fetch-Site": "same-origin" })));
+});
+
+test("the shutdown notice gives the date and how to export, in plain English text", async (t) => {
+  withEnv(t, { APP_URL: "https://beamling.example", LEGAL_ENTITY: "Beamling Test S.r.l.", LEGAL_CONTACT_EMAIL: "privacy@example.test" });
+  const { shutdownNotice } = await import("../lib/server/shutdown");
+  const notice = shutdownNotice({ scheduledAt: new Date("2026-11-05T10:00:00Z"), reason: "Hosting ends.", notify: true });
+  assert.match(notice.subject, /5 November 2026 at 11:00 CET/);
+  assert.match(notice.text, /Download my data/);
+  assert.match(notice.text, /permanently deleted/);
+  assert.match(notice.text, /Hosting ends\./);
+  assert.match(notice.text, /privacy@example\.test/);
+  assert.doesNotMatch(notice.text, /<[a-z]/i, "plain text, no HTML or tracking");
 });
 
 test("production refuses unsafe configuration", async (t) => {
@@ -607,6 +669,9 @@ test("production refuses unsafe configuration", async (t) => {
     LEGAL_ENTITY: "Beamling Test S.r.l.",
     LEGAL_CONTACT_EMAIL: "privacy@example.test",
     LEGAL_ADDRESS: "Via Test 1, 00100 Roma, Italy",
+    SMTP_URL: "smtps://mailer:secret@smtp.example.test",
+    MAIL_FROM: "Beamling <noreply@example.test>",
+    LEGAL_MAIL_PROVIDER: "Example Mail (Italy)",
     SIGNUP_MODE: "open",
     KMS_PROVIDER: "gcp",
     KMS_KEY_NAME: "projects/p/locations/l/keyRings/r/cryptoKeys/k",
@@ -650,6 +715,11 @@ test("production refuses unsafe configuration", async (t) => {
   assert.match(errorsWith({ LEGAL_ENTITY: undefined }), /LEGAL_ENTITY/);
   assert.match(errorsWith({ LEGAL_CONTACT_EMAIL: undefined }), /LEGAL_CONTACT_EMAIL/);
   assert.match(errorsWith({ LEGAL_CONTACT_EMAIL: "not-an-email" }), /LEGAL_CONTACT_EMAIL/);
+  assert.match(errorsWith({ LEGAL_ADDRESS: undefined }), /LEGAL_ADDRESS/);
+  assert.match(errorsWith({ SMTP_URL: "https://mail.example" }), /SMTP_URL/);
+  assert.match(errorsWith({ MAIL_FROM: undefined }), /MAIL_FROM/);
+  assert.match(errorsWith({ LEGAL_MAIL_PROVIDER: undefined }), /LEGAL_MAIL_PROVIDER/);
+  assert.match(errorsWith({ LEGAL_LOG_RETENTION_DAYS: "thirty" }), /LEGAL_LOG_RETENTION_DAYS/);
   assert.match(errorsWith({ COOKIE_SECURE: "false" }), /COOKIE_SECURE/);
   assert.match(errorsWith({ BEAMLING_FAKE_PROVIDERS: "1" }), /BEAMLING_FAKE_PROVIDERS/);
   assert.match(errorsWith({ AUTH_SECRET: "short" }), /32 bytes/);
@@ -691,9 +761,14 @@ test("production refuses unsafe configuration", async (t) => {
   // A local Docker run is allowed, without Secure cookies.
   assert.equal(errorsWith({ APP_URL: "http://localhost:3000", TRUSTED_PROXY_HOPS: undefined }), "");
 
-  withEnv(t, { DATABASE_SSL: undefined, DATABASE_URL: "postgres://beamling:beamling@db.example.com/beamling" });
+  withEnv(t, {
+    DATABASE_SSL: undefined,
+    DATABASE_URL: "postgres://beamling:beamling@db.example.com/beamling",
+    SMTP_URL: undefined,
+  });
   const warnings = productionConfigWarnings().join(" ");
   assert.match(warnings, /DATABASE_SSL/);
+  assert.match(warnings, /SMTP_URL/);
   assert.match(warnings, /default local password/);
 });
 
@@ -836,6 +911,26 @@ test("analytics is inert when disabled", async () => {
   assert.equal(client.distinctIdFor("user"), null);
   assert.equal(await client.deletePerson("anything"), false);
   assert.equal(calls, 0);
+});
+
+test("analytics drops every event of an account that opted out", async () => {
+  const sent: string[] = [];
+  const client = createAnalytics({
+    config: ANALYTICS_CONFIG,
+    isExcluded: async (userId) => {
+      if (userId === "broken") throw new Error("database unavailable");
+      return userId === "objector";
+    },
+    fetchImpl: (async (_input, init) => {
+      sent.push(JSON.parse(String(init?.body)).distinct_id);
+      return new Response("{}");
+    }) as typeof fetch,
+  });
+  client.capture("objector", "account_created", {});
+  client.capture("broken", "account_created", {});
+  client.capture("member", "account_created", {});
+  await client.flush();
+  assert.deepEqual(sent, [analyticsDistinctId("member", ANALYTICS_CONFIG.salt)]);
 });
 
 test("analytics deletion still works behind the kill switch", async () => {

@@ -18,5 +18,7 @@ export const GET = apiRoute(async ({ request, user }) => {
 export const POST = apiRoute(async ({ request, user }) => {
   const { mode } = await parseBody(request, schema);
   await consumeRateLimit(`conversations:${user.id}`, 120, 3600);
-  return json({ conversation: await createConversation(user.id, mode) }, { status: 201 });
+  const conversation = await createConversation(user.id, mode);
+  // The per-account cap is applied when the first question is stored, so an empty row never displaces a conversation.
+  return json({ conversation }, { status: 201 });
 });

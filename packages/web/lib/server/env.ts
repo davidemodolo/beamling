@@ -133,6 +133,8 @@ export function sessionCookieName(): string {
 }
 
 export const SESSION_TTL_DAYS = 30;
+/** Absolute session lifetime: renewal never extends a session past this age. */
+export const SESSION_MAX_AGE_DAYS = 90;
 
 interface MasterKey {
   id: string;
@@ -408,6 +410,28 @@ export function productionConfigErrors(): string[] {
     if (!contact || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact)) {
       errors.push("LEGAL_CONTACT_EMAIL must be a monitored email address outside localhost.");
     }
+    if (!process.env.LEGAL_ADDRESS?.trim()) {
+      errors.push("LEGAL_ADDRESS is required outside localhost: the privacy notice and terms must give a postal address.");
+    }
+    const smtp = smtpUrl();
+    if (smtp) {
+      try {
+        const url = new URL(smtp);
+        if (url.protocol !== "smtp:" && url.protocol !== "smtps:") errors.push("SMTP_URL must use smtp:// or smtps://.");
+      } catch {
+        errors.push("SMTP_URL must be a valid smtp:// or smtps:// URL.");
+      }
+      if (!mailFrom()) errors.push("MAIL_FROM is required when SMTP_URL is set.");
+      if (!process.env.LEGAL_MAIL_PROVIDER?.trim()) {
+        errors.push("LEGAL_MAIL_PROVIDER is required when SMTP_URL is set, so the data processors page names it.");
+      }
+    }
+    for (const name of ["LEGAL_LOG_RETENTION_DAYS", "LEGAL_BACKUP_RETENTION_DAYS"]) {
+      const value = process.env[name];
+      if (value !== undefined && !(Number.isInteger(Number(value)) && Number(value) > 0)) {
+        errors.push(`${name} must be a positive whole number of days.`);
+      }
+    }
   }
   const signup = process.env.SIGNUP_MODE;
   if (signup !== undefined && signup !== "open" && signup !== "allowlist" && signup !== "paused") {
@@ -481,6 +505,21 @@ function analyticsConfigErrors(): string[] {
   return errors;
 }
 
+/** SMTP connection for service notices (smtp:// with STARTTLS or smtps://), or null when mail is off. */
+export function smtpUrl(): string | null {
+  return process.env.SMTP_URL?.trim() || null;
+}
+
+/** Sender address for service notices. */
+export function mailFrom(): string | null {
+  return process.env.MAIL_FROM?.trim() || null;
+}
+
+/** True when service notices can be emailed. */
+export function mailConfigured(): boolean {
+  return Boolean(smtpUrl() && mailFrom());
+}
+
 /** Risky but legal production settings, logged at startup. */
 export function productionConfigWarnings(): string[] {
   if (!isProduction() || isLocalAppUrl()) return [];
@@ -504,6 +543,7 @@ export function productionConfigWarnings(): string[] {
   }
   if (database?.password === "beamling") warnings.push("The database uses the default local password.");
   if (trustedProxyHops() === 0) warnings.push("TRUSTED_PROXY_HOPS=0: per-IP limits are shared by every client.");
+  if (!mailConfigured()) warnings.push("SMTP_URL/MAIL_FROM are not set; a service shutdown cannot email its notice.");
   for (const name of ["KILL_SWITCH_SECRET", "METRICS_SECRET"] as const) {
     if (!internalSecret(name)) {
       warnings.push(`${name} is missing or shorter than ${INTERNAL_SECRET_MIN_BYTES} bytes; its internal endpoint is disabled.`);

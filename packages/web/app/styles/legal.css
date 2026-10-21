@@ -75,6 +75,10 @@
 .legal-foot a:hover {
   color: var(--text);
 }
+/* A link inside running text must be distinguishable without colour. */
+.legal-foot > span a {
+  text-decoration: underline;
+}
 .license-group {
   margin-top: 34px;
 }

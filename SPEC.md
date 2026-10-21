@@ -1,7 +1,7 @@
 # Beamling — Product & Technical Specification
 
 **Status:** Draft v0.9 — target product and technical contract. The current checkout is narrower than this document; see §0 and `TECHNICAL.md`.
-**Date:** 2026-10-21
+**Date:** 2026-10-22
 **Owner:** Davide (product), TBD (engineering)
 **Repository:** `/home/davide/Documents/beamling`
 **Primary domain:** `beamling.app` (target; `.app` is HTTPS-only and HSTS-preloaded)
@@ -28,25 +28,27 @@ This file is the **target contract** for Alpha 1 and public launch. It is not an
 
 “Implemented” below means the checkout has the capability and tests or code paths for it. “Partial” means a working slice exists but the target behavior is wider. “Target” means it is specified here and not yet implemented. Priority labels (P0/P1/P2) describe the target release, not the current state.
 
-### 0.2 Snapshot (verified 2026-10-21)
+### 0.2 Snapshot (verified 2026-10-22)
 
 | Area | Current checkout | Alpha 1 / public-launch target |
 |---|---|---|
 | Runtime | Next.js 16.4.2, React 19.3.1, TypeScript 6.0.3, Node 24, one web app plus the mascot workspace package | Same, deployed on Fly.io |
-| Auth | Google-only OIDC accounts, opaque session cookie, 30-day sliding expiry, hashed token at rest | Same; no guest workspaces |
+| Auth | Google-only OIDC accounts, opaque session cookie, 30-day sliding expiry capped at 90 days, previous session revoked on sign-in, hashed token at rest; versioned terms acceptance with 18+ confirmation at `/welcome` before the app or API can be used | Same; no guest workspaces |
 | LLM | OpenRouter only; five allowlisted models; DeepSeek V4.1 Flash default | Same |
 | Search | Brave, Tavily and Exa selected per answer; Brave free/paid spacing and key metadata; Tavily and Exa use their basic search contracts | Same, plus provider-specific plan metadata and cost ceilings |
 | Modes | Quick, Deep and Deeper. Deeper uses an AI SDK `ToolLoopAgent` with a Brave search tool and a 60-search budget. | Same |
 | Streaming | SSE with meta/stage/plan/search/progress/sources/delta/reasoning/citation/usage/done/error, stop and retry | Same contract, extra provider metadata |
 | Sources | Ranked/deduplicated Brave results, right panel or mobile sheet, inline citations | Same with provider-specific costs |
-| History | Keyset pagination, 50 conversations per page, 60 messages per page, pinned chats, title search over loaded pages, per-conversation delete | Same, plus full-history search |
+| History | Keyset pagination, 50 conversations per page, 60 messages per page, pinned chats, title search over loaded pages, per-conversation delete; at most 100 conversations per account (least recently active unpinned trimmed on create), conversations deleted 60 days after last activity, sidebar notice and warning from 90 | Same, plus full-history search |
 | Settings | Curated model, default search provider and default mode; per-answer provider picker in the composer | Add optional cost ceiling |
-| Credentials | KMS-backed AES-256-GCM envelope encryption; OpenRouter, Brave, Tavily and Exa keys; free Tavily key check; optional unverified save for Brave/Exa; Brave plan, expiry and budget metadata; usage warnings | Same; GCP KMS in production |
+| Credentials | KMS-backed AES-256-GCM envelope encryption; OpenRouter, Brave, Tavily and Exa keys; free Tavily key check; optional unverified save for Brave/Exa only; key-check budget per account and IP; keyed-HMAC fingerprints; last four hidden for keys under 20 characters; lazy re-encryption after a KMS key change; Brave plan, expiry and budget metadata; usage warnings | Same; GCP KMS in production |
 | Content at rest | Conversation titles, messages, sources and stored errors are encrypted with per-account workspace keys | Same; GCP KMS in production |
-| Public pages | `/`, `/login`, `/onboarding`, `/chat`, `/chat/[id]`, `/privacy`, `/terms`, `/cookies`, `/subprocessors`, `/security`, `/contact`, `/status`, `/licenses` | Add `/welcome` if needed, docs, support and supporters; legal review still required |
-| Analytics | Server-side PostHog events with an allowlist, HMAC distinct IDs, opt-in kill switch and account-deletion hook; no browser SDK | PostHog Cloud EU, server-side metadata-only events and operator dashboards |
-| Operations | Production-parity Docker Compose with Caddy TLS, Dex OIDC, LocalStack KMS, TLS Postgres and the production image; release migrations, versioned health, tagged releases, graceful shutdown; Fly configuration and gated deploy job, not yet deployed; database killswitch and internal metrics | Fly + Neon, GCP KMS, monitoring, backups, killswitch |
-| Tests | 52 web unit tests, 32 database integration tests, 37 Playwright E2E tests, 6 mascot tests | Add parity-stack smoke, analytics, dump-encryption, load and eval gates |
+| Public pages | `/`, `/login`, `/welcome` (terms acceptance), `/onboarding`, `/chat`, `/chat/[id]`, `/privacy`, `/terms`, `/cookies`, `/subprocessors` (data processors), `/security`, `/contact` (DSA contact point), `/status`, `/licenses`, `/.well-known/security.txt` | Add docs, support and supporters; legal review still required |
+| Data rights and retention | Self-service JSON export, analytics opt-out with erasure, sign out everywhere, immediate account deletion; accounts deleted after 24 months without sign-in or 7 days without terms acceptance; conversations deleted 60 days after last activity; security audit events in the structured log | Same, reviewed by counsel |
+| License | Open source under the MIT License (`LICENSE`); dependency licenses inventoried on `/licenses` | Same |
+| Analytics | Server-side PostHog events with an allowlist, HMAC distinct IDs, opt-in kill switch, per-account opt-out and account-deletion hook; no browser SDK | PostHog Cloud EU, server-side metadata-only events and operator dashboards |
+| Operations | Production-parity Docker Compose with Caddy TLS, Dex OIDC, LocalStack KMS, TLS Postgres and the production image; release migrations, versioned health, tagged releases, graceful shutdown; Fly configuration and gated deploy job, not yet deployed; database killswitch and internal metrics; operator-scheduled service shutdown with at least 14 days' notice (English email over optional SMTP, banner, sign-ups closed, then every account deleted) | Fly + Neon, GCP KMS, monitoring, backups, killswitch |
+| Tests | 57 web unit tests, 38 database integration tests, 44 Playwright E2E tests, 6 mascot tests | Add parity-stack smoke, analytics, dump-encryption, load and eval gates |
 | Donations | None | Optional post-public `/support` and `/supporters` |
 
 ---
@@ -381,7 +383,7 @@ Target: under three minutes from first visit to first cited answer.
 1. User types a question and presses Enter. The client immediately enters `queued` and starts the Beamling working animation.
 2. The client creates a user message optimistically and calls `POST /api/chat`.
 3. The server resolves the credentials, decrypts them in memory, and starts the pipeline.
-4. The server emits `meta` (conversation, message and user-message ids) and `stage: queued`. The selected model and search provider are shown from the request, stored settings and answer metadata.
+4. The server emits `meta` (conversation, message and user-message ids, plus conversations removed by the per-account cap) and `stage: queued`. The selected model and search provider are shown from the request, stored settings and answer metadata.
 5. Query understanding runs: normalization, language detection and, for Deep, a planner call. Deeper starts an agent loop instead. Quick does not use an LLM rewrite in Alpha 1.
 6. The server emits `stage: searching` with a real detail such as "Planning 4 searches" or "Searching 2 of 4".
 7. For Quick, one search runs on the selected provider. For Deep, 3–5 sub-queries run with bounded concurrency. For Deeper, the model calls a search tool with 1–4 queries per step; each query emits `search` with `searching`, then `done`/`failed` and its result count. Each completion emits `progress`. The loop stops when the model says the evidence is sufficient, when it reaches 60 searches, or when the time limit stops the run.
@@ -426,13 +428,20 @@ Each requirement has a priority (P0 = Alpha 1 target, P1 = private alpha/v1, P2 
 - **FR-01 (P0):** A first visit requires Google sign-in; there is no guest workspace.
   - Acceptance: unauthenticated API requests return `UNAUTHENTICATED`; unauthenticated visits to `/chat` or `/onboarding` redirect to `/login`; completing Google OIDC creates or resumes exactly one account per Google subject.
 - **FR-02 (P0):** Google is the only identity provider. There is no password, magic link, email OTP, passkey or other OAuth provider in Alpha 1.
-  - Acceptance: `/login` exposes only Google; the callback rejects any other issuer; no email-delivery dependency is required.
+  - Acceptance: `/login` exposes only Google; the callback rejects any other issuer; sign-in needs no email delivery. The only email Beamling sends is the service-shutdown notice (FR-75), over an optional SMTP relay.
 - **FR-03 (P0):** The OIDC flow uses authorization code + PKCE, `state` and `nonce`; ID tokens are verified for signature, issuer, audience, expiry and verified email before login.
   - Acceptance: replayed state, mismatched nonce, wrong audience and unverified email are rejected; the transaction cookie expires within 10 minutes.
-- **FR-04 (P0):** Sessions are opaque, database-backed, 30-day sliding, and revoked on sign-out or account deletion.
+- **FR-04 (P0):** Sessions are opaque, database-backed, 30-day sliding with a 90-day absolute lifetime, and revoked on sign-out, account deletion or a new sign-in from the same browser. Implemented.
   - Acceptance: the cookie is HttpOnly, SameSite=Lax, Secure outside localhost; only a SHA-256 hash is stored; account deletion and sign-out remove every session.
 - **FR-05 (P0):** Users can sign out and can delete the account and all associated data immediately.
   - Acceptance: sign-out clears the cookie and revokes the session; deletion completes in the same request and revokes every session; the UI confirms without sending email.
+- **FR-71 (P0):** Before using the app, every account confirms it is 18 or older and accepts the current version of the Terms and Privacy notice; a material change to either asks every account to accept again. Implemented.
+  - Acceptance: an account without the current version is redirected to `/welcome` and every API call except accepting the terms, exporting data, signing out and deleting the account returns `TERMS_REQUIRED`; acceptance of a stale version returns `TERMS_OUTDATED`; the accepted version and time are stored.
+- **FR-72 (P0):** Users can download all their stored data as a machine-readable file and object to product analytics without contacting the operator (Art. 15, 20 and 21 GDPR). Implemented.
+  - Acceptance: `GET /api/account/export` returns the account, settings, credential metadata, sessions and every conversation with decrypted messages and sources, and never key material or session tokens; opting out stops new analytics events and queues erasure of past ones.
+- **FR-73 (P0):** Personal data is not kept longer than needed: accounts unused for 24 months, and accounts that never accepted the terms after 7 days, are deleted with all their data by the cleanup job. Implemented.
+- **FR-75 (P0):** The operator can close the service with at least 14 days' notice. Every account is told by email and in the interface, can still sign in and export its data until the closing date, and is then deleted with all its data. Implemented.
+  - Acceptance: scheduling (`POST /api/internal/shutdown`, `KILL_SWITCH_SECRET`) refuses fewer than 14 days, and refuses email notice without SMTP (`MAIL_NOT_CONFIGURED`); each account receives one English plain-text notice, resumed after restarts and re-sent when rescheduled; while scheduled, new accounts get `SERVICE_CLOSING` and `/chat`, `/login` and `/status` show the date; after the date sign-in returns `SERVICE_CLOSED` and the cleanup job deletes every account through the normal deletion path; cancelling restores normal operation. Destroying the KMS key afterwards makes backups unreadable.
 - **FR-60 (P0 — public-launch target):** Every account has its own workspace data encryption key. All user content is encrypted at rest with AES-256-GCM before it is written to PostgreSQL, so a database dump, backup, read replica, or read-only database compromise cannot reveal user content; only the minimized operational metadata listed in §13.6 remains readable.
   - Acceptance: a raw `pg_dump` of an account containing a question, answer and sources contains none of those plaintext strings; ciphertext from another account cannot be decrypted; the master key is never stored in the database; deleting the account removes its wrapped data key.
 - **FR-51 (P0):** Users can choose the search provider for an answer (Brave, Tavily or Exa). The selected provider is stored with the message and is shown in the answer metadata.
@@ -487,6 +496,8 @@ Each requirement has a priority (P0 = Alpha 1 target, P1 = private alpha/v1, P2 
 - **FR-30 (P0):** Deleting a conversation deletes its messages and sources.
 - **FR-69 (P0):** Users can pin or unpin a conversation from the sidebar. The pinned state is persisted server-side, survives reload and sign-in, and pinned conversations appear in a separate Pinned section.
   - Acceptance: pinning an older conversation moves it ahead of newer unpinned chats; unpinning restores normal date grouping; the state is stored in PostgreSQL, not only in the browser.
+- **FR-74 (P0):** Because the service is free, conversation storage is bounded: a conversation, pinned or not, is deleted 60 days after its last activity (new question or mode change), and an account keeps at most 100 conversations. Implemented.
+  - Acceptance: the cleanup job deletes conversations whose last activity is older than 60 days; creating a conversation beyond 100 deletes the least recently active unpinned ones first and returns their ids so the sidebar drops them; the sidebar always states the 60-day rule and from 90 conversations warns that new chats replace the oldest; Terms and Privacy state both limits.
 - **FR-70 (P1):** Users can search conversations by title from the sidebar.
   - Acceptance for Alpha 1: the search filters the loaded conversation pages immediately and truthfully says that older chats must be loaded to widen the result. Full-history server search is post-alpha.
 
@@ -514,7 +525,7 @@ Each requirement has a priority (P0 = Alpha 1 target, P1 = private alpha/v1, P2 
 - **FR-67 (P0):** Markdown rendering supports GitHub-style tables with a header row, delimiter row, alignment and inline formatting in cells, plus horizontal scrolling on narrow screens.
   - Acceptance: a table in a model answer renders as a real `<table>`, not paragraphs; code fences and citations still work.
 - **FR-52 (P0):** Product analytics is server-side and metadata-only. It never sends questions, answers, titles, source text, keys, error messages, IP addresses or raw user IDs.
-  - Acceptance: an automated allowlist test rejects any disallowed field; PostHog IP/GeoIP capture is disabled; `ANALYTICS_ENABLED=false` stops all events.
+  - Acceptance: an automated allowlist test rejects any disallowed field; PostHog IP/GeoIP capture is disabled; `ANALYTICS_ENABLED=false` stops all events; an account that opted out sends none.
 - **FR-53 (P1):** Users can view their own questions, tokens and estimated provider costs on a personal usage page. It reads from the application database, not PostHog.
 
 ### 10.7 Public pages, legal and licenses
@@ -523,13 +534,13 @@ Each requirement has a priority (P0 = Alpha 1 target, P1 = private alpha/v1, P2 
   - Acceptance: every public page has the footer links; a link checker passes in CI.
 - **FR-55 (P0):** `/licenses` is generated from the production dependency graph and includes required notices. CI fails on a disallowed or unknown license.
 - **FR-56 (P0):** No non-essential cookie or script loads before consent. The session cookie is essential. If a non-essential script is added, a reputable CMP blocks it until consent, with Reject all as prominent as Accept all, no cookie wall and no pre-ticked boxes.
-- **FR-57 (P0):** Privacy, Terms and Cookie Policy accurately describe encryption, metadata, providers, analytics, retention and deletion, never claim end-to-end encryption, and are reviewed by a lawyer before public launch.
+- **FR-57 (P0):** Privacy, Terms and Cookie Policy accurately describe encryption, metadata, providers, analytics, retention and deletion, never claim end-to-end encryption, and are reviewed by a lawyer before public launch. Partial: the pages are implemented (retention periods, legal bases, rights, transfers, 18+ age limit, AI-generated answers, Italian-law liability limits, DSA contact point, processors vs user-chosen providers, conversation storage limits, service closure with 14 days' notice); lawyer review remains.
 - **FR-58 (P2):** The footer links to `/support`, which offers a plain outbound Tipeee link (PayPal fallback). No embedded payment widget, iframe, script or chat interruption.
   - Acceptance: the link opens the provider-hosted page in a new tab; no payment script loads on Beamling; no donation prompt blocks chat.
 - **FR-59 (P2):** `/supporters` lists only donors who explicitly consented to publication, with no amounts, emails, legal names or scraped data.
   - Acceptance: every entry has a recorded consent reference; removal requests are honored; the page has no payment SDK.
 
-**Current checkout:** `/licenses` is generated from the production dependency graph, every installed license is checked against the allowlist in CI, and the public pages share a footer with Privacy, Terms, Cookies, Subprocessors, Security, Status, Contact and Licenses. `/contact`, `/cookies`, `/subprocessors`, `/security` and `/status` now exist. Legal review and the public docs/support pages remain target work.
+**Current checkout:** `/licenses` states that Beamling is MIT-licensed and lists the third-party inventory generated from the production dependency graph; every installed license is checked against the allowlist in CI. The public pages share a footer with Privacy, Terms, Cookies, Data processors, Security, Status, Contact and Licenses, and the MIT notice. `/contact`, `/cookies`, `/subprocessors`, `/security`, `/status` and `/.well-known/security.txt` exist. Legal review and the public docs/support pages remain target work.
 
 ---
 
@@ -765,7 +776,7 @@ Alpha 1 is Docker-first and PostgreSQL-only. The same container image runs local
 | ORM | Drizzle ORM | Typed schema, versioned migrations |
 | Cache and limits | Database-backed limits at launch | No Redis |
 | Auth | Google OIDC + Drizzle sessions | Google-only sign-in; opaque token cookie, hashed at rest. No passwords or guest workspaces |
-| Email | Google identity email | Stored for account display and legal contact; no Beamling-sent verification or marketing email |
+| Email | Google identity email | Stored for account display and legal contact; no Beamling-sent verification or marketing email; optional SMTP relay sends only the service-shutdown notice |
 | Payments | None at launch | Added only when monetization starts |
 | Object storage | None in Alpha 1 | Exports are generated on demand; no uploads |
 | Cryptography | AES-256-GCM envelope encryption with KMS-wrapped keys | Current: GCP/AWS/env KMS adapters, per-account workspace content keys. Production: GCP Cloud KMS |
@@ -898,8 +909,8 @@ Key validation calls:
 
 ### 13.2 Fingerprint and display
 
-- Store `fingerprint = SHA-256(plaintext)` truncated to 16 hex characters.
-- Display only the last four characters when the provider key format permits it (for example `sk-...7Q2F`).
+- Store `fingerprint = HMAC-SHA256(plaintext)` keyed with a subkey of `AUTH_SECRET`, truncated to 16 hex characters, so a database reader cannot test candidate keys offline.
+- Display only the last four characters, and only for keys of at least 20 characters (for example `sk-...7Q2F`); shorter keys show no characters.
 - Never display the full key, length, or prefix beyond four characters.
 
 ### 13.3 Lifecycle
@@ -907,7 +918,7 @@ Key validation calls:
 | Event | Behavior |
 |---|---|
 | Create | Validate first, then encrypt and store |
-| Validate | Minimal provider call; current API allows 20 credential operations per user per hour, not a per-credential 60-second limit |
+| Validate | Minimal provider call; current API allows 20 credential operations per user per hour plus 50 provider key checks per user per day and 120 per IP per hour, not a per-credential 60-second limit. A KMS or network failure while reading the key leaves its status unchanged |
 | Replace | Create new record, delete old record immediately |
 | Delete | Hard-delete the row; no soft delete, no recovery |
 | Rotation warning | UI warns when a key has not been validated for 30 days |
@@ -1007,6 +1018,10 @@ create table users (
   email_verified boolean not null default false,
   name text,
   avatar_url text,
+  terms_version text,
+  terms_accepted_at timestamptz,
+  last_seen_at timestamptz not null default now(),
+  shutdown_notified_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -1141,6 +1156,7 @@ create table system_flags (
   key text primary key,
   enabled boolean not null,
   reason text,
+  scheduled_at timestamptz,
   updated_at timestamptz not null default now()
 );
 
@@ -1164,15 +1180,17 @@ create table provider_slots (
 
 | Data | Default retention | On account deletion |
 |---|---|---|
-| Users | Until deleted | Hard delete in the same request; workspace key deletion included |
-| Auth sessions | 30-day sliding expiry; revoked sessions deleted immediately | Hard delete in the same request |
+| Users | Until deleted; automatically deleted after 24 months without sign-in or session renewal, or 7 days after creation without terms acceptance | Hard delete in the same request; workspace key deletion included |
+| Auth sessions | 30-day sliding expiry, 90-day absolute lifetime; revoked sessions deleted immediately | Hard delete in the same request |
 | Rate-limit counters | Until the window expires | Hashed identifiers; counters cleaned on expiry |
 | Credentials and declared limits | Until deleted or replaced | Hard delete in the same request |
-| Conversations, messages, sources | Until the user deletes them or the account | Hard delete in the same request |
-| Workspace data keys | Target only | Wrapped key destroyed; backup ciphertext is useless without the master key (§13.6) |
+| Conversations, messages, sources | 60 days after the conversation's last activity, pinned or not; at most 100 conversations per account (least recently active unpinned deleted first) | Hard delete in the same request |
+| Workspace data keys | Until the account is deleted | Wrapped key destroyed; backup ciphertext is useless without the master key (§13.6) |
 | Message and search-usage fields | Until the conversation or credential is deleted | Hard delete in the same request |
-| Application logs | 30 days, secrets redacted (target policy; retention is configured at the host) | Not user-linked beyond 30 days |
-| Backups | 30 days (target) | Expire within 30 days |
+| Application logs | `LEGAL_LOG_RETENTION_DAYS` (default 30), secrets redacted; retention is configured at the host and stated in the privacy notice | Not user-linked beyond the log window |
+| Backups | `LEGAL_BACKUP_RETENTION_DAYS` (default 7), configured at the database provider and stated in the privacy notice | Expire within the backup window |
+
+If the service closes, every account is deleted on the announced date (FR-75), and destroying the KMS key afterwards makes every backup unreadable.
 
 Deleting an account removes its wrapped data key, so content retained in backups cannot be decrypted through the application. Backups still contain ciphertext and remain protected by the KMS master key until they expire.
 
@@ -1207,21 +1225,25 @@ Deleting an account removes its wrapped data key, so content retained in backups
 | POST | `/api/chat` | Ask a question (or retry the latest failed or stopped answer), returns SSE | Session |
 | POST | `/api/chat/stop` | Stop an in-flight answer by message ID | Session |
 | GET | `/api/conversations?cursor=` | Next page of conversation summaries, newest first (50 per page) | Session |
-| POST | `/api/conversations` | Create an empty conversation | Session |
+| POST | `/api/conversations` | Create an empty conversation; the 100-conversation cap is applied when its first question is stored, and the `meta` event lists removed ids | Session |
 | GET | `/api/conversations/:id` | Get a conversation with its newest 60 messages and their sources, plus `hasMoreMessages` | Session |
 | GET | `/api/conversations/:id/messages?before=` | The 60 messages before a message ID, with sources | Session |
-| PATCH | `/api/conversations/:id` | Change the conversation mode | Session |
+| PATCH | `/api/conversations/:id` | Change the conversation mode or pin state | Session |
 | DELETE | `/api/conversations/:id` | Delete conversation | Session |
 | POST | `/api/credentials` | Create and validate a credential with plan/limit metadata; `validate: false` saves it unverified | Session |
 | POST | `/api/credentials/:id/validate` | Re-validate the key | Session |
 | PATCH | `/api/credentials/:id` | Update declared plan, expiry or budget without the key | Session |
 | DELETE | `/api/credentials/:id` | Delete credential and its usage | Session |
-| DELETE | `/api/account` | Delete the account and data | Session |
+| POST | `/api/account/terms` | Accept the current terms version with an age confirmation | Session (terms not required) |
+| GET | `/api/account/export` | Download every stored record of the account as JSON | Session (terms not required) |
+| DELETE | `/api/account` | Delete the account and data | Session (terms not required) |
 | POST | `/api/internal/kill` | Open or close new streams | Bearer `KILL_SWITCH_SECRET` |
 | GET | `/api/internal/metrics` | Deployment flag, active streams and build identity | Bearer `METRICS_SECRET` |
+| GET, POST | `/api/internal/shutdown` | Show, schedule (`days` ≥ 14, `reason`, `notify`) or cancel a service shutdown; returns notification progress | Bearer `KILL_SWITCH_SECRET` |
 | GET | `/api/health` | Liveness and database check | None |
+| GET | `/.well-known/security.txt` | RFC 9116 security contact | None |
 
-Every authenticated response carries `Cache-Control: private, no-store` and `Vary: Cookie`. Request bodies are limited to 64 KB (`PAYLOAD_TOO_LARGE`). GET routes share a per-user limit of 600 requests per 10 minutes and a per-IP limit of 3,000 requests per 10 minutes.
+Every authenticated response carries `Cache-Control: private, no-store` and `Vary: Cookie`. Request bodies are limited to 64 KB (`PAYLOAD_TOO_LARGE`). GET routes share a per-user limit of 600 requests per 10 minutes and a per-IP limit of 3,000 requests per 10 minutes; mutations share a per-user limit of 300 per 10 minutes. An account that has not accepted the current terms gets `TERMS_REQUIRED` except on the routes marked above.
 
 ### 15.3 Ask a question
 
@@ -1242,7 +1264,7 @@ Response: `text/event-stream` with these events. The per-answer provider is retu
 
 ```text
 event: meta
-data: {"conversationId":"f1c2...","messageId":"9a3b...","userMessageId":"77d0..."}
+data: {"conversationId":"f1c2...","messageId":"9a3b...","userMessageId":"77d0...","removed":[]}
 
 event: stage
 data: {"stage":"queued","detail":"Understanding the question"}
@@ -1345,12 +1367,17 @@ Additional codes:
 | `INVALID_JSON`, `INVALID_INPUT`, `INVALID_ID`, `INVALID_CURSOR` | Malformed request | 400 |
 | `PAYLOAD_TOO_LARGE` | Request body over 64 KB | 413 |
 | `INVALID_ORIGIN` | Cross-origin mutation rejected | 403 |
+| `TERMS_REQUIRED` | The account has not accepted the current terms | 403 |
+| `TERMS_OUTDATED` | Acceptance sent for a terms version that is no longer current | 409 |
+| `SERVICE_CLOSING` | A new account was refused because a shutdown is scheduled | 403 |
+| `SERVICE_CLOSED` | Sign-in refused after the shutdown date | 403 |
+| `MAIL_NOT_CONFIGURED` | Shutdown scheduled with email notice but SMTP is not configured | 409 |
 | `NOT_FOUND`, `CONVERSATION_NOT_FOUND`, `MESSAGE_NOT_FOUND` | Missing, or owned by another user (IDs are not probeable) | 404 |
 | `RETRY_NOT_ALLOWED` | Only the latest failed or stopped answer can be retried | 409 |
 | `CREDENTIAL_UNREADABLE` | A stored key cannot be decrypted; replace it | 400 |
 | `INVALID_PROVIDER`, `MODEL_NOT_ALLOWED` | Provider or model outside the allowlist | 400 |
 | `PROVIDER_ERROR` | Provider rejected the request for another reason | 502 |
-| `SERVER_BUSY` | The global concurrency cap is reached | 503 |
+| `SERVER_BUSY` | The global, Deeper (half of the global slots) or per-account concurrency cap is reached | 503 |
 | `INTERRUPTED` | The server restarted or crashed while the answer was written (stored on the message) | — |
 | `GENERATION_TIMEOUT` | Quick exceeded 60 s, Deep 90 s or Deeper 360 s (stored on the message) | — |
 
@@ -1377,19 +1404,19 @@ Warnings are not error codes:
 | `/chat` | New conversation; requires a signed-in account |
 | `/chat/[id]` | Conversation view with pagination |
 | `/login` | Google-only sign-in page; redirects to `/onboarding` or `/chat` after callback |
+| `/welcome` | Terms acceptance and 18+ confirmation before the app; shown again when the terms change |
 | `/privacy`, `/terms`, `/cookies`, `/subprocessors`, `/security`, `/contact`, `/status` | Implemented legal/status surface; legal review still required |
-| `/licenses` | Generated open-source license inventory with package notices and license texts |
+| `/licenses` | MIT license statement and generated third-party license inventory with package notices and license texts |
+| `/.well-known/security.txt` | RFC 9116 security contact |
 
 **Public-launch target**
 
 | Route | Purpose |
 |---|---|
-| `/welcome` | Public welcome page if the root is later reserved for the app |
 | `/support` | Optional donation page with outbound Tipeee/PayPal links |
 | `/supporters` | Opt-in public list of donors |
-| `/cookies`, `/subprocessors`, `/security`, `/contact` | Cookie, subprocessor, security and contact pages |
 
-The landing page, sign-in page and legal pages share a footer with Privacy, Terms, Cookies, Subprocessors, Security, Status, Contact and Licenses. Public docs and support links remain target work.
+The landing page, sign-in, welcome and legal pages share a footer with Privacy, Terms, Cookies, Data processors, Security, Status, Contact and Licenses. Public docs and support links remain target work.
 
 ### 16.2 Layout
 
@@ -1470,16 +1497,16 @@ The landing page, sign-in page and legal pages share a footer with Privacy, Term
 
 ### 16.7 Welcome page, legal surface and consent (public-launch target)
 
-The current checkout has a marketing landing page at `/`, `/login`, and implemented privacy, terms, cookies, subprocessors, security, contact and status pages with a shared footer. It has no `/welcome` page. This section describes the target public surface; the implemented landing content is documented in `TECHNICAL.md`.
+The current checkout has a marketing landing page at `/`, `/login`, a `/welcome` terms-acceptance step for signed-in accounts, and implemented privacy, terms, cookies, data processors, security, contact and status pages with a shared footer. The "welcome page" below is the public marketing page, currently served at `/`. This section describes the target public surface; the implemented landing content is documented in `TECHNICAL.md`.
 
 **Welcome page**
 
 - One primary CTA: "Start free". Secondary links: "How it works", "Docs" and "Status".
 - Explain in plain language: BYOK, OpenRouter plus Brave/Tavily/Exa, keys encrypted at rest, questions go to the selected providers, the service is not end-to-end encrypted, and the alpha is free.
 - No fake testimonials, user counts, benchmarks, "private" claims or provider logos without permission. No autoplay video.
-- A short "What Beamling is not": not a lawyer or doctor, not its own search index, not an open-source application.
+- A short "What Beamling is not": not a lawyer or doctor, not its own search index.
 - The global footer on every public page links to: Privacy Policy, Terms of Service, Cookie Policy, Open-source licenses, Subprocessors, Security, Contact/Abuse, Support, Status, Docs and "Report an issue".
-- Onboarding shows "By continuing, you agree to the Terms and acknowledge the Privacy Policy" with links. No pre-checked marketing consent.
+- Before onboarding, `/welcome` asks the user to confirm they are 18 or older and to accept the Terms and acknowledge the Privacy notice, with links and two unticked checkboxes. No pre-checked marketing consent. Implemented.
 
 Content order:
 
@@ -1499,8 +1526,8 @@ Content order:
 
 - Routes: `/privacy`, `/terms`, `/cookies`, `/licenses`, `/subprocessors`, `/security`, `/contact` (or `/abuse`).
 - Privacy Policy covers controller and contact, purposes and legal bases, data categories, Google identity data (subject, email, name, avatar), the essential session cookie, encrypted content, visible metadata, server-side PostHog events, providers/subprocessors, donation links and the opt-in supporters page, international transfers, retention, deletion, rights, complaint authority, no sale of data and the no-E2E boundary.
-- Terms cover BYOK and provider terms and costs, acceptable use, no professional advice, IP, availability and alpha status, liability, termination and governing law.
-- Cookie Policy lists the session cookie (essential, HttpOnly, Secure, SameSite=Lax, 30 days), states that there are no analytics cookies, and lists CMP cookies if a CMP is enabled.
+- Terms cover BYOK and provider terms and costs, conversation storage limits (60 days, 100 per account), acceptable use, no professional advice, IP, availability and alpha status, liability, termination, closure of the service with at least 14 days' notice, and governing law.
+- Cookie Policy lists the session cookie (essential, HttpOnly, Secure, SameSite=Lax, 30 days without use and at most 90 days after sign-in), states that there are no analytics cookies, and lists CMP cookies if a CMP is enabled.
 - Legal text is a reviewed draft, not blindly generated copy. A lawyer reviews it before public launch.
 
 **Support and supporters**
@@ -1517,8 +1544,8 @@ Content order:
 - `/licenses` is generated from the production dependency graph at build or release time. It lists package, version, license, repository and required notices.
 - Allowlist: MIT, ISC, BSD-2-Clause, BSD-3-Clause, Apache-2.0 and OFL-1.1. GPL, AGPL, SSPL and unknown licenses fail CI until reviewed.
 - Include Inter and JetBrains Mono OFL notices and any Apache-2.0 NOTICE files.
-- The page says: "Beamling uses open-source software. The Beamling application source is proprietary." Never imply that the app itself is open source.
-- Link to the public docs/feedback repository and issue tracker. Public docs do not grant a license to the application code.
+- Beamling itself is open source under the MIT License. The page says so, links to the source repository and the `LICENSE` file, and then lists the third-party packages, each under its own license. The Beamling name and logo are not licensed for use in other services.
+- Link to the public issue tracker.
 
 **Current checkout:** `pnpm licenses:check` reads the production dependency graph, applies the allowlist and fails CI on an unreviewed license. The committed inventory contains 177 packages, package notices and one full text per license. `caniuse-lite` has a reviewed CC-BY-4.0 exception for build-time browser data. Sharp is deliberately excluded as an unused optional dependency, so the LGPL libvips binary is not shipped. The public docs/feedback repository does not exist yet.
 
@@ -1579,15 +1606,17 @@ Alpha 1 does not fetch pages: the selected search provider returns snippets. The
 
 ### 17.4 Compliance
 
-- GDPR: lawful basis is contract performance; DPA available; workspace deletion flow. No data-region promise in Alpha 1.
+- GDPR: lawful basis is contract performance for the service and legitimate interests for security, logs and analytics; DPA available; self-service export, analytics objection and account deletion; storage limitation through automatic deletion of inactive and never-accepted accounts. Hosting is in Frankfurt; transfers rely on the EU-US Data Privacy Framework or SCCs.
 - No-training claim: Beamling itself does not train on prompts, answers or sources. OpenRouter, the selected upstream model provider and the selected search provider have their own policies; link to them and do not claim end-to-end no-training.
 - OpenRouter routing: disclose that OpenRouter selects and may fail over to upstream model providers, and that the user's key and prompt are sent to OpenRouter and the selected upstream provider. Display the resolved model and any upstream provider returned by OpenRouter.
 - Search providers: disclose that queries go to the selected provider (Brave, Tavily or Exa); link to each provider's current terms and privacy policy. Do not repeat a training claim without linking to the current policy.
-- Subprocessors: Google Identity (OIDC), hosting, database, OpenRouter, the selected search providers (Brave, Tavily, Exa), master key provider, PostHog Cloud EU, the CMP (Iubenda or Cookiebot) when enabled, optional error tracking. Publish a subprocessor list and DPAs. Tipeee/PayPal are outbound donation links, not subprocessors, because Beamling sends them no payment data; add them to the list only if an embedded widget is ever introduced. No payment processor or Beamling-operated email subprocessor at launch.
-- Legal and licenses: publish the pages in §16.7, keep `/licenses` generated from the production dependency graph, and keep the dependency-license allowlist enforced in CI. The public docs repository is not a license for the application source. Current checkout: implemented `/privacy`, `/terms`, `/cookies`, `/subprocessors`, `/security`, `/contact`, `/status` and generated `/licenses`; counsel review is still required.
+- Subprocessors: Google Identity (OIDC), hosting, database, OpenRouter, the selected search providers (Brave, Tavily, Exa), master key provider, PostHog Cloud EU, the CMP (Iubenda or Cookiebot) when enabled, optional error tracking. Publish a subprocessor list and DPAs. Tipeee/PayPal are outbound donation links, not subprocessors, because Beamling sends them no payment data; add them to the list only if an embedded widget is ever introduced. No payment processor at launch. The only email subprocessor is the optional SMTP relay for the shutdown notice, named on the data processors page through `LEGAL_MAIL_PROVIDER` when configured.
+- Legal and licenses: publish the pages in §16.7, keep `/licenses` generated from the production dependency graph, and keep the dependency-license allowlist enforced in CI. The application source is MIT-licensed. Current checkout: implemented `/privacy`, `/terms`, `/cookies`, `/subprocessors`, `/security`, `/contact`, `/status`, `/.well-known/security.txt` and generated `/licenses`; counsel review is still required.
 - Cookies: only the essential session cookie and, when a CMP is enabled, its consent-state cookie before consent. Product analytics is server-side and cookie-free. Donation links are outbound and set no Beamling cookie. If a browser SDK, session replay, marketing or other non-essential script is added, load it only through the CMP after consent; see §16.7. Document the legal basis.
-- Age policy: 16+.
-- Content policy: no illegal content, no targeted harassment, no medical or legal advice presented as professional advice. Abuse reports go to a monitored address.
+- Age policy: 18+ (or the local age of majority if higher), confirmed at terms acceptance. Implemented.
+- Content policy: no illegal content, no targeted harassment, no IP or privacy infringement, no malware or EU AI Act Art. 5 practices, no medical, legal or financial output presented as professional advice. Abuse and illegal-content reports go to a monitored address that is also the Digital Services Act single point of contact. Implemented in the terms and contact page.
+- AI transparency: answers are labeled AI-generated in the interface and the terms. Implemented.
+- Security disclosure: `/security` publishes a good-faith safe-harbor policy and `/.well-known/security.txt` names the contact. Implemented.
 
 ---
 
@@ -1710,14 +1739,14 @@ Rules:
 
 ## 20. Testing and QA
 
-### 20.1 Current suite (verified 2026-10-21)
+### 20.1 Current suite (verified 2026-10-22)
 
 | Layer | Tool | Current coverage |
 |---|---|---|
 | Mascot unit | Node test runner | 6 geometry/expression tests |
-| Web unit | Node test runner | 52 tests: credential encryption and rotation, model allowlist, citation parsing, Brave/Tavily/Exa/OpenRouter error mapping, retries, URL filtering, ranking, language detection, prompt injection boundaries, client IP, production configuration, analytics allowlist/identity/delivery/deletion/erasure retries, body limits, log redaction |
-| Web integration | Node test runner + PostgreSQL | 32 tests: account persistence and content encryption, Quick/Deep/Deeper, the Deeper AI SDK tool loop, planner repair, partial search, missing keys, selected-provider persistence/cost, no fallback, one-stream-per-conversation, global cap, lock contention, stop flag, delete mid-answer, timeout, NUL handling, retry replacement, stale answer repair, pagination, session cleanup, atomic rate limits, per-key search spacing, credential replacement, unverified keys, atomic analytics erasure queuing, the new-stream flag |
-| End-to-end | Playwright | 37 tests: 11 API checks, 15 UI flows and 11 public-route axe/CSP checks; Quick-answer coverage includes search trace, reasoning and tables, provider selection checks Tavily and marks a keyless provider, unverified-key validation is covered, the killswitch blocks new streams, the generated license and legal pages resolve, and Deeper coverage checks the third mode |
+| Web unit | Node test runner | 57 tests: credential encryption and rotation, workspace-key re-wrap, integrity vs KMS-outage errors, hidden last four for short keys, analytics opt-out, model allowlist, citation parsing, Brave/Tavily/Exa/OpenRouter error mapping, retries, URL filtering, ranking, language detection, prompt injection boundaries, client IP, production configuration, analytics allowlist/identity/delivery/deletion/erasure retries, body limits, log redaction, the English shutdown notice |
+| Web integration | Node test runner + PostgreSQL | 38 tests: account persistence and content encryption, inactive/unaccepted account cleanup, data export, analytics opt-out with erasure, Quick/Deep/Deeper, the Deeper AI SDK tool loop, planner repair, partial search, missing keys, selected-provider persistence/cost, no fallback, one-stream-per-conversation, global cap, lock contention, stop flag, delete mid-answer, timeout, NUL handling, retry replacement, stale answer repair, pagination, session cleanup, atomic rate limits, per-key search spacing, credential replacement, unverified keys, atomic analytics erasure queuing, the new-stream flag, the 100-conversation cap, 60-day conversation expiry, scheduled shutdown notices and deletion |
+| End-to-end | Playwright | 44 tests: 15 API checks, 18 UI flows and 11 public-route axe/CSP checks; the terms gate and `/welcome` acceptance, data export and analytics opt-out, `security.txt`, and the Brave/Exa-only unverified save are covered; Quick-answer coverage includes search trace, reasoning and tables, provider selection checks Tavily and marks a keyless provider, unverified-key validation is covered, the killswitch blocks new streams, the generated license and legal pages resolve, Deeper coverage checks the third mode, and a scheduled shutdown is announced in the app, at sign-in and on the status page |
 
 Commands:
 
@@ -1768,11 +1797,11 @@ Evaluation methodology: each golden question has a reference answer and expected
 | KMS | **GCP Cloud KMS**, one software master key | Per-workspace WDKs wrapped by the master key; deletion protection and rotation enabled. Use a restricted service account (`cloudkms.cryptoKeyEncrypterDecrypter`). Fly uses a service-account JSON secret; move to Workload Identity if the compute host supports it. |
 | Analytics | **PostHog Cloud EU** | Server-side, metadata-only events; free plan or $0 billing limit. |
 | Legal / consent | **Iubenda** default; Cookiebot free tier alternative | Only enabled when a non-essential script exists; no custom banner. |
-| Open-source compliance | Generated `/licenses`, dependency allowlist | CI gate; app source stays proprietary. |
+| Open-source compliance | MIT `LICENSE`, generated `/licenses`, dependency allowlist | CI gate on dependency licenses; the application source is MIT-licensed. |
 | Monitoring | **Sentry** for exceptions, **Better Stack** for uptime | Alert to email and a Slack/Discord webhook; Fly and Neon for capacity. |
 | CI/CD | GitHub Actions → `fly deploy` | Migrations via `release_command`; secrets in Fly and GitHub environment secrets. |
 | Backups | Neon instant restore + weekly `pg_dump` to S3-compatible storage | Test a restore before launch; the encryption dump test is a release gate. |
-| Docs / feedback | Public docs and feedback repository | Application source stays private; public issue templates and private security disclosure. |
+| Docs / feedback | Public source, docs and feedback repository | MIT-licensed source; public issue templates and private security disclosure. |
 | Provider keys | User BYOK only | No operator OpenRouter, Brave, Tavily or Exa keys in production. |
 | Donations | Tipeee primary; PayPal.me fallback | Outbound links only; no embedded widget, webhook or payment data. `/supporters` is a static, opt-in list. |
 
@@ -1782,10 +1811,10 @@ Evaluation methodology: each golden question has a reference answer and expected
 - **Migrations:** forward-only, reviewed, applied before deploy with `node scripts/migrate.mjs`. No destructive migration without a backfill plan. The public-launch migration must encrypt any existing plaintext content (§13.6) and verify that a raw database dump contains no readable user content; this is a release gate.
 - **Encryption at rest:** per-workspace content encryption (§13.6) is live and the production deployment must use GCP KMS; the launch dump/backup check must pass.
 - **Backups:** managed database backups with point-in-time recovery where available, 30-day window. Quarterly restore drill.
-- **Secrets:** platform secret store only. No secrets in the repository or build logs. Public launch requires `DATABASE_URL`, `APP_URL`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_REDIRECT_URI`, `KMS_PROVIDER=gcp`, `KMS_KEY_NAME` plus a restricted GCP service account (`GCP_KMS_CREDENTIALS` on Fly), `POSTHOG_API_KEY`, `POSTHOG_HOST`, `POSTHOG_PERSONAL_API_KEY`, `POSTHOG_PROJECT_ID`, `ANALYTICS_SALT`, `KILL_SWITCH_SECRET` and `METRICS_SECRET`. Local development may use the AWS/LocalStack KMS adapter; `CREDENTIAL_MASTER_KEY` is test-only.
+- **Secrets:** platform secret store only. No secrets in the repository or build logs. Public launch requires `DATABASE_URL`, `APP_URL`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_REDIRECT_URI`, `KMS_PROVIDER=gcp`, `KMS_KEY_NAME` plus a restricted GCP service account (`GCP_KMS_CREDENTIALS` on Fly), `POSTHOG_API_KEY`, `POSTHOG_HOST`, `POSTHOG_PERSONAL_API_KEY`, `POSTHOG_PROJECT_ID`, `ANALYTICS_SALT`, `KILL_SWITCH_SECRET`, `METRICS_SECRET`, `LEGAL_ENTITY`, `LEGAL_ADDRESS` and `LEGAL_CONTACT_EMAIL` (optionally `LEGAL_VAT_ID`, `LEGAL_LOG_RETENTION_DAYS`, `LEGAL_BACKUP_RETENTION_DAYS`, and `SMTP_URL`, `MAIL_FROM` and `LEGAL_MAIL_PROVIDER` to email a shutdown notice). Local development may use the AWS/LocalStack KMS adapter; `CREDENTIAL_MASTER_KEY` is test-only.
 - **Analytics:** PostHog Cloud EU, server-side only. Environment: `POSTHOG_API_KEY`, `POSTHOG_HOST`, `POSTHOG_APP_HOST` (optional), `POSTHOG_PERSONAL_API_KEY`, `POSTHOG_PROJECT_ID`, `ANALYTICS_SALT`; `ANALYTICS_ENABLED=true` is the opt-in and `false` is the kill switch. The personal key needs `person:write` for account-deletion cleanup. Keep the project on the free plan or a $0 billing limit; no browser SDK, autocapture or session replay.
 - **Legal and consent:** publish reviewed Privacy/Terms/Cookie Policy/Subprocessors/Security pages; configure Iubenda (default) or Cookiebot only if non-essential scripts exist; add CMP domains to CSP; generate `/licenses` in CI; run the footer link checker.
-- **Public docs and feedback:** Product docs are published in a public repository with GitHub issue templates for bugs and feature requests and a private security disclosure path. The application source stays private; public docs do not grant an open-source license for the product.
+- **Public docs and feedback:** The source and product docs are published in a public repository under the MIT License, with GitHub issue templates for bugs and feature requests and a private security disclosure path.
 - **Status page:** public availability and provider incident feed (v1).
 - **Runbooks:** OpenRouter outage, search-provider outage (Brave, Tavily or Exa), master key failure, database failover, credential leak, abuse spike, cost anomaly.
 - **Portability:** the same Docker image runs on Railway, Render, Fly.io or a Docker Compose VM. A migration runbook covers moving between hosting providers.
@@ -1877,6 +1906,7 @@ Evaluation methodology: each golden question has a reference answer and expected
 5. Analytics legal review. Confirm the PostHog Cloud EU DPA, retention and legal basis, and who owns the analytics project.
 6. Future monetization and self-hosting. Subscription, prepaid credits or token resale; hosted-only or eventually self-hostable?
 7. Donations. Tipeee or PayPal (or both), which legal entity receives them, tax treatment, and who curates `/supporters` with what removal SLA?
+8. Performance pass (to do before public launch). No load test or profiling has been done yet. Review bottlenecks end to end: queries per chat start (settings, credentials, exchange, cap trim), database pool size against `MAX_CONCURRENT_CHATS` and streaming connections, the analytics exclusion cache, cleanup-job batch sizes (retention, inactive accounts, shutdown deletion), data export for large accounts, and decryption cost per page. Run a load test against the parity stack and set budgets for p95 latency and pool usage.
 
 ---
 
@@ -1971,7 +2001,7 @@ Trademark: no exact BEAMLING filing surfaced in initial searches. Formal clearan
 | A14 | Public launch deploys on Fly.io from a Docker image with Neon Postgres | Confirmed |
 | A15 | Default model is `deepseek/deepseek-v4.1-flash` via OpenRouter | Confirmed |
 | A16 | PostHog Cloud EU free tier is the Alpha 1 product analytics service; events are server-side and metadata-only | Confirmed |
-| A17 | Product documentation is public; application source stays private; public feedback uses GitHub issues | Confirmed |
+| A17 | Product documentation and application source are public under the MIT License; public feedback uses GitHub issues | Confirmed |
 | A18 | Public launch includes reviewed legal pages, a generated open-source license page, and a CMP only when non-essential scripts exist | Confirmed |
 | A19 | Donations are post-public and optional: Tipeee primary, PayPal fallback, outbound links only; `/supporters` is opt-in and lists no amounts | Confirmed |
 

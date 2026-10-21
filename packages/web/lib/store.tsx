@@ -58,6 +58,8 @@ interface StoreValue {
   updateMessage: (conversationId: string, messageId: string, update: (message: ThreadMessage) => ThreadMessage) => void;
   removeMessages: (conversationId: string, messageIds: string[]) => void;
   deleteConversation: (id: string) => void;
+  /** Drops conversations the server already deleted, e.g. to stay within the per-account cap. */
+  forgetConversations: (ids: string[]) => void;
   setConversationMode: (id: string, mode: Mode) => void;
   setConversationPinned: (id: string, pinned: boolean) => void;
   updateSettings: (patch: Partial<Settings>) => Promise<Settings>;
@@ -354,6 +356,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [refresh],
   );
 
+  const forgetConversations = useCallback((ids: string[]) => {
+    const gone = new Set(ids);
+    for (const id of ids) deleted.current.add(id);
+    setConversations((current) => current.filter((conversation) => !gone.has(conversation.id)));
+    setConversationCount((count) => Math.max(0, count - ids.length));
+    setThreads((current) => Object.fromEntries(Object.entries(current).filter(([id]) => !gone.has(id))));
+  }, []);
+
   const setConversationMode = useCallback(
     (id: string, mode: Mode) => {
       patchConversation(id, { mode });
@@ -496,6 +506,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updateMessage,
       removeMessages,
       deleteConversation,
+      forgetConversations,
       setConversationMode,
       setConversationPinned,
       updateSettings,
@@ -528,6 +539,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updateMessage,
       removeMessages,
       deleteConversation,
+      forgetConversations,
       setConversationMode,
       setConversationPinned,
       updateSettings,

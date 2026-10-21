@@ -100,18 +100,12 @@ CREATE TABLE "rate_limits" (
 	"expires_at" timestamp with time zone NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "system_flags" (
-	"key" text PRIMARY KEY NOT NULL,
-	"enabled" boolean NOT NULL,
-	"reason" text,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
-);
---> statement-breakpoint
 CREATE TABLE "settings" (
 	"user_id" uuid PRIMARY KEY NOT NULL,
 	"llm_model" text DEFAULT 'deepseek/deepseek-v4.1-flash' NOT NULL,
 	"default_search_provider" text DEFAULT 'brave' NOT NULL,
 	"default_mode" text DEFAULT 'quick' NOT NULL,
+	"analytics_opt_out" boolean DEFAULT false NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
@@ -124,6 +118,15 @@ CREATE TABLE "sources" (
 	"domain" text,
 	"snippet" text,
 	"published_at" timestamp with time zone
+);
+--> statement-breakpoint
+CREATE TABLE "system_flags" (
+	"key" text PRIMARY KEY NOT NULL,
+	"enabled" boolean NOT NULL,
+	"reason" text,
+	"scheduled_at" timestamp with time zone,
+	"notify" boolean DEFAULT true NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "user_data_keys" (
@@ -143,6 +146,10 @@ CREATE TABLE "users" (
 	"email_verified" boolean DEFAULT false NOT NULL,
 	"name" text,
 	"avatar_url" text,
+	"terms_version" text,
+	"terms_accepted_at" timestamp with time zone,
+	"last_seen_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"shutdown_notified_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -172,4 +179,5 @@ CREATE INDEX "messages_streaming_created_idx" ON "messages" USING btree ("create
 CREATE INDEX "provider_slots_next_at_idx" ON "provider_slots" USING btree ("next_at");--> statement-breakpoint
 CREATE INDEX "rate_limits_expires_idx" ON "rate_limits" USING btree ("expires_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "sources_message_position_idx" ON "sources" USING btree ("message_id","position");--> statement-breakpoint
-CREATE UNIQUE INDEX "users_google_sub_idx" ON "users" USING btree ("google_sub");
+CREATE UNIQUE INDEX "users_google_sub_idx" ON "users" USING btree ("google_sub");--> statement-breakpoint
+CREATE INDEX "users_last_seen_idx" ON "users" USING btree ("last_seen_at");

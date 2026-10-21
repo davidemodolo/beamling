@@ -62,7 +62,7 @@ export function SiteFooter() {
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>
           <Link href="/cookies">Cookies</Link>
-          <Link href="/subprocessors">Subprocessors</Link>
+          <Link href="/subprocessors">Data processors</Link>
           <Link href="/security">Security</Link>
           <Link href="/status">Status</Link>
           <Link href="/contact">Contact</Link>

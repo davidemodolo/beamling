@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { LegalFooter } from "@/components/legal-footer";
 import { Wordmark } from "@/components/wordmark";
+import { LEGAL_LAST_UPDATED } from "@/lib/legal";
 
 export function LegalPage({
   title,
@@ -22,7 +23,7 @@ export function LegalPage({
       </header>
       <main className="legal">
         <h1>{title}</h1>
-        <p className="updated">Alpha · last updated 21 October 2026</p>
+        <p className="updated">Alpha · last updated {LEGAL_LAST_UPDATED}</p>
         {intro ? <p>{intro}</p> : null}
         {children}
       </main>

@@ -11,7 +11,8 @@ export default function SecurityPage() {
       <p>
         Sign-in uses Google OIDC with state, nonce and PKCE. The transaction is encrypted and expires after ten minutes.
         Session tokens are random, stored only as SHA-256 hashes, and delivered in HttpOnly, Secure, SameSite=Lax cookies
-        in production. You can revoke one session or all sessions from Settings.
+        in production. A session expires after 30 days without use and 90 days after sign-in at the latest; signing in
+        again replaces the previous session. You can revoke one session or all sessions from Settings.
       </p>
 
       <h2>Encryption</h2>
@@ -25,14 +26,22 @@ export default function SecurityPage() {
       <p>
         Application access is scoped to the signed-in account. Internal operator endpoints require a separate secret of at
         least 32 bytes and expose no user content. Structured logs are intended to exclude keys, session tokens, request
-        bodies, questions and answers. The hosting operator controls log retention and access.
+        bodies, questions and answers. Sign-ins, key changes, data exports and account deletions are recorded as audit
+        events with a keyed hash of the account and IP address.
       </p>
 
       <h2>Reporting a vulnerability</h2>
       <p>
-        Report vulnerabilities privately through the <Link href="/contact">contact page</Link>. Include the affected URL,
-        reproduction steps and impact. Do not access other users&apos; data, disrupt the service, or run destructive tests.
-        We will coordinate disclosure after a fix is available.
+        Report vulnerabilities privately through the <Link href="/contact">contact page</Link>; the address is also
+        published in <a href="/.well-known/security.txt">security.txt</a>. Include the affected URL, reproduction steps and
+        impact. We acknowledge reports within two working days, keep you informed while we fix the issue, and credit you
+        when the fix is published if you wish.
+      </p>
+      <p>
+        We will not pursue legal action for research done in good faith that follows these rules: use only your own
+        account, keys and data; do not access, change or keep other users&apos; data; do not degrade the service, send
+        spam or run denial-of-service or social-engineering tests; and give us reasonable time to fix the issue before
+        disclosing it.
       </p>
 
       <h2>Limits</h2>

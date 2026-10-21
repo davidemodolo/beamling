@@ -208,3 +208,63 @@ test("the killswitch blocks new streams until an operator explicitly re-enables 
     expect(reopened.ok()).toBe(true);
   }
 });
+
+test("the API refuses an account until it accepts the current terms", async ({ request }) => {
+  await signIn(request, { pendingTerms: true });
+  const refused = await request.get("/api/state");
+  expect(refused.status()).toBe(403);
+  expect((await refused.json()).error.code).toBe("TERMS_REQUIRED");
+  expect((await request.post("/api/conversations", { data: { mode: "quick" } })).status()).toBe(403);
+
+  // Data rights do not depend on accepting the terms.
+  expect((await request.get("/api/account/export")).ok()).toBe(true);
+
+  const stale = await request.post("/api/account/terms", { data: { version: "1999-01-01", confirmAge: true } });
+  expect(stale.status()).toBe(409);
+  const noAge = await request.post("/api/account/terms", { data: { version: "1999-01-01" } });
+  expect(noAge.status()).toBe(400);
+  const current = await (await request.get("/api/account/export")).json();
+  const accepted = await request.post("/api/account/terms", {
+    data: { version: current.account.currentTermsVersion, confirmAge: true },
+  });
+  expect(accepted.ok()).toBe(true);
+  expect((await request.get("/api/state")).ok()).toBe(true);
+});
+
+test("an account can download its data and object to analytics", async ({ request }) => {
+  await connectKeys(request);
+  await createConversation(request);
+  const response = await request.get("/api/account/export");
+  expect(response.ok()).toBe(true);
+  expect(response.headers()["content-disposition"]).toMatch(/attachment; filename="beamling-export-\d{4}-\d{2}-\d{2}\.json"/);
+  expect(response.headers()["cache-control"]).toContain("no-store");
+  const data = await response.json();
+  expect(data.format).toBe("beamling-export");
+  expect(data.credentials).toHaveLength(2);
+  expect(JSON.stringify(data)).not.toContain("test-openrouter-key");
+
+  const optOut = await request.patch("/api/settings", { data: { analyticsOptOut: true } });
+  expect(optOut.ok()).toBe(true);
+  expect((await optOut.json()).settings.analyticsOptOut).toBe(true);
+  expect((await (await request.get("/api/state")).json()).settings.analyticsOptOut).toBe(true);
+});
+
+test("security.txt names a contact, a policy and a future expiry", async ({ request }) => {
+  const response = await request.get("/.well-known/security.txt");
+  expect(response.ok()).toBe(true);
+  expect(response.headers()["content-type"]).toContain("text/plain");
+  const text = await response.text();
+  expect(text).toMatch(/^Contact: /m);
+  expect(text).toMatch(/^Policy: http:\/\/localhost:\d+\/security$/m);
+  const expires = /^Expires: (.+)$/m.exec(text)?.[1];
+  expect(new Date(expires!).getTime()).toBeGreaterThan(Date.now());
+});
+
+test("only Brave and Exa keys can skip validation", async ({ request }) => {
+  await signIn(request);
+  const response = await request.post("/api/credentials", {
+    data: { kind: "llm", provider: "openrouter", key: "test-openrouter-key", validate: false },
+  });
+  expect(response.status()).toBe(400);
+  expect((await response.json()).error.code).toBe("INVALID_INPUT");
+});

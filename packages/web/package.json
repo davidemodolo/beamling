@@ -1,6 +1,7 @@
 {
   "name": "@beamling/web",
   "version": "0.2.0",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "scripts": {
@@ -25,6 +26,7 @@
     "eventsource-parser": "4.1.2",
     "jose": "6.2.13",
     "next": "16.4.2",
+    "nodemailer": "10.2.0",
     "openid-client": "6.8.8",
     "pg": "8.23.1",
     "react": "19.3.1",

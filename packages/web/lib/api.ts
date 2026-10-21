@@ -119,6 +119,10 @@ async function readApiError(response: Response, fallback: StreamError): Promise<
     message = error?.message ?? message;
     provider = error?.provider ?? provider;
   } catch {}
+  // The terms changed while the app was open: every API call is refused until they are accepted.
+  if (code === "TERMS_REQUIRED") {
+    window.location.replace(`/welcome?next=${encodeURIComponent(window.location.pathname)}`);
+  }
   return new ApiRequestError(code, message, response.status, provider, body);
 }
 
@@ -157,6 +161,8 @@ export interface StreamMeta {
   conversationId: string;
   messageId: string;
   userMessageId: string;
+  /** Conversations the server deleted to keep the account within its cap. */
+  removed: string[];
 }
 
 export interface StreamEvents {

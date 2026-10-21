@@ -27,6 +27,10 @@ function openEnv(key: Buffer, wrapped: string, nonce: string, tag: string, aad: 
   return Buffer.concat([decipher.update(Buffer.from(wrapped, "base64")), decipher.final()]);
 }
 
+// AWS stores the key ARN even when KMS_KEY_ID is an alias; the resolved ARN is what rows are
+// compared against, so they are not re-wrapped on every read.
+let resolvedAwsKeyId: Promise<string> | undefined;
+
 let awsClient: import("@aws-sdk/client-kms").KMSClient | undefined;
 async function aws() {
   const { KMSClient } = await import("@aws-sdk/client-kms");
@@ -133,13 +137,27 @@ export async function probeKms(): Promise<void> {
   }
 }
 
-export function currentKmsKeyId(): string {
+/**
+ * The id new wraps are stored under: the env key id, the GCP key name, or the AWS key ARN (an
+ * alias in KMS_KEY_ID is resolved once with DescribeKey). Rows with a different id are re-wrapped.
+ */
+export async function currentKmsKeyId(): Promise<string> {
   switch (kmsProvider()) {
     case "env":
       return currentMasterKey().id;
-    case "aws":
-      return process.env.KMS_KEY_ID ?? "";
     case "gcp":
       return process.env.KMS_KEY_NAME ?? "";
+    case "aws": {
+      const keyId = process.env.KMS_KEY_ID ?? "";
+      resolvedAwsKeyId ??= (async () => {
+        const { DescribeKeyCommand } = await import("@aws-sdk/client-kms");
+        const result = await (await aws()).send(new DescribeKeyCommand({ KeyId: keyId }));
+        return result.KeyMetadata?.Arn ?? keyId;
+      })().catch((error) => {
+        resolvedAwsKeyId = undefined;
+        throw error;
+      });
+      return resolvedAwsKeyId;
+    }
   }
 }

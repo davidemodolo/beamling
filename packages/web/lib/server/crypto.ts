@@ -3,6 +3,7 @@ import { authSubkey } from "./env";
 import { unwrapKey, wrapKey } from "./kms";
 
 const ALGORITHM = "aes-256-gcm";
+const MIN_LENGTH_FOR_LAST4 = 20;
 
 export interface EncryptedSecret {
   id: string;
@@ -22,14 +23,6 @@ export type StoredSecret = Omit<EncryptedSecret, "fingerprint" | "last4">;
 /** Keyed fingerprint: a database reader cannot test candidate provider keys offline. */
 export function credentialFingerprint(plaintext: string): string {
   return createHmac("sha256", authSubkey("credential-fingerprint")).update(plaintext).digest("hex").slice(0, 16);
-}
-
-/** Accepts legacy unkeyed fingerprints so replacing the same key still preserves its usage row. */
-export function sameCredentialFingerprint(stored: string, plaintext: string): boolean {
-  return (
-    stored === credentialFingerprint(plaintext) ||
-    stored === createHash("sha256").update(plaintext).digest("hex").slice(0, 16)
-  );
 }
 
 /** Shared slot key; only the provider prefix and a keyed digest are persisted. */
@@ -89,7 +82,8 @@ export async function encryptCredential(
     ciphertext: secret.ciphertext,
     tag: secret.tag,
     fingerprint: credentialFingerprint(plaintext),
-    last4: plaintext.slice(-4) || "0000",
+    // Four characters of a short key would reveal a large part of it.
+    last4: plaintext.length >= MIN_LENGTH_FOR_LAST4 ? plaintext.slice(-4) : "••••",
   };
 }
 
@@ -109,6 +103,23 @@ export async function decryptCredential(
   );
   return open(dek, { nonce: credential.nonce, ciphertext: credential.ciphertext, tag: credential.tag }, aad).toString(
     "utf8",
+  );
+}
+
+/**
+ * True when decryption failed because the stored ciphertext or its wrapped key does not
+ * authenticate, as opposed to a KMS, network or configuration failure. Only the former means the
+ * saved key is unreadable for good.
+ */
+export function isDecryptIntegrityError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const name = (error as { name?: string }).name ?? "";
+  const code = (error as { code?: unknown }).code;
+  return (
+    /unable to authenticate data|unsupported state|bad decrypt/i.test(error.message) ||
+    name === "InvalidCiphertextException" ||
+    // gRPC INVALID_ARGUMENT from Google Cloud KMS: the ciphertext or its AAD does not match.
+    code === 3
   );
 }
 

@@ -7,7 +7,6 @@ import type { Message, Mode, SearchProvider, SearchTrace, Source, Usage } from "
 import { isClientDisconnect, isShutdown, isUserStop } from "./active-chats";
 import { analytics } from "./analytics";
 import { hasValidCitation, newCitations, sanitizeCitations } from "./citations";
-import { decryptCredential } from "./crypto";
 import { appUrl, isFakeProviders } from "./env";
 import { ApiError, INTERNAL_ERROR_MESSAGE } from "./http";
 import { detectLanguage } from "./language";
@@ -35,7 +34,9 @@ import {
   ensureSettings,
   getCredentialRow,
   getHistory,
+  readCredentialKey,
   recordCredentialUsage,
+  trimConversations,
   type AssistantOutcome,
 } from "./repo";
 
@@ -78,6 +79,8 @@ export interface PreparedChat {
   searchPlan: "free" | "paid";
   history: Message[];
   startedAt: number;
+  /** Conversations deleted to keep the account within MAX_CONVERSATIONS. */
+  removed: string[];
 }
 
 interface RunContext {
@@ -209,9 +212,9 @@ function credentialMissing(provider: "openrouter" | SearchProvider): ApiError {
   return new ApiError("CREDENTIAL_MISSING", `Add ${name} key before asking a question.`, 400, provider);
 }
 
-async function readKey(userId: string, row: Parameters<typeof decryptCredential>[1], provider: "openrouter" | SearchProvider) {
+async function readKey(userId: string, row: Parameters<typeof readCredentialKey>[1], provider: "openrouter" | SearchProvider) {
   try {
-    return await decryptCredential(userId, row);
+    return await readCredentialKey(userId, row);
   } catch (error) {
     log.error("Stored credential could not be decrypted", error, { provider });
     return null;
@@ -287,6 +290,11 @@ export async function prepareChat(input: {
       }).catch(() => {});
       throw error;
     }
+    // Only once the question is stored: a request that fails earlier must not cost an older conversation.
+    const removed = await trimConversations(input.userId, conversationId).catch((error) => {
+      log.error("Conversation cap could not be applied", error);
+      return [];
+    });
 
     return {
       userId: input.userId,
@@ -303,6 +311,7 @@ export async function prepareChat(input: {
       searchPlan: searchCredential.provider === "brave" && searchCredential.plan === "paid" ? "paid" : "free",
       history,
       startedAt,
+      removed,
     };
   } catch (error) {
     // Server-created conversations are safe to reclaim immediately. A browser-created row stays so
@@ -777,6 +786,7 @@ export async function runChat(prepared: PreparedChat, options: { signal: AbortSi
     conversationId: prepared.conversationId,
     messageId: prepared.messageId,
     userMessageId: prepared.userMessageId,
+    removed: prepared.removed,
   });
   emit("stage", {
     stage: "queued",

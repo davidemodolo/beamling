@@ -37,10 +37,17 @@ export const users = pgTable(
     emailVerified: boolean("email_verified").notNull().default(false),
     name: text("name"),
     avatarUrl: text("avatar_url"),
+    // LEGAL_VERSION of the terms and privacy notice the account accepted, and when.
+    termsVersion: text("terms_version"),
+    termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }),
+    // Last sign-in or session renewal; drives inactive-account deletion.
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    // When the shutdown notice email reached the mail server for this account.
+    shutdownNotifiedAt: timestamp("shutdown_notified_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [uniqueIndex("users_google_sub_idx").on(table.googleSub)],
+  (table) => [uniqueIndex("users_google_sub_idx").on(table.googleSub), index("users_last_seen_idx").on(table.lastSeenAt)],
 );
 
 export const authSessions = pgTable(
@@ -132,6 +139,8 @@ export const settings = pgTable("settings", {
   llmModel: text("llm_model").notNull().default(DEFAULT_LLM_MODEL),
   defaultSearchProvider: text("default_search_provider").$type<SearchProvider>().notNull().default(DEFAULT_SEARCH_PROVIDER),
   defaultMode: text("default_mode").$type<Mode>().notNull().default("quick"),
+  // Objection to product analytics (Art. 21 GDPR): no events are sent for this account.
+  analyticsOptOut: boolean("analytics_opt_out").notNull().default(false),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -241,6 +250,10 @@ export const systemFlags = pgTable("system_flags", {
   key: text("key").primaryKey(),
   enabled: boolean("enabled").notNull(),
   reason: text("reason"),
+  // For the shutdown flag: when the service closes and every account is deleted.
+  scheduledAt: timestamp("scheduled_at", { withTimezone: true }),
+  // For the shutdown flag: whether every account is emailed the notice.
+  notify: boolean("notify").notNull().default(true),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

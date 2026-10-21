@@ -1,7 +1,7 @@
 # Beamling — Current Technical Reference
 
 **Status:** describes the code in this checkout, not a roadmap.
-**Last verified against the code:** 2026-10-21.
+**Last verified against the code:** 2026-10-22.
 **Scope:** the web application, API, database schema, answer pipeline, browser UI, security controls, tests and local deployment.
 
 Beamling is a hosted, bring-your-own-key answer engine. A visitor signs in with Google, connects an OpenRouter key and a Brave, Tavily or Exa search key, and asks questions in Quick, Deep or Deeper mode. The server searches the web, builds a grounded prompt from the retrieved snippets, streams an OpenRouter answer over SSE, and persists the conversation, sources and usage data.
@@ -18,7 +18,7 @@ Browser
   │  JSON + SSE with the account session cookie
   ▼
 Next.js 16 application (Node.js runtime)
-  ├─ App Router pages: landing, login, onboarding, chat, privacy, terms
+  ├─ App Router pages: landing, login, welcome (terms acceptance), onboarding, chat, legal pages
   ├─ Google OIDC sign-in and database sessions
   ├─ Route handlers under /api
   ├─ Answer pipeline (Quick / Deep / Deeper)
@@ -27,6 +27,7 @@ Next.js 16 application (Node.js runtime)
        │
        ├─ Google OIDC  discovery + code exchange
        ├─ KMS         wrap/unwrap workspace and credential keys
+       ├─ SMTP        service-shutdown notice only (optional)
        ├─ OpenRouter  GET /api/v1/key
        │              POST /api/v1/chat/completions (SSE)
        ├─ Brave       GET /res/v1/web/search
@@ -46,6 +47,7 @@ Current external dependencies:
 | Tavily Search API | Retrieval; key validation through the free usage endpoint |
 | Exa Search API | Search validation and retrieval |
 | PostHog Cloud EU | Optional server-side, metadata-only product events |
+| SMTP relay | Optional; sends only the one-off service-shutdown notice (§14.10) |
 | Browser | Session cookie, SSE consumption, UI state |
 
 The server does not fetch result pages, crawl the web or load remote media in answers. Provider traffic goes directly from the Next.js process to OpenRouter and the selected search provider using the user's key. When analytics is explicitly enabled, the server also sends the allowlisted metadata events described in §13.8.
@@ -72,6 +74,8 @@ The server does not fetch result pages, crawl the web or load remote media in an
 │  │  ├─ workspace-key.ts          Per-account content encryption
 │  │  ├─ crypto.ts                 Credential envelope encryption
 │  │  ├─ prompts.ts                Prompt assembly
+│  │  ├─ shutdown.ts               Scheduled service shutdown: notices and account deletion
+│  │  ├─ mail.ts                   SMTP transport for service notices
 │  │  └─ ...
 │  ├─ drizzle/                    SQL migration and Drizzle metadata
 │  ├─ scripts/                    Migration and key-rotation CLIs
@@ -95,6 +99,7 @@ Toolchain:
 | Database | PostgreSQL 18 |
 | ORM | Drizzle ORM 0.45.4, `pg` 8.23.1 |
 | Validation | Zod 4.6.7 |
+| Email | Nodemailer 10.2.0 (shutdown notice only) |
 | Agent loop | AI SDK 7.0.148 `ToolLoopAgent` with `@openrouter/ai-sdk-provider` 3.1.0 (Deeper only) |
 | SSE parsing | `eventsource-parser` 4.1.2 |
 | Test runner | Node test runner through `tsx`; Playwright 1.64.1 |
@@ -136,7 +141,8 @@ Configuration is read from environment variables at request/startup time. There 
 | `GCP_KMS_CREDENTIALS` | Optional service-account JSON for hosts without a credentials file. Otherwise the GCP client uses Application Default Credentials. |
 | `KMS_KEY_ID` | AWS KMS key id or alias when `KMS_PROVIDER=aws`. |
 | `LEGAL_ENTITY` | Controller/operator name shown in the privacy policy, terms and contact page. Required outside localhost. |
-| `LEGAL_CONTACT_EMAIL` | Monitored privacy/security/abuse address. Required outside localhost and must look like an email address. |
+| `LEGAL_CONTACT_EMAIL` | Monitored privacy/security/abuse address, also published in `/.well-known/security.txt`. Required outside localhost and must look like an email address. |
+| `LEGAL_ADDRESS` | Postal address of the operator shown on the privacy notice, terms and contact page. Required outside localhost. |
 
 Production startup refuses to boot when any of these checks fails:
 
@@ -147,7 +153,9 @@ Production startup refuses to boot when any of these checks fails:
 - `AUTH_SECRET` is not a valid 32-byte base64 value.
 - `OIDC_CLIENT_ID` or `OIDC_CLIENT_SECRET` is missing.
 - `OIDC_ISSUER` is not HTTPS outside localhost, or is not `https://accounts.google.com` outside localhost (Google-only alpha).
-- `LEGAL_ENTITY` or a valid `LEGAL_CONTACT_EMAIL` is missing outside localhost.
+- `LEGAL_ENTITY`, `LEGAL_ADDRESS` or a valid `LEGAL_CONTACT_EMAIL` is missing outside localhost.
+- `LEGAL_LOG_RETENTION_DAYS` or `LEGAL_BACKUP_RETENTION_DAYS` is set outside localhost but is not a positive whole number.
+- `SMTP_URL` is set outside localhost but is not a valid `smtp://` or `smtps://` URL, or `MAIL_FROM` or `LEGAL_MAIL_PROVIDER` is missing.
 - `SIGNUP_MODE` is set to anything other than `open`, `allowlist` or `paused`.
 - `KMS_PROVIDER=env` outside localhost, or the selected KMS key setting is missing.
 - `GCP_KMS_CREDENTIALS` is present but is not valid service-account JSON with `client_email` and `private_key`.
@@ -184,8 +192,13 @@ Production startup refuses to boot when any of these checks fails:
 | `SIGNUP_MODE` | `open`, `allowlist` or `paused`; defaults to `open` outside production and `allowlist` in production. |
 | `SIGNUP_ALLOWED_EMAILS` | Comma-separated exact addresses for allowlist mode. |
 | `SIGNUP_ALLOWED_EMAIL_DOMAINS` | Comma-separated domain suffixes for allowlist mode; an empty allowlist admits nobody. |
-| `LEGAL_ADDRESS` | Optional postal address shown on the contact and privacy pages. |
+| `LEGAL_VAT_ID` | Optional VAT number or company registration, shown next to the operator on the privacy notice, terms and contact page. |
+| `LEGAL_LOG_RETENTION_DAYS` | `30`; log retention stated in the privacy notice. Must match the hosting provider's configuration. |
+| `LEGAL_BACKUP_RETENTION_DAYS` | `7`; backup and point-in-time-recovery retention stated in the privacy notice. Must match the database provider's configuration. |
 | `LEGAL_GOVERNING_LAW` | Governing-law text for the terms; defaults to `Italian law`. |
+| `SMTP_URL` | SMTP relay for the shutdown notice: `smtps://user:pass@host:465` (TLS from the first byte) or `smtp://user:pass@host:587` (STARTTLS required; the message is not sent without it). Port defaults to 465/587; 15-second connection timeout. Unset: no email is sent. |
+| `MAIL_FROM` | Sender address of the notice. Mail is configured only when both `SMTP_URL` and `MAIL_FROM` are set. |
+| `LEGAL_MAIL_PROVIDER` | Name and location of the SMTP provider, e.g. `Brevo (France)`; adds an email row to `/subprocessors`. Required outside localhost when `SMTP_URL` is set. |
 | `BRAVE_MIN_INTERVAL_MS` | `1,100` ms between Free-plan Brave requests for the same key across all instances. `0` disables spacing. |
 | `BRAVE_PAID_MIN_INTERVAL_MS` | `0`; optional spacing for Paid-plan Brave keys. |
 | `BEAMLING_FAKE_PROVIDERS` | `1` uses fixture providers. Honored only when not production, or when production `APP_URL` is localhost. |
@@ -206,6 +219,7 @@ Production warnings (logged, not fatal):
 - `TRUSTED_PROXY_HOPS=0`.
 - `MAX_CONCURRENT_CHATS` is not below `PLATFORM_CONNECTION_LIMIT`.
 - `SIGNUP_MODE=allowlist` has no allowed emails or domains; all new sign-ups are paused.
+- `SMTP_URL`/`MAIL_FROM` are not set; a service shutdown cannot email its notice.
 
 ### 3.3 Fixture providers
 
@@ -238,9 +252,11 @@ GET /api/auth/callback/google
   → verify transaction cookie and 10-minute expiry
   → exchange code with PKCE, verify state, nonce, ID-token signature, issuer, audience
   → require email_verified
-  → upsert user by OIDC subject
+  → refuse sign-in after a scheduled shutdown date (SERVICE_CLOSED)
+  → upsert user by OIDC subject (new accounts refused while a shutdown is scheduled: SERVICE_CLOSING)
   → ensure settings and workspace data key
-  → create session, clear transaction cookie, redirect
+  → revoke this browser's previous session, create session, record last_seen_at
+  → audit sign_in, clear transaction cookie, redirect
 ```
 
 Details:
@@ -249,19 +265,30 @@ Details:
 - There is no password, magic link, email OTP, other identity provider or account recovery inside Beamling. Recovery is Google's.
 - The transaction cookie is a JWE (`dir` + `A256GCM`) encrypted with the `oidc-transaction` HKDF subkey of `AUTH_SECRET`; it expires after 10 minutes.
 - The callback is rate-limited by hashed IP (`AUTH_CALLBACKS_PER_IP_PER_HOUR`). The transaction cookie is consumed before the token exchange, so a failed attempt cannot be replayed.
-- A first sign-in is checked against `SIGNUP_MODE` and the allowlist/domain lists before the user row is created, then counts against global and per-IP signup buckets. Over the cap, the callback logs a warning and redirects to `/login?error=signups_paused`; an uninvited address gets `signup_not_invited`; other callback failures redirect to `/login?error=auth_failed`.
+- A first sign-in is checked against `SIGNUP_MODE` and the allowlist/domain lists before the user row is created, then counts against global and per-IP signup buckets. Over the cap, the callback logs a warning and redirects to `/login?error=signups_paused`; an uninvited address gets `signup_not_invited`; a new account during a scheduled shutdown gets `service_closing`; any sign-in after the shutdown date gets `service_closed`; other callback failures redirect to `/login?error=auth_failed`.
 - Production requires `OIDC_ISSUER=https://accounts.google.com`; Dex is a local-parity substitute only.
 - Session token: 32 random bytes, base64url encoded.
 - Stored value: SHA-256 hex of the token. The plaintext token never enters the database.
-- Cookie: `HttpOnly`, `SameSite=Lax`, `Path=/`, 30-day `Max-Age`.
+- Cookie: `HttpOnly`, `SameSite=Lax`, `Path=/`; `Max-Age` is the time left until the stored expiry.
 - Cookie name: `__Host-beamling_session` when Secure cookies are enabled; `beamling_session` otherwise.
-- The session expiry slides forward while the account is used. `getCurrentUser` extends it when the new expiry is more than one day beyond the stored expiry, then resets the cookie.
+- The session expiry slides forward while the account is used, 30 days (`SESSION_TTL_DAYS`) from the last renewal, but never past 90 days (`SESSION_MAX_AGE_DAYS`) after the session was created. `getCurrentUser` extends it when the new expiry is more than one day beyond the stored expiry, updates `users.last_seen_at` and resets the cookie. A session older than 90 days is rejected even if its stored expiry is later.
+- Signing in deletes the session the browser's cookie pointed to before creating the new one, so a sign-in never leaves the previous token valid.
 - Missing or expired session on a protected route returns `UNAUTHENTICATED` with HTTP 401.
-- `/chat` and `/onboarding` are server-guarded and redirect to `/login` when signed out.
+- `/chat` and `/onboarding` are server-guarded and redirect to `/login` when signed out, and to `/welcome?next=…` when the account has not accepted the current terms (§4.1).
 - `POST /api/auth/logout` revokes the current session and clears the cookie. `POST /api/auth/logout?scope=all` revokes every session of the account (Settings → Account → Sign out everywhere).
 - `DELETE /api/account` deletes the account, all rows and the wrapped workspace key while queueing the PostHog erasure of the hashed analytics identity in the same transaction, makes a first erasure attempt, clears the cookie, and returns `{ "ok": true }`. See §13.7.
-- Cleanup removes expired sessions and counters; it does not delete inactive accounts because Google sign-in can return to them.
-- `POST /api/auth/test-login` exists only when `BEAMLING_TEST_AUTH=1`, `BEAMLING_FAKE_PROVIDERS=1` and `APP_URL` is localhost. It creates a unique test account for each new request context and is used by Playwright. Otherwise it returns `NOT_FOUND` (404).
+- `GET /api/account/export` returns every stored record of the account as a JSON download (§9.1, §13.7).
+- Cleanup removes expired sessions and counters, and deletes accounts with no sign-in or session renewal for 24 months and accounts that never accepted the terms 7 days after creation (§6.6). After a scheduled shutdown date it deletes every account (§6.7).
+- `POST /api/auth/test-login` exists only when `BEAMLING_TEST_AUTH=1`, `BEAMLING_FAKE_PROVIDERS=1` and `APP_URL` is localhost. It creates a unique test account for each new request context and is used by Playwright; the account has accepted the current terms unless the request sets `?terms=pending`. Otherwise it returns `NOT_FOUND` (404).
+
+### 4.1 Terms acceptance
+
+- `lib/legal.ts` defines `LEGAL_VERSION` (currently `2026-10-22`), the version of the terms and privacy notice an account must accept, plus `MINIMUM_AGE = 18`, `INACTIVE_ACCOUNT_MONTHS = 24`, `UNACCEPTED_ACCOUNT_DAYS = 7`, `CONVERSATION_RETENTION_DAYS = 60`, `MAX_CONVERSATIONS = 100`, `CONVERSATION_WARNING_THRESHOLD = 90` and `SHUTDOWN_NOTICE_DAYS = 14`.
+- `users.terms_version` and `users.terms_accepted_at` record the accepted version. A new account has none.
+- App pages call `requirePageUser`, which redirects to `/welcome?next=<path>` when `terms_version` differs from `LEGAL_VERSION`. `/welcome` accepts only `/chat`, `/chat/<uuid>` or `/onboarding` as `next`, and redirects there once the version matches.
+- `apiRoute` refuses every API call from such an account with `TERMS_REQUIRED` (403), except routes declared with `requireTerms: false`: `POST /api/account/terms`, `GET /api/account/export`, `POST /api/auth/logout` and `DELETE /api/account`. The browser API client redirects to `/welcome` on `TERMS_REQUIRED`, so a version change while the app is open sends the user to accept it.
+- `POST /api/account/terms` requires `{ version, confirmAge: true }`. A version other than `LEGAL_VERSION` returns `TERMS_OUTDATED` (409). Success stores the version and time and logs a `terms_accepted` audit event.
+- Changing `LEGAL_VERSION` asks every account to accept again on its next request.
 
 IP handling:
 
@@ -283,7 +310,7 @@ IP handling:
 | `search` | `tavily` | `GET https://api.tavily.com/usage`; spends no credit and rejects a key whose usage has reached its limit |
 | `search` | `exa` | `POST https://api.exa.ai/search` with one highlight result |
 
-Brave and Exa have no free key check, so their validation spends one search request. `POST /api/credentials` accepts `validate: false` to skip the call: the key is encrypted and saved with `status = unverified` and no `last_validated_at`. The Keys panel and onboarding offer this as a "Validate the key now" checkbox (on by default) for Brave and Exa, and an unverified key shows a Validate button that calls the revalidation endpoint. An unverified key is used for answers like any other; a wrong one fails at the first search.
+Brave and Exa have no free key check, so their validation spends one search request. `POST /api/credentials` accepts `validate: false` for Brave and Exa only (any other provider returns `INVALID_INPUT`) to skip the call: the key is encrypted and saved with `status = unverified` and no `last_validated_at`. The Keys panel and onboarding offer this as a "Validate the key now" checkbox (on by default) for Brave and Exa, and an unverified key shows a Validate button that calls the revalidation endpoint. An unverified key is used for answers like any other; a wrong one fails at the first search.
 
 The API schema accepts OpenRouter as the only LLM provider and Brave, Tavily or Exa as search providers. A credential kind must match its provider (`llm` ↔ `openrouter`, `search` ↔ one launch search provider).
 
@@ -317,16 +344,17 @@ Both bind the ciphertext to the owner, credential id, kind and provider and are 
 
 Display data:
 
-- `fingerprint` = first 16 hex characters of SHA-256(plaintext).
-- `last4` = last four characters of the plaintext key.
+- `fingerprint` = first 16 hex characters of HMAC-SHA256(plaintext) keyed with the `credential-fingerprint` HKDF subkey of `AUTH_SECRET`.
+- `last4` = last four characters of the plaintext key when the key is at least 20 characters long; shorter keys store `••••` so the hint does not reveal a large part of the key.
 - The API returns only id, kind, provider, last4, status, plan/limit metadata and validation time. The plaintext key is never returned after creation.
 
 ### 5.3 Validation and status
 
 Creating a credential validates it before saving unless the request sets `validate: false` (§5.1). A validation failure maps to a stable provider error and no row is written.
 
-A saved credential can be revalidated:
+A saved credential can be revalidated with `POST /api/credentials/:id/validate`:
 
+- The stored key is read with `readCredentialKey` (§5.4). A decryption failure caused by KMS, network or configuration returns `PROVIDER_UNAVAILABLE` (503) and leaves the status unchanged. Only an integrity failure (`isDecryptIntegrityError`: AES-GCM authentication failure, AWS `InvalidCiphertextException` or GCP gRPC `INVALID_ARGUMENT`) sets `status = invalid` and returns `CREDENTIAL_UNREADABLE`.
 - Success sets `status = active`.
 - A rejected or out-of-credit key sets `status = invalid`.
 - A rate-limited key sets `status = rate_limited`.
@@ -334,22 +362,31 @@ A saved credential can be revalidated:
 
 Status values exposed to the UI: `active`, `invalid`, `rate_limited`, `unverified`.
 
-Credential operations are rate-limited to 20 per user per fixed hour.
+Credential operations are rate-limited to 20 per user per fixed hour. Every call that checks a key against its provider (create with validation, revalidate) also consumes the validation budget: 50 per account per fixed day and 120 per hashed client IP per fixed hour. The budget keeps the server from being used to test lists of leaked keys.
 
 ### 5.4 Replace, delete, rotation
 
 - Saving a credential validates it before writing.
 - The route encrypts the new key first, then updates the existing `(user, kind, provider)` row in place. A KMS or database failure leaves the working credential and its usage history intact.
 - Replacing a key keeps the credential id and daily usage. Concurrent replacements cannot rewrite the primary key; a losing different-id insert returns the row the first insert created.
-- Fingerprints and Brave provider-slot keys are keyed HMACs, not bare SHA-256, so a database reader cannot test candidate keys offline.
+- Fingerprints and Brave provider-slot keys are keyed HMACs, not bare SHA-256, so a database reader cannot test candidate keys offline. Unkeyed legacy fingerprints are no longer recognized.
+- Saving and deleting a credential log `credential_saved` / `credential_deleted` audit events (§13.5).
 - Deleting a credential hard-deletes the row and its daily usage, and releases the matching Brave slot when the key can be decrypted. There is no recovery.
 - Env-adapter master-key rotation:
   1. Deploy a new `CREDENTIAL_MASTER_KEY` with a new `CREDENTIAL_MASTER_KEY_ID`.
   2. Put the old key in `CREDENTIAL_PREVIOUS_MASTER_KEYS`.
   3. Run `node scripts/rewrap-credentials.mjs`.
-  4. Remove the old key from the environment.
+  4. Remove the old key from the environment only after the script reports that no row still uses it.
 
-The re-wrap script updates only `key_id`, `wrapped_dek`, `dek_nonce` and `dek_tag`. It updates rows only while their old `wrapped_dek` still matches, so a credential replaced during rotation is skipped. For AWS/GCP, unwrap uses the stored `key_id` resource, so a new `KMS_KEY_NAME`/`KMS_KEY_ID` applies to new writes while old rows remain readable. Workspace keys are re-wrapped lazily on the next read when the configured KMS key id changes. The script itself remains env-adapter only.
+The re-wrap script re-wraps both credential data keys (`key_id`, `wrapped_dek`, `dek_nonce`, `dek_tag`) and workspace keys in `user_data_keys` (`key_id`, `wrapped_key`, `wrap_nonce`, `wrap_tag`, `rotated_at`); provider-key ciphertext and content are untouched. It updates a row only while its old wrapped key still matches, so a row replaced or re-wrapped by the application during rotation is skipped. It then counts credentials and workspace keys still under an old master key; if any remain it prints the counts, tells the operator not to remove the old key, and exits with code 1.
+
+For AWS/GCP, unwrap uses the stored `key_id` resource, so a new `KMS_KEY_NAME`/`KMS_KEY_ID` applies to new writes while old rows remain readable. Rows move to the new key lazily:
+
+- Workspace keys are re-wrapped on the next read when the configured KMS key id changes.
+- Provider keys are read through `readCredentialKey` (answers and revalidation). When the row's `key_id` differs from `currentKmsKeyId()`, it re-encrypts the key under the current KMS key with the same row id, so usage history stays. The update matches the old `wrapped_dek`, skipping a row replaced in the meantime; a failed re-wrap is ignored and retried on the next read.
+- `currentKmsKeyId()` is async. With AWS it resolves `KMS_KEY_ID` to the key ARN once per process with `DescribeKey` (the AWS principal needs `kms:DescribeKey`), so an alias does not cause a re-wrap on every read or after a restart. If the lookup fails, rows are left as they are.
+
+The script itself remains env-adapter only.
 
 ### 5.5 Current data-protection boundary
 
@@ -391,6 +428,7 @@ Every account gets a `user_data_keys` row on first sign-in. Deleting the account
 ```text
 users
   id, google_sub (unique), email, email_verified, name, avatar_url,
+  terms_version, terms_accepted_at, last_seen_at, shutdown_notified_at,
   created_at, updated_at
 
 auth_sessions
@@ -411,7 +449,8 @@ credential_usage
   credential_id → credentials, day, requests, estimated_cost_usd
 
 settings
-  user_id → users (primary key), llm_model, default_search_provider, default_mode, updated_at
+  user_id → users (primary key), llm_model, default_search_provider, default_mode,
+  analytics_opt_out, updated_at
 
 conversations
   id, user_id → users, title, mode, pinned, created_at, updated_at
@@ -435,7 +474,7 @@ rate_limits
   key (primary key), window_start, count, expires_at
 
 system_flags
-  key (primary key), enabled, reason, updated_at
+  key (primary key), enabled, reason, scheduled_at, updated_at
 
 provider_slots
   key (primary key), next_at
@@ -453,7 +492,10 @@ Important indexes and constraints:
 - `messages(conversation_id, created_at, id)` supports message pagination.
 - A partial unique index allows at most one `messages.status = 'streaming'` row per conversation.
 - `sources(message_id, position)` is unique.
-- `rate_limits.expires_at`, `provider_slots.next_at` and `analytics_erasures.next_attempt_at` are indexed for cleanup.
+- `rate_limits.expires_at`, `provider_slots.next_at`, `analytics_erasures.next_attempt_at` and `users.last_seen_at` are indexed for cleanup.
+- `users.terms_version` is the accepted `LEGAL_VERSION` (null until first acceptance); `users.last_seen_at` is set on sign-in and on the daily session renewal; `settings.analytics_opt_out` defaults to `false`; `users.shutdown_notified_at` records when the shutdown notice reached the mail server (null until sent, reset when a shutdown is scheduled).
+- `system_flags` holds the database killswitch (§14.8) and the `shutdown` row, whose `scheduled_at` is the closing date (§6.7).
+- `conversations.updated_at` is the last activity: it is set by a new exchange and by a mode change, and drives sidebar order, the 100-conversation cap and 60-day expiry (§6.5, §6.6).
 - Users cascade to sessions, workspace keys, credentials, settings, conversations, messages and sources.
 
 The migration also creates a `beamling_migrations(filename, checksum, applied_at)` ledger in the migration script. Applied files are checksummed; editing one fails the next migration run. Existing rows without a checksum are baselined on the next run.
@@ -479,10 +521,12 @@ Conversation titles and message content are encrypted before insert. The reposit
 2. Lock the conversation row with `SELECT … FOR UPDATE` and verify ownership.
 3. Mark any streaming answer older than eight minutes as `error` / `INTERRUPTED`. The threshold covers Deeper's six-minute limit plus recovery grace; the previous three-minute value cut off healthy Deeper runs.
 4. Count all non-stale streaming messages. If the count is at or above `MAX_CONCURRENT_CHATS`, return `SERVER_BUSY` (503).
-5. For a retry, validate that the target is the latest assistant answer, is `error` or `stopped` (or stale-streaming), and that a preceding user question exists. Delete the old assistant row and reuse the original question. No duplicate user message is stored.
-6. For a new question, insert the user message with control characters removed.
-7. Insert the assistant placeholder with status `streaming`.
-8. Update the conversation title (first question only), mode and `updated_at`.
+5. For a Deeper request, count non-stale streaming Deeper messages. If the count is at or above half of `MAX_CONCURRENT_CHATS` (rounded down, at least 1), return `SERVER_BUSY` (503) with copy suggesting Deep.
+6. Count the account's non-stale streaming messages against `MAX_CONCURRENT_CHATS_PER_USER`.
+7. For a retry, validate that the target is the latest assistant answer, is `error` or `stopped` (or stale-streaming), and that a preceding user question exists. Delete the old assistant row and reuse the original question. No duplicate user message is stored.
+8. For a new question, insert the user message with control characters removed.
+9. Insert the assistant placeholder with status `streaming`.
+10. Update the conversation title (first question only), mode and `updated_at`.
 
 The partial unique index turns a second concurrent answer in one conversation into `GENERATION_IN_PROGRESS` (409). A lock timeout (5 seconds) or an advisory-lock wait timeout maps to `SERVER_BUSY`.
 
@@ -505,19 +549,38 @@ On retry, the old answer is deleted before a new placeholder is created, so its 
 - `GET /api/conversations/:id/messages?before=<messageId>` returns the page before an anchor message.
 - Cursors are base64url JSON tuples. Invalid cursors return `INVALID_CURSOR`.
 - Deleting a conversation deletes its messages and sources through foreign-key cascades and aborts local active answers for that conversation.
+- An account keeps at most 100 conversations (`MAX_CONVERSATIONS`). After `/api/chat` stores a question (so a request that fails earlier, or an empty conversation, never costs an older one), `trimConversations` deletes every other conversation beyond the first 99 in sidebar order (pinned first, then most recently active), so the least recently active unpinned ones go first and pinned ones only when more than 99 are pinned. The asked conversation is never removed. The `meta` event lists the deleted ids in `removed`; the client store drops them from the list, the count and loaded threads. A trim failure is logged and does not block the answer.
 - Deleting an account deletes sessions, per-user rate-limit keys and the user row; cascades remove the workspace key, credentials, usage, conversations, messages, sources and settings.
 
 ### 6.6 Cleanup
 
 `startServer()` runs cleanup immediately and every 15 minutes:
 
+- Delete retired accounts, at most 50 per run, through the same path as a user deletion (including the queued PostHog erasure), logging an `inactive_account_deleted` audit event for each:
+  - accounts whose `last_seen_at` (last sign-in or daily session renewal) is more than 24 months old;
+  - accounts created more than 7 days ago that never accepted the terms (`terms_accepted_at` is null).
+- Delete conversations whose `updated_at` is more than 60 days old (`CONVERSATION_RETENTION_DAYS`), pinned or not, at most 1,000 per run; messages and sources cascade.
 - Delete expired sessions.
 - Delete expired rate-limit rows.
 - Delete provider slots whose `next_at` is more than one hour in the past.
+- Delete empty conversations older than one hour.
 - Mark stale streaming answers as `error` / `INTERRUPTED`.
 - Run due PostHog erasures (§13.7), up to 20 per run.
+- Advance a scheduled shutdown (§6.7).
 
 Each step runs even if another fails; failures are logged. The process continues serving requests if cleanup fails.
+
+### 6.7 Scheduled shutdown
+
+The operator can close the whole service with `POST /api/internal/shutdown` (§9.1, runbook §14.10). State lives in the `system_flags` row `shutdown` (`enabled = true`, `scheduled_at`, optional `reason`, `notify`); deleting the row cancels.
+
+- Scheduling sets `scheduled_at` to now plus `days` (at least `SHUTDOWN_NOTICE_DAYS = 14`, at most 365, default 14) and, in the same transaction, clears every `users.shutdown_notified_at`, so a rescheduled date is announced again.
+- While a shutdown is scheduled: new accounts are refused with `SERVICE_CLOSING`; existing users can sign in and export their data; `/chat` shows a banner with the date (Europe/Rome time) and a "Download my data" button that opens Settings → Account; `/login` and `/status` show the date.
+- `processShutdown()` runs right after scheduling (when `notify` is true) and from every cleanup tick. It holds a session-scoped Postgres advisory lock on a dedicated connection, so only one instance works at a time (others skip the tick); both steps are idempotent.
+  - Before the date it emails the notice to accounts with a null `shutdown_notified_at`, oldest first in batches of 50, 250 ms between messages, marking each account after the SMTP server accepts it. A send failure stops the run; the next tick retries the rest. Nothing is sent when the shutdown was scheduled with `notify: false` (stored in `system_flags.notify`) or without `SMTP_URL`/`MAIL_FROM`.
+  - From the date on it deletes every account in batches of 50 through `deleteAccount` (same path as a user deletion, including the queued PostHog erasure), logging a `shutdown_account_deleted` audit event for each.
+- After the date every sign-in is refused with `SERVICE_CLOSED`, and `/login` hides the sign-in button.
+- The notice is one English plain-text message: closing date (Europe/Rome, with CET/CEST), what is deleted, that provider accounts are unaffected and keys may be revoked, how to download data, the optional operator reason, and the contact address. Beamling sends no other email.
 
 ---
 
@@ -788,7 +851,7 @@ Server and client share `lib/stream-events.ts`; the client validates each payloa
 
 | Event | Data | When |
 |---|---|---|
-| `meta` | `{ conversationId, messageId, userMessageId }` | Before pipeline work |
+| `meta` | `{ conversationId, messageId, userMessageId, removed }` | Before pipeline work; `removed` lists conversations deleted by the 100-conversation cap (§6.5) |
 | `stage` | `{ stage, detail? }` | State changes; details are display strings |
 | `plan` | `{ queries: string[] }` | Deep only, after planning |
 | `progress` | `{ completed, total }` | After each search completes (Quick, Deep and Deeper) |
@@ -886,12 +949,12 @@ Error envelope:
 |---|---|---|---|---|
 | `GET` | `/api/auth/login` | None | `?next=` | 307 to the OIDC provider |
 | `GET` | `/api/auth/callback/google` | OIDC transaction cookie | `code`, `state` | 307 to `/onboarding` or `/chat` |
-| `POST` | `/api/auth/logout` | Optional | `?scope=all` signs out every session | `{ ok: true }` and cleared cookie |
+| `POST` | `/api/auth/logout` | Optional, terms not required | `?scope=all` signs out every session | `{ ok: true }` and cleared cookie |
 | `GET` | `/api/state` | Required | — | `{ user, conversations, nextCursor, conversationCount, credentials, settings }` |
 | `POST` | `/api/chat` | Required | `{ conversationId?, question?, retryOf?, mode, searchProvider? }` | SSE stream |
 | `POST` | `/api/chat/stop` | Required | `{ messageId }` | `{ stopped: boolean }` |
 | `GET` | `/api/conversations` | Required | `?cursor=` | `{ conversations, nextCursor }` |
-| `POST` | `/api/conversations` | Required | `{ mode?: "quick" \| "deep" \| "deeper" }` | `201 { conversation }` |
+| `POST` | `/api/conversations` | Required | `{ mode?: "quick" \| "deep" \| "deeper" }` | `201 { conversation }`; the 100-conversation cap is applied when its first question is stored (§6.5) |
 | `GET` | `/api/conversations/:id` | Required | UUID id | `{ conversation }` with newest 60 messages |
 | `GET` | `/api/conversations/:id/messages` | Required | `?before=<messageId>` | `{ messages, hasMore }` |
 | `PATCH` | `/api/conversations/:id` | Required | `{ mode?, pinned? }` (at least one) | `{ conversation }` |
@@ -899,11 +962,20 @@ Error envelope:
 | `POST` | `/api/credentials/:id/validate` | Required | — | `{ credential }` |
 | `PATCH` | `/api/credentials/:id` | Required | `{ plan?, expiresOn?, budgetUsd?, budgetPeriod? }` | `{ credential }` |
 | `DELETE` | `/api/credentials/:id` | Required | — | `{ ok: true }` |
-| `PATCH` | `/api/settings` | Required | `{ llmModel?, defaultSearchProvider?, defaultMode? }` | `{ settings }` |
-| `DELETE` | `/api/account` | Optional | — | `{ ok: true }` and cleared cookie |
+| `PATCH` | `/api/settings` | Required | `{ llmModel?, defaultSearchProvider?, defaultMode?, analyticsOptOut? }` | `{ settings }` |
+| `POST` | `/api/account/terms` | Required, terms not required | `{ version, confirmAge: true }` | `{ ok: true, version }` |
+| `GET` | `/api/account/export` | Required, terms not required | — | JSON attachment `beamling-export-<date>.json` |
+| `DELETE` | `/api/account` | Optional, terms not required | — | `{ ok: true }` and cleared cookie |
 | `POST` | `/api/internal/kill` | Bearer `KILL_SWITCH_SECRET` | `{ acceptingNewStreams: boolean, reason? }` | `{ acceptingNewStreams }` |
 | `GET` | `/api/internal/metrics` | Bearer `METRICS_SECRET` | — | Deployment flag, active streams and build identity |
+| `GET` | `/api/internal/shutdown` | Bearer `KILL_SWITCH_SECRET` | — | `{ shutdown: { scheduledAt, reason } \| null, mailConfigured, accounts, notified }` |
+| `POST` | `/api/internal/shutdown` | Bearer `KILL_SWITCH_SECRET` | `{ action: "schedule", days?: 14–365 (default 14), reason?: ≤1,000 chars, notify?: boolean (default true) }` or `{ action: "cancel" }` | Same as `GET`; `MAIL_NOT_CONFIGURED` (409) when `notify` is true without SMTP. See §6.7 |
 | `GET` | `/api/health` | None | — | `{ ok: true, database: "up", version, commit, builtAt }` or 503 `{ ok: false, database: "down", version, commit, builtAt }` |
+| `GET` | `/.well-known/security.txt` | None | — | RFC 9116 text: `Contact` (mailto `LEGAL_CONTACT_EMAIL` when set, and `/contact`), `Expires` 180 days ahead, `Policy` `/security`, `Canonical`, `Preferred-Languages: en`; `Cache-Control: public, max-age=86400` |
+
+`apiRoute` wraps every session route. After the same-origin check and session load, it refuses an account whose `terms_version` is not the current `LEGAL_VERSION` with `TERMS_REQUIRED` (403), unless the route is declared `requireTerms: false` (§4.1).
+
+The export contains `format: "beamling-export"`, `version: 1`, `exportedAt`, the account (id, Google subject, email, name, avatar URL, timestamps, `lastSeenAt`, accepted and current terms version), settings, credential metadata as returned by the Keys API, sessions (creation and expiry only), and every conversation with its decrypted messages and sources, oldest first. Provider keys, key ciphertext and session tokens are never included.
 
 ### 9.2 Validation and limits
 
@@ -912,6 +984,9 @@ Error envelope:
 | `POST /api/chat` | 30 per user/hour; 120 per hashed IP/hour |
 | `POST /api/conversations` | 120 per user/hour |
 | `POST /api/credentials` and credential validation | 20 per user/hour |
+| Provider key checks (validated create, revalidate) | 50 per user/day; 120 per hashed IP/hour |
+| `GET /api/account/export` | 5 per user/hour |
+| All authenticated mutations (non-GET/HEAD) | 300 per user/10 min, in addition to route limits |
 | All authenticated `GET` routes | 600 per user/10 min; 3,000 per hashed IP/10 min |
 | Login start | 60 per hashed IP/hour |
 | New accounts | `NEW_ACCOUNTS_PER_HOUR` across the deployment, default 200/hour |
@@ -924,9 +999,10 @@ All rate limits are fixed-window counters in PostgreSQL, updated atomically. A r
 ### 9.3 Same-origin and CSRF behavior
 
 - Any non-GET/HEAD request runs `assertSameOrigin`.
+- A `Sec-Fetch-Site` header with any value other than `same-origin` or `none` is rejected with `INVALID_ORIGIN` (403).
 - If an `Origin` header is present, its full origin must equal `APP_URL`. Proxy and `Host` headers are never used as the expected origin.
-- No `Origin` header means the check passes; the session cookie is `SameSite=Lax`, so a cross-site POST does not carry it.
-- There is no CSRF token; session cookies are `SameSite=Lax` and mutations require a same-origin `Origin` when present.
+- No `Origin` and no `Sec-Fetch-Site` header (non-browser clients) means the check passes; the session cookie is `SameSite=Lax`, so a cross-site POST does not carry it.
+- There is no CSRF token; session cookies are `SameSite=Lax` and mutations require same-origin fetch metadata and `Origin` when present.
 - `/api/auth/login` does not require a session; the callback requires the 10-minute transaction cookie.
 
 ### 9.4 Representative request and response
@@ -967,6 +1043,8 @@ A direct API call may omit `conversationId`; the server creates the conversation
 
 An unknown model returns `MODEL_NOT_ALLOWED`; an unknown search provider returns `INVALID_INPUT`. `defaultMode` is `quick`, `deep` or `deeper`.
 
+`analyticsOptOut` (boolean) records the account's objection to product analytics through its own path (`setAnalyticsOptOut`). Opting out, in one transaction, sets `settings.analytics_opt_out` and queues PostHog erasure of the account's distinct id in `analytics_erasures`; the route then makes a first erasure attempt. Opting back in clears the flag but leaves a pending erasure in place; capture resumes once it has finished. The whole patch is validated before anything is written, so a rejected request changes nothing. Both log an audit event (`analytics_opt_out` / `analytics_opt_in`). See §13.8.
+
 The selected model is used for planner, gap and answer calls in one run. It is stored on the assistant message. OpenRouter's resolved model and upstream provider are stored separately when reported.
 
 ---
@@ -986,7 +1064,9 @@ Errors are stable strings; the UI maps them to copy and actions.
 | `INVALID_ID` | Non-UUID route id | 400 |
 | `INVALID_CURSOR` | Bad pagination cursor | 400 |
 | `PAYLOAD_TOO_LARGE` | Body over 64 KB | 413 |
-| `INVALID_ORIGIN` | Cross-origin mutation | 403 |
+| `INVALID_ORIGIN` | Cross-origin mutation (`Origin` or `Sec-Fetch-Site`) | 403 |
+| `TERMS_REQUIRED` | Account has not accepted the current `LEGAL_VERSION` | 403 |
+| `TERMS_OUTDATED` | `POST /api/account/terms` with a version other than the current one | 409 |
 | `INVALID_PROVIDER` | Kind/provider mismatch | 400 |
 | `MODEL_NOT_ALLOWED` | Model outside allowlist | 400 |
 | `CREDENTIAL_MISSING` | No key for OpenRouter or the selected search provider | 400 |
@@ -998,22 +1078,25 @@ Errors are stable strings; the UI maps them to copy and actions.
 | `SEARCH_PLAN_MISSING` | Tavily key has no Search access (`432`) | 400 |
 | `QUOTA_EXCEEDED` | Tavily plan limit reached (`433`) | 402 |
 | `PROVIDER_RATE_LIMITED` | OpenRouter or the selected search provider `429` | 429 |
-| `PROVIDER_UNAVAILABLE` | Timeout, network failure or provider `5xx` | 502 |
+| `PROVIDER_UNAVAILABLE` | Timeout, network failure or provider `5xx` (502); KMS or transport failure while reading a key for revalidation (503) | 502 / 503 |
 | `SERVICE_BUSY` | The operator killswitch stopped new streams | 503 |
 | `PROVIDER_ERROR` | Other provider rejection | 502 |
 | `SEARCH_FAILED` | Every search failed | 502 |
 | `CONTEXT_TOO_LARGE` | OpenRouter says context is too long | 400 |
 | `GENERATION_IN_PROGRESS` | Another stream owns the conversation | 409 |
-| `SERVER_BUSY` | Global stream cap or lock timeout | 503 |
+| `SERVER_BUSY` | Global, Deeper or per-account stream cap, or lock timeout | 503 |
 | `RETRY_NOT_ALLOWED` | Retrying a non-latest or non-failed answer | 409 |
 | `RATE_LIMITED` | Beamling rate limit | 429 |
 | `SIGNUPS_PAUSED` | Hourly new-account cap reached (callback redirects to `/login?error=signups_paused`) | 429 |
+| `SERVICE_CLOSING` | New account while a shutdown is scheduled (callback redirects to `/login?error=service_closing`) | 403 |
+| `SERVICE_CLOSED` | Sign-in after the shutdown date (callback redirects to `/login?error=service_closed`) | 403 |
+| `MAIL_NOT_CONFIGURED` | Shutdown scheduled with `notify: true` but `SMTP_URL`/`MAIL_FROM` are unset | 409 |
 | `NOT_FOUND` / `CONVERSATION_NOT_FOUND` / `MESSAGE_NOT_FOUND` | Missing or not owned | 404 |
 | `INTERNAL` | Unhandled error | 500 |
 | `INTERRUPTED` | Stored when a stream is abandoned | — |
 | `GENERATION_TIMEOUT` | Stored when the time limit is reached | — |
 
-The UI maps `CREDENTIAL_MISSING`, `CREDENTIAL_INVALID`, `CREDENTIAL_UNREADABLE`, `BRAVE_PLAN_MISSING_SEARCH` and `MODEL_NOT_FOUND` to Settings; `UNAUTHENTICATED` to sign-in; most provider failures to retry. `GENERATION_TIMEOUT` and `INTERRUPTED` appear on the stopped/error answer card.
+The UI maps `CREDENTIAL_MISSING`, `CREDENTIAL_INVALID`, `CREDENTIAL_UNREADABLE`, `BRAVE_PLAN_MISSING_SEARCH` and `MODEL_NOT_FOUND` to Settings; `UNAUTHENTICATED` to sign-in; `TERMS_REQUIRED` to `/welcome`; most provider failures to retry. `GENERATION_TIMEOUT` and `INTERRUPTED` appear on the stopped/error answer card.
 
 `@/lib/api.ts` also synthesizes client-side codes: `NETWORK`, `TIMEOUT`, `STREAM_ENDED`, `REQUEST_FAILED` and `INVALID_RESPONSE`.
 
@@ -1178,29 +1261,33 @@ A `429` is retried once with the same short-wait policy as Brave.
 | Route | Current behavior |
 |---|---|
 | `/` | Public cinematic landing page with a scripted demo, feature cards, provider list, CTA to `/onboarding` or `/chat`, and the full legal footer |
-| `/login` | Google-only sign-in page; redirects to `/onboarding` or `/chat` after the callback. Sign-in start failures redirect back with `auth_unavailable` or `login_rate_limited` instead of returning JSON. |
+| `/login` | Google-only sign-in page; redirects to `/onboarding` or `/chat` after the callback. Sign-in start failures redirect back with `auth_unavailable` or `login_rate_limited` instead of returning JSON. Copy says the Terms and Privacy notice are accepted after sign-in and that Beamling is for people aged 18 and over. While a shutdown is scheduled it shows the closing date and that new accounts are no longer accepted; after the date it says Beamling has shut down and hides the sign-in button. `service_closing` and `service_closed` errors have their own copy. |
+| `/welcome` | Terms acceptance step (§4.1), not indexed. Signed-out visitors go to `/login`; accounts already on the current version go to `next`. Shows "Before you start" for a new account or "Updated terms" after a version change, three short points (AI-generated answers, the user's responsibility for provider keys and costs, encryption/export/deletion), an "I am at least 18" checkbox and an "I accept the Terms and have read the Privacy notice" checkbox, Accept and Sign out buttons, and a note that accounts that never accept are deleted after seven days. |
 | `/onboarding` | Account setup form: OpenRouter key, default model, search-provider picker and provider key, plus Brave plan/expiry/budget when Brave is selected; validates and saves, then routes to `/chat` |
-| `/chat` | New-question view; loads workspace state, conversation list and threads |
+| `/chat` | New-question view; loads workspace state, conversation list and threads. While a shutdown is scheduled, the layout shows an alert banner above the app with the closing date and a "Download my data" button that opens Settings → Account |
 | `/chat/[id]` | Conversation view; loads the newest 60 messages and supports earlier-message pagination |
-| `/privacy` | Privacy notice with controller, purposes, retention, international transfers, rights and the shared legal footer |
-| `/terms` | Alpha terms with IP, availability, liability, termination and governing law |
-| `/cookies` | Essential-cookie table; no analytics or advertising cookies |
-| `/subprocessors` | Current provider and subprocessor list |
-| `/security` | Security controls and vulnerability-disclosure route |
-| `/contact` | Operator identity and monitored privacy/security/abuse contact |
-| `/status` | Human-readable readiness for the app, database, schema and KMS |
-| `/licenses` | Generated open-source inventory from `packages/web/lib/generated/licenses.json`, with notices, license texts and the shared legal footer |
+| `/privacy` | Privacy notice (Art. 13/14 GDPR): controller with address and optional VAT id, no DPO; data categories with legal basis (account, acceptance record, session, content, credentials, usage, hashed-IP security metadata, logs, optional analytics with opt-out); Google account used to email essential service notices (no newsletters or marketing); Google account required; no solely automated decisions; not for under-18s; provider traffic under the user's own accounts; essential cookies only; retention list (conversations 60 days after their last question, pinned or not, at most 100 per account with the least recently used unpinned ones deleted first; account data until deletion; inactive accounts after 24 months, unaccepted accounts after 7 days, sessions 30 days idle / 90 days max, hashed IPs and counters up to one hour, logs `LEGAL_LOG_RETENTION_DAYS`, backups `LEGAL_BACKUP_RETENTION_DAYS`, analytics until opt-out or deletion; everything on the closing date if the service closes, announced at least 14 days ahead by email and in the interface); recipients and transfers (Frankfurt hosting, EU-US Data Privacy Framework or SCCs); rights under Art. 15–21 with the self-service Settings controls, one-month answer and the Garante complaint route; re-acceptance on material changes |
+| `/terms` | Alpha terms: operator identity, free service, 18+ (or local age of majority), acceptance on first use and on material change, user responsibility for provider keys and costs, data loss and export, storage limits (60-day conversation expiry, 100 conversations per account, warning near the cap), acceptable use (illegal content, harassment, IP and privacy infringement, malware, EU AI Act Art. 5 practices, professional advice, foreign keys, scraping, resale), AI-generated answers, content ownership and MIT-licensed source (name and logo not licensed), as-is availability without affecting consumer rights, liability limits that never exclude wilful misconduct or gross negligence (Art. 1229 Italian Civil Code) or Consumer Code liability, suspension with notice and a chance to export, 24-month inactive deletion, closure of the service with at least 14 days' notice by email and in the interface (no new accounts meanwhile, export still possible, every account deleted on the date), email only for essential service notices, DSA reports and contact point, `LEGAL_GOVERNING_LAW` with consumer forum (Art. 66-bis Consumer Code) |
+| `/cookies` | Essential-cookie table (session: 30 days without use, at most 90 days after sign-in); no analytics or advertising cookies |
+| `/subprocessors` | "Data processors" page in two tables with purpose, location and privacy-policy link: processors that run Beamling under a DPA (Fly.io, Neon, Google Cloud KMS, optional PostHog Cloud, and an email row named by `LEGAL_MAIL_PROVIDER` when set) and providers the user chooses with their own account (Google sign-in, OpenRouter, Brave, Tavily, Exa) |
+| `/security` | Security controls, session lifetime, audit events, `security.txt` link and a vulnerability-disclosure policy with a good-faith safe harbor |
+| `/contact` | Operator identity, address and optional VAT id; monitored privacy/security/abuse contact; DSA single point of contact (Art. 11–12, English) and how to report illegal content |
+| `/status` | Human-readable readiness for the app, database, schema and KMS; a scheduled shutdown date (or that the service has shut down) above it |
+| `/licenses` | States that Beamling is open source under the MIT License with a link to the source repository, then the generated third-party inventory from `packages/web/lib/generated/licenses.json`, with notices, license texts and the shared legal footer |
+| `/.well-known/security.txt` | RFC 9116 security contact (§9.1) |
 | `/api/health` | Cached readiness: database, schema and KMS |
 | `/api/live` | DB-free liveness probe |
 | `/robots.txt` | Allows `/`, disallows `/chat`, `/onboarding`, `/api/` |
 
 The Next.js metadata base and the landing demo host are derived from `APP_URL`, so metadata, canonical URLs and the visible demo follow the deployed origin.
 
+Legal pages read the operator details from `legalDetails()` and the dates from `LEGAL_LAST_UPDATED`. The source repository URL is `SOURCE_URL` in `lib/legal.ts`.
+
 ### 12.2 Client state
 
 `StoreProvider` owns the account:
 
-- Loads `/api/state` on mount; a 401 redirects to `/login`.
+- Loads `/api/state` on mount; a 401 redirects to `/login`. Any API response with `TERMS_REQUIRED` replaces the page with `/welcome?next=<current path>`.
 - Keeps user, conversation summaries, conversation count, settings, credentials and per-conversation thread state.
 - Loads a thread lazily when a conversation route mounts.
 - Merges a refreshed newest page with earlier pages already loaded, dropping provisional copies and preserving local failures.
@@ -1238,12 +1325,12 @@ The Next.js metadata base and the landing demo host are derived from `APP_URL`, 
 
 - Header: conversation title, mode, selected model name, selected search-provider label, source-count button, account avatar.
 - Answer cards show **Searches** (query, status, result count) and **Model reasoning** as `<details>` panels, collapsed by default. The same panels appear live while the answer streams.
-- Sidebar: title search over loaded pages, a Pinned section, Today/Yesterday/Previous groups in UTC, exact-title links, per-conversation pin/unpin and delete confirmation, “Show older conversations” pagination, Settings entry, signed-in email and sign-out.
+- Sidebar: title search over loaded pages, a Pinned section, Today/Yesterday/Previous groups in UTC, exact-title links, per-conversation pin/unpin and delete confirmation, “Show older conversations” pagination, a retention note ("Chats are deleted 60 days after their last message"), which from 90 conversations also shows "N of 100 chats. New chats replace the oldest unpinned ones." as a highlighted status, Settings entry, signed-in email and sign-out.
 - Thread: user bubbles, answer cards, a working answer card, earlier-message button, empty state, not-found state, load-error state.
-- Composer: auto-growing textarea up to 190 px, Enter sends, Shift+Enter inserts a newline, Quick/Deep/Deeper segmented control, model badge, search-provider selector and Stop button while busy. Providers without a saved key are listed as "· no key". Sending is not blocked on the client, whose credential list can be stale; the server's `CREDENTIAL_MISSING` shows the "Key needed" card.
+- Composer: auto-growing textarea up to 190 px, Enter sends, Shift+Enter inserts a newline, Quick/Deep/Deeper segmented control, model badge, search-provider selector and Stop button while busy. Providers without a saved key are listed as "· no key". The hint under the composer reads "Answers are AI-generated with your keys and can be wrong — check the sources." Sending is not blocked on the client, whose credential list can be stale; the server's `CREDENTIAL_MISSING` shows the "Key needed" card.
 - Source panel: desktop right-hand pane; mobile bottom sheet with focus trap; source count, provider badge, title/domain/date/snippet/link. The badge comes from the answer’s stored provider.
 - Tables render with a header, alignment and horizontal scrolling; the parser also handles headings, lists, quotes, code fences, links and citations.
-- Answer card: streamed markdown, citation buttons, model/search-provider/resolved-provider badges, usage line, copy button, sources button, stopped/error/uncited/no-sources/truncated/degraded/partial-search notices, retry button for the latest failed or stopped answer.
+- Answer card: streamed markdown, citation buttons, an "AI-generated" badge, model/search-provider/resolved-provider badges, usage line, copy button, sources button, stopped/error/uncited/no-sources/truncated/degraded/partial-search notices, retry button for the latest failed or stopped answer.
 - Working answer: mascot, stage label, real detail string, skeleton or streaming body, Stop button.
 - Stop: the composer switches to a stop control; the client asks the server to stop, waits for confirmation, and keeps the partial answer.
 
@@ -1264,7 +1351,7 @@ Settings is a modal with three keyboard-navigable tabs:
 |---|---|
 | Keys | Add/replace/validate/delete OpenRouter, Brave, Tavily and Exa credentials; optional save without validation for Brave and Exa; masked last four, status, Brave plan, declared expiry/budget, estimated spend and warnings; edit Brave limits |
 | Defaults | Default mode (Quick/Deep/Deeper), OpenRouter model select, default search provider (Brave/Tavily/Exa) |
-| Account | Google name/email, conversation and credential counts, session explanation, sign out, sign out everywhere, delete account with typed `DELETE` |
+| Account | Google name/email, conversation and credential counts, session explanation (30 days without use, 90 days after sign-in), sign out, sign out everywhere; "Your data" card with **Download my data** (`GET /api/account/export`) and an **Exclude me from product analytics** checkbox (`PATCH /api/settings { analyticsOptOut }`); delete account with typed `DELETE`; link to the accepted terms and privacy notice |
 
 Deleting the account hard-deletes server data and the wrapped workspace key, clears the client store and session cookie, and routes to `/`.
 
@@ -1276,7 +1363,7 @@ The root page is static marketing content rendered per request so the CSP nonce 
 - Hero and mascot.
 - A scripted, replayable demo that cycles through queued/searching/reading/writing/done; it is not a live provider call.
 - Stats, three-step explanation, three feature cards, provider pills.
-- Footer with Privacy, Terms, Cookies, Subprocessors, Security, Contact and Licenses, “Keys encrypted at rest” and “No training by Beamling.”
+- Footer with Privacy, Terms, Cookies, Data processors, Security, Status, Contact and Licenses, “Keys encrypted at rest” and “No training by Beamling.”
 - `prefers-reduced-motion` skips the demo animation.
 
 ### 12.7 Accessibility and responsive behavior
@@ -1289,7 +1376,7 @@ The root page is static marketing content rendered per request so the CSP nonce 
 - Focus-visible outlines are defined globally.
 - Streaming animation respects reduced motion in the mascot and landing demo.
 - Touch targets and 360 px layout are handled by the responsive CSS.
-- The E2E suite runs axe-core on `/`, `/chat`, `/onboarding`, `/privacy`, `/terms` and `/licenses` and fails on serious or critical violations.
+- The E2E suite runs axe-core on `/`, `/chat`, `/onboarding`, `/welcome`, `/privacy`, `/terms`, `/licenses`, `/cookies`, `/subprocessors`, `/security`, `/status` and `/contact` and fails on serious or critical violations.
 
 ---
 
@@ -1318,9 +1405,10 @@ frame-ancestors 'none'
 - Global headers: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Resource-Policy: same-origin`, `Origin-Agent-Cluster: ?1`, `X-Permitted-Cross-Domain-Policies: none`, `Referrer-Policy: strict-origin-when-cross-origin`, restrictive `Permissions-Policy`, and HSTS. Production CSP adds `upgrade-insecure-requests`.
 - `poweredByHeader` is disabled.
 - Authenticated API responses are private and vary on Cookie.
-- Mutations check Origin when present against the configured `APP_URL` origin, never a client-supplied host. The session cookie is HttpOnly and SameSite=Lax.
+- Mutations reject a cross-site `Sec-Fetch-Site` and check Origin when present against the configured `APP_URL` origin, never a client-supplied host. The session cookie is HttpOnly and SameSite=Lax.
 - OIDC login uses state, nonce and PKCE; the callback rejects replayed or expired transaction cookies.
 - The session cookie uses the `__Host-` prefix when Secure is enabled, which requires host-only scope, path `/`, and Secure.
+- Sessions have a 30-day idle expiry and a 90-day absolute lifetime; signing in revokes the browser's previous session (§4).
 
 ### 13.2 Input and output
 
@@ -1338,7 +1426,8 @@ frame-ancestors 'none'
 ### 13.3 Provider-key handling
 
 - Keys are never logged, stored in browser state, or returned after creation.
-- Only encrypted rows, a keyed fingerprint and the last four characters are stored.
+- Only encrypted rows, a keyed fingerprint and the last four characters (only for keys of at least 20 characters) are stored.
+- Key checks against providers are capped per account per day and per IP per hour (§5.3).
 - Decryption is scoped to the authenticated user's row and AAD.
 - The provider key is held in memory only for the request that needs it.
 - The KMS adapter is selected by `KMS_PROVIDER`; production refuses to boot without the configured KMS key.
@@ -1347,9 +1436,9 @@ frame-ancestors 'none'
 ### 13.4 Rate limiting and concurrency
 
 - Fixed-window counters in `rate_limits` use one atomic insert-or-update.
-- Login starts, chat, conversation creation, credentials and reads have separate keys and limits.
+- Login starts, chat, conversation creation, credentials, key validation, exports, reads and writes have separate keys and limits. Every authenticated mutation counts against a global 300 per user per 10 minutes.
 - IP keys are keyed-HMACed with a subkey derived from `AUTH_SECRET`; raw addresses are not stored and a database dump cannot enumerate them.
-- The global stream cap is enforced inside a transaction-scoped advisory lock and counts committed streaming rows across all instances. A per-account cap (`MAX_CONCURRENT_CHATS_PER_USER`, default 2) prevents one account from occupying every slot.
+- The global stream cap is enforced inside a transaction-scoped advisory lock and counts committed streaming rows across all instances. A per-account cap (`MAX_CONCURRENT_CHATS_PER_USER`, default 2) prevents one account from occupying every slot, and Deeper answers may hold at most half of the global slots.
 - Signup enforcement is `open`, `allowlist` or `paused`; production defaults to allowlist, and open mode also has per-IP and global buckets.
 - Rate-limit windows, stale-stream detection and cleanup use PostgreSQL time where the decision is shared across instances.
 - A second stream in one conversation is blocked by a partial unique index, not by process memory.
@@ -1366,11 +1455,28 @@ frame-ancestors 'none'
 - Unknown errors return `INTERNAL` with a generic message; details stay in server logs.
 - The API never returns stack traces.
 - Provider responses that echo user content are encrypted in `messages.error_message`; the fixed `INTERRUPTED` message is plaintext.
+- `lib/server/audit.ts` writes security audit events to the structured log as `audit` lines with the event name, a keyed hash of the user id (`hmacToken`), the keyed client-IP hash and a few scalar fields. Content, keys and email addresses are never passed. Events:
+
+| Event | Logged by | Fields |
+|---|---|---|
+| `sign_in` | OIDC callback | `newAccount` |
+| `sign_out_all` | `POST /api/auth/logout?scope=all` | — |
+| `terms_accepted` | `POST /api/account/terms` | `version` |
+| `credential_saved` | `POST /api/credentials` | `credentialId`, `provider`, `replaced` |
+| `credential_deleted` | `DELETE /api/credentials/:id` | `credentialId` |
+| `data_exported` | `GET /api/account/export` | — |
+| `analytics_opt_out` / `analytics_opt_in` | `PATCH /api/settings` | — |
+| `account_deleted` | `DELETE /api/account` | — |
+| `inactive_account_deleted` | Cleanup (§6.6) | — |
+| `shutdown_scheduled` | `POST /api/internal/shutdown` | `scheduledAt` |
+| `shutdown_cancelled` | `POST /api/internal/shutdown` | — |
+| `shutdown_account_deleted` | Shutdown run after the closing date (§6.7) | — |
+| `internal_auth_failed` | Kill, metrics or shutdown endpoint with a wrong or missing bearer | `endpoint` |
 
 ### 13.6 Supply chain and release checks
 
 - CI runs `pnpm audit --prod --audit-level high` and a Gitleaks history scan on every push and pull request.
-- GitHub Actions are pinned to full commit SHAs, and the runtime base image is pinned to a multi-arch digest. Dependency install uses `--ignore-scripts`; the mascot package build is explicit.
+- GitHub Actions are pinned to full commit SHAs, the CI PostgreSQL service image is pinned to a digest, and the runtime base image is pinned to a multi-arch digest. `actions/checkout` runs with `persist-credentials: false` in the test and deploy jobs, so the token is not left in `.git/config` while tests, the build and Playwright run third-party code. Dependency install uses `--ignore-scripts`; the mascot package build is explicit.
 - The release job records the pushed GHCR digest; deploy uses that digest and verifies `/api/health` afterward.
 - Dependabot checks npm, GitHub Actions and Docker weekly.
 - The built image is scanned separately; the current image has no HIGH, CRITICAL or MEDIUM findings after removing the npm/corepack trees and applying Alpine security updates.
@@ -1381,7 +1487,10 @@ frame-ancestors 'none'
 - Deleting a conversation cascades to messages and sources.
 - Deleting an account cascades to sessions, the workspace data key, credentials, usage, settings, conversations, messages and sources, and removes the user's rate-limit keys.
 - Local active chats are aborted; remote instances stop on the next poll.
-- The cleanup job removes expired sessions, counters, stale provider slots and empty conversations older than one hour; accounts are retained for a future Google sign-in.
+- The cleanup job removes expired sessions, counters, stale provider slots, empty conversations older than one hour and conversations inactive for 60 days, and deletes accounts unused for 24 months or never accepted after 7 days (§6.6).
+- Creating a conversation beyond 100 deletes the least recently active unpinned ones (§6.5).
+- After a scheduled shutdown date every account is deleted through the same path as a user deletion (§6.7).
+- `GET /api/account/export` gives the user a full JSON copy of their stored data (Art. 15 and 20 GDPR) without provider keys or session tokens (§9.1).
 - There is no soft-delete or recovery path.
 - When PostHog deletion is configured, account deletion also erases the PostHog person through a durable queue in `analytics_erasures`, which holds only the HMAC distinct id. Deletion settings do not depend on `ANALYTICS_ENABLED` or the ingestion token; a partial deletion configuration is a production boot error.
   - The row and the account deletion commit in one transaction, so a failed deletion does not erase a live account's analytics and a successful deletion cannot lose the erasure.
@@ -1401,6 +1510,7 @@ Analytics is disabled unless `ANALYTICS_ENABLED=true` and the full PostHog confi
 - Events are best-effort: at most eight requests are in flight, each has a 2-second timeout, failures are dropped and logged without payloads, and there are no retries that block a request.
 - Erasure calls PostHog's `bulk_delete` endpoint with `delete_events` and `delete_recordings`; a non-2xx response or any `deletion_errors` counts as a failure. The personal key and project id never enter the browser.
 - Local and test environments remain silent because the flag is opt-in. Production refuses to start with an incomplete enabled configuration.
+- Per-account objection: before sending, `capture` asks `analyticsExcluded`, which is true when `settings.analytics_opt_out` is set or an `analytics_erasures` row is pending for the account's distinct id, and drops the event. A failing check also drops the event. The answer is cached per process for 60 seconds (at most 10,000 accounts) so analytics adds no query per event; the instance that records a change drops its cached answer at once, other instances may capture for up to 60 seconds, and the erasure's confirming pass an hour later removes those events. Opting out queues erasure of events already linked to the account (§9.5).
 
 ---
 
@@ -1497,7 +1607,7 @@ Migrations are a release step, not an app-start side effect. The local compose `
 `fly.toml` describes the production topology: one shared-CPU 1 GB machine in `fra`, scale-to-zero, a 20-second shutdown window, HTTP health checks on `/api/health`, and the migration release command.
 
 - Production deploys are gated by the repository variable `FLY_DEPLOY_ENABLED=true`. When a new version tag is created, the `deploy` job in `ci.yml` installs pinned flyctl `0.4.120` and deploys the GHCR digest produced by the release job.
-- Required Fly secrets: `DATABASE_URL`, `AUTH_SECRET`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `KMS_KEY_NAME`, `GCP_KMS_CREDENTIALS`, `KILL_SWITCH_SECRET`, `METRICS_SECRET`, `LEGAL_ENTITY`, `LEGAL_CONTACT_EMAIL` and, when analytics is enabled, the PostHog values.
+- Required Fly secrets: `DATABASE_URL`, `AUTH_SECRET`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `KMS_KEY_NAME`, `GCP_KMS_CREDENTIALS`, `KILL_SWITCH_SECRET`, `METRICS_SECRET`, `LEGAL_ENTITY`, `LEGAL_ADDRESS`, `LEGAL_CONTACT_EMAIL` and, when analytics is enabled, the PostHog values. Optional: `LEGAL_VAT_ID`, and `LEGAL_LOG_RETENTION_DAYS`/`LEGAL_BACKUP_RETENTION_DAYS` when the Fly log or Neon backup retention differs from the 30/7-day defaults; `SMTP_URL`, `MAIL_FROM` and `LEGAL_MAIL_PROVIDER` to email a shutdown notice.
 - `SIGNUP_MODE=allowlist` is the Fly default. Set `SIGNUP_MODE=open` explicitly to open public registration, or add `SIGNUP_ALLOWED_EMAILS`/`SIGNUP_ALLOWED_EMAIL_DOMAINS`.
 - The public smoke URL comes from the repository variable `PUBLIC_APP_URL` (falling back to `https://beamling.app`).
 - `GCP_KMS_CREDENTIALS` is the service-account JSON. It lets the GCP client run on a host with no credentials file; Application Default Credentials remain the fallback.
@@ -1522,18 +1632,20 @@ Migrations are a release step, not an app-start side effect. The local compose `
 - `POST /api/internal/kill` changes the flag with a Bearer `KILL_SWITCH_SECRET` and an optional reason. It never auto-re-enables.
 - `/api/chat` reads the flag before parsing the question or starting work. When closed, it returns 503 `SERVICE_BUSY` with `Retry-After: 60`; existing streams are not aborted.
 - `GET /api/internal/metrics` requires a Bearer `METRICS_SECRET` and returns the flag, active stream count, configured stream cap and build identity.
-- A missing or short secret disables its endpoint (404) and logs a production startup warning. A wrong bearer token returns 401. Neither endpoint uses a session or the public read limiter.
+- `GET`/`POST /api/internal/shutdown` (Bearer `KILL_SWITCH_SECRET`) shows, schedules or cancels a service shutdown (§6.7, §14.10).
+- A missing or short secret disables its endpoint (404) and logs a production startup warning. A wrong bearer token returns 401 and logs an `internal_auth_failed` audit event. The bearer is compared as SHA-256 digests with `timingSafeEqual`, so the comparison is constant-time and does not reveal the secret's length. None of these endpoints uses a session or the public read limiter.
 - `.github/workflows/watchdog.yml` probes `/api/live`, `/api/health` and `/` every five minutes. Failure notifies GitHub and, when `WATCHDOG_WEBHOOK_URL` is configured, an operator webhook.
 - There is no bundled error-tracking service; Sentry/Better Stack remain operator choices.
 
 ### 14.9 License inventory
 
 - `scripts/licenses.mjs` reads `pnpm licenses list --prod --json`, strips local paths, evaluates SPDX expressions and writes `packages/web/lib/generated/licenses.json`.
-- The script rejects any license outside `0BSD`, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MIT and OFL-1.1. The only exception is `caniuse-lite` under CC-BY-4.0, recorded with its attribution in the generated data.
+- The script rejects any license outside `0BSD`, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MIT, MIT-0 and OFL-1.1. The only exception is `caniuse-lite` under CC-BY-4.0, recorded with its attribution in the generated data.
 - Each package keeps its name, versions, license, homepage, copyright or NOTICE text. The page also renders one full license text per license expression.
 - `pnpm licenses:check` fails CI when the committed inventory is stale or a dependency adds an unreviewed license.
 - Sharp is excluded from optional dependencies and Next image optimization is disabled because the app does not use `next/image`; this keeps the LGPL libvips binary out of the production image.
-- The landing, sign-in and legal pages share a small legal footer with Privacy, Terms, Cookies, Subprocessors, Security, Status, Contact and Licenses.
+- The landing, sign-in, welcome and legal pages share a small legal footer with Privacy, Terms, Cookies, Data processors, Security, Status, Contact and Licenses, and the line "Beamling is open source under the MIT License".
+- Beamling itself is MIT-licensed: the root `LICENSE` file ("Copyright (c) 2026 Beamling contributors") and `"license": "MIT"` in the root, web and mascot `package.json` files.
 
 ## 15. Tests
 
@@ -1542,9 +1654,9 @@ The repository contains four layers.
 | Suite | Count | Coverage |
 |---|---|---|
 | `packages/mascot/test/geometry.test.mjs` | 6 | Eye/beam geometry, expressions, state mapping |
-| `packages/web/tests/unit.test.ts` | 52 | KMS-backed credential encryption/rotation, model allowlist, Brave/Tavily/Exa/OpenRouter mapping, 429 retry, network vs abort, citations, ranking, freshness, language, prompt injection, client IP HMAC, same-origin anchors, production config and PostHog host rules, analytics allowlist/identity/delivery/deletion/kill-switch deletion/shared client, erasure backoff, Tavily free validation, body limits, provider-safe log redaction, fail-closed plaintext reads, malformed provider bodies, missing OpenRouter completion markers, PostHog deletion behind the kill switch |
-| `packages/web/tests/integration.test.ts` | 32 | Database-backed account persistence, content encryption, Quick/Deep/Deeper, the Deeper AI SDK tool loop, planner repair/degrade, partial search, missing keys, selected-provider persistence and cost, no fallback, one stream per conversation, global concurrency, lock timeout, stop flag, mid-answer delete, timeout, NUL, retry, stale repair, pinned ordering, pagination, session cleanup, rate limits, Brave spacing, key replacement, unverified keys, the analytics erasure queue, the new-stream flag, per-account concurrency, empty-conversation cleanup, interrupted-terminal race |
-| `packages/web/e2e/*.spec.ts` | 37 | 11 API checks, 15 UI flows and 11 public-route variants for CSP and axe; Quick checks search details, reasoning and tables, provider selection checks Tavily and marks a provider without a key, an Exa key is saved unvalidated and checked later, the killswitch rejects new streams and metrics stay secret-protected, the license page and its footer links resolve, Deeper checks the third mode, and sidebar checks pinning and title search |
+| `packages/web/tests/unit.test.ts` | 57 | KMS-backed credential encryption/rotation, workspace-key re-wrap by the rotation script, integrity vs KMS-outage decryption errors, hidden last four for short keys, analytics dropped for opted-out accounts, model allowlist, Brave/Tavily/Exa/OpenRouter mapping, 429 retry, network vs abort, citations, ranking, freshness, language, prompt injection, client IP HMAC, same-origin anchors, production config and PostHog host rules, analytics allowlist/identity/delivery/deletion/kill-switch deletion/shared client, erasure backoff, Tavily free validation, body limits, provider-safe log redaction, fail-closed plaintext reads, malformed provider bodies, missing OpenRouter completion markers, PostHog deletion behind the kill switch, English shutdown notice with date and export instructions |
+| `packages/web/tests/integration.test.ts` | 38 | Database-backed account persistence, inactive/unaccepted account cleanup, data export (decrypted content, no key material), analytics opt-out with queued erasure, content encryption, Quick/Deep/Deeper, the Deeper AI SDK tool loop, planner repair/degrade, partial search, missing keys, selected-provider persistence and cost, no fallback, one stream per conversation, global concurrency, lock timeout, stop flag, mid-answer delete, timeout, NUL, retry, stale repair, pinned ordering, pagination, session cleanup, rate limits, Brave spacing, key replacement, unverified keys, the analytics erasure queue, the new-stream flag, per-account concurrency, empty-conversation cleanup, interrupted-terminal race, 100-conversation cap dropping unpinned ones first, 60-day conversation expiry for pinned and unpinned, scheduled shutdown that notifies each account once and deletes every account on the date |
+| `packages/web/e2e/*.spec.ts` | 44 | 15 API checks, 18 UI flows and 11 public-route variants for CSP and axe; the terms gate refuses the API until acceptance and a new account accepts on `/welcome`, data export and analytics opt-out work, `security.txt` is served, only Brave and Exa keys skip validation; Quick checks search details, reasoning and tables, provider selection checks Tavily and marks a provider without a key, an Exa key is saved unvalidated and checked later, the killswitch rejects new streams and metrics stay secret-protected, the license page and its footer links resolve, Deeper checks the third mode, sidebar checks pinning and title search, and a scheduled shutdown is announced in the app, at sign-in and on the status page |
 
 Commands:
 
@@ -1571,6 +1683,11 @@ The Playwright suite checks:
 - Pages carry a nonce-based CSP and all script tags use the nonce.
 - Conversation pagination and cursor rejection, including pinned ordering across pages.
 - Account deletion clears the cookie.
+- An account that has not accepted the current terms gets `TERMS_REQUIRED` from the API but can still export its data; acceptance without the age confirmation is rejected and a stale version gets `TERMS_OUTDATED`.
+- A new account is sent to `/welcome`, must tick both checkboxes, and then reaches the app.
+- An account can download its data export and opt out of analytics.
+- `/.well-known/security.txt` names a contact, a policy and a future expiry.
+- `validate: false` is refused for an OpenRouter key.
 - The killswitch rejects new streams with `SERVICE_BUSY`/`Retry-After`, requires the kill secret, and keeps metrics behind their separate secret.
 - The generated license page lists production packages, and its footer links resolve.
 - Onboarding preserves saved model and mode; settings accepts a launch provider and rejects an unknown one.
@@ -1583,7 +1700,8 @@ The Playwright suite checks:
 - Failures before storage can be retried as a new question.
 - Deletion of an active conversation returns to a new question.
 - Older conversations load on demand.
-- Public routes have no CSP violations or serious/critical axe violations.
+- A scheduled shutdown shows its banner in the app, the date and closed sign-up on `/login`, and the date on `/status`.
+- Public routes and `/welcome` have no CSP violations or serious/critical axe violations.
 
 ---
 
@@ -1591,18 +1709,18 @@ The Playwright suite checks:
 
 | Capability | Implementation |
 |---|---|
-| Accounts | Google-only OIDC, one account per Google subject |
-| Session management | Opaque token, SHA-256 at rest, 30-day sliding expiry, renewal, sign-out |
+| Accounts | Google-only OIDC, one account per Google subject, versioned terms acceptance with 18+ confirmation |
+| Session management | Opaque token, SHA-256 at rest, 30-day sliding expiry capped at 90 days, previous-session revocation on sign-in, sign-out |
 | Provider credentials | OpenRouter + Brave/Tavily/Exa, validated, KMS-encrypted, replaceable, deletable, revalidatable |
 | Credential limits | Brave Free/Paid plan, declared expiry and budget, estimated spend and warnings |
-| Key rotation | KMS key rotation; env adapter supports previous-key list + re-wrap script |
+| Key rotation | KMS key rotation with lazy re-wrap of workspace and credential keys; env adapter supports previous-key list + re-wrap script for credential and workspace keys |
 | Quick answers | One search on the selected provider, cited streamed answer |
 | Deep answers | Planner, 3–5 sub-queries, bounded concurrent search, optional gap pass, cited report |
 | Deeper answers | AI SDK `ToolLoopAgent`, selected-provider search tool, adaptive rounds, 60-search/60-source cap, long cited report |
 | Retrieval | Brave, Tavily or Exa snippets selected per answer, freshness filter, Brave per-key spacing, 429 retry |
 | Source quality | URL validation, snippet requirement, canonical dedupe, site diversity, stable numbering |
 | Citations | Streamed `[n]` parsing, sanitization, click-to-source, uncited warning |
-| Conversation history | Create, open, title, paginate, delete |
+| Conversation history | Create, open, title, paginate, delete; 100 per account (oldest unpinned trimmed), deleted 60 days after last activity, sidebar notice and warning from 90 |
 | Message history | 60-message pages, earlier pages, source attachment |
 | Streaming | SSE stages, progress, sources, deltas, citations, usage, done/error; heartbeat |
 | Cancellation | Local and cross-instance stop, partial text kept, timeout and shutdown handling |
@@ -1612,8 +1730,11 @@ The Playwright suite checks:
 | Reasoning transparency | Provider-supplied reasoning, persisted encrypted and collapsed by default |
 | Markdown | Tables in addition to headings, lists, quotes, code and citations |
 | Settings | Default model, default search provider, default mode, keys and limits, account |
-| Account deletion | Immediate hard delete of the account, workspace key, content and credentials |
-| Rate limits | Login, chat, conversations, credentials, reads; per-account and per-IP |
+| Account deletion | Immediate hard delete of the account, workspace key, content and credentials; automatic deletion after 24 months of inactivity or 7 days without terms acceptance |
+| Data rights | Self-service JSON export, analytics objection with erasure, account deletion |
+| Service shutdown | Operator-scheduled closure with at least 14 days' notice: an English email to every account, in-app/login/status banner, no new sign-ups, then deletion of every account |
+| Legal | Privacy notice, terms, cookies, data processors, security policy, DSA contact, `security.txt`, MIT license |
+| Rate limits | Login, chat, conversations, credentials, key validation, exports, reads, writes; per-account and per-IP |
 | Encryption | KMS-wrapped workspace keys, AES-256-GCM content and credential encryption |
 | Local parity | Caddy HTTPS, Dex OIDC, LocalStack KMS, TLS PostgreSQL, production image |
 | Concurrency control | Global cap + one streaming answer per conversation, database-enforced |
@@ -1624,9 +1745,9 @@ The Playwright suite checks:
 | Persistence | PostgreSQL 18, Drizzle schema, forward-only migration ledger |
 | Local deployment | Docker Compose app + PostgreSQL, standalone image, build identity, health check, graceful shutdown |
 | Production deploy config | `fly.toml`, gated Fly deploy job, GCP service-account secret support; no live deployment yet |
-| Killswitch | Database flag, chat gate, internal kill/metrics endpoints; watchdog remains target |
-| Observability | Structured JSON logs, versioned health endpoint, build identity in the UI, optional server-side PostHog events |
-| Analytics | Opt-in server-side PostHog events with allowlisted metadata, HMAC ids, kill switch and deletion cleanup |
+| Killswitch | Database flag, chat gate, internal kill/metrics/shutdown endpoints, GitHub Actions watchdog |
+| Observability | Structured JSON logs, security audit events, versioned health endpoint, build identity in the UI, optional server-side PostHog events |
+| Analytics | Opt-in server-side PostHog events with allowlisted metadata, HMAC ids, per-account opt-out, kill switch and deletion cleanup |
 | Testing | Unit, integration, E2E and mascot geometry suites |
 
 ### 14.10 Incident runbook
@@ -1637,4 +1758,11 @@ The Playwright suite checks:
 - **Database pressure:** check the active-stream count in `/api/internal/metrics`, the pool size and Fly connection limits. Keep `MAX_CONCURRENT_CHATS` below `PLATFORM_CONNECTION_LIMIT`.
 - **PostHog erasure failures:** query `analytics_erasures` ordered by `next_attempt_at`; failures are retried with backoff and logged after five attempts with a truncated distinct-id prefix.
 - **Rollback:** list releases with `flyctl releases`, then deploy the previous image digest with `flyctl deploy --image <digest>`. Migrations are forward-only; restore from a backup if a schema change must be undone.
+- **Shutting the service down:**
+  1. Configure mail: set `SMTP_URL` (`smtps://` or `smtp://` with STARTTLS), `MAIL_FROM` and `LEGAL_MAIL_PROVIDER` (so `/subprocessors` names the provider), and deploy. `GET /api/internal/shutdown` reports `mailConfigured`.
+  2. Schedule: `POST /api/internal/shutdown` with `Authorization: Bearer $KILL_SWITCH_SECRET` and `{ "action": "schedule", "days": 14, "reason": "..." }` (`days` at least 14). Without mail the call returns `MAIL_NOT_CONFIGURED`; `notify: false` schedules without email (banner only). Sign-ups stop and the banner appears at once; notices start immediately and the 15-minute cleanup job resumes them.
+  3. Monitor `GET /api/internal/shutdown` until `notified` equals `accounts`; `Shutdown notice could not be sent` errors in the log mean SMTP failures, retried on the next tick. `{ "action": "cancel" }` stops everything before the date; rescheduling re-sends the notice to every account.
+  4. After the date the cleanup job deletes every account (`shutdown_account_deleted` audit events, `Service shutdown deleted accounts` warning); wait until `accounts` is 0 and the PostHog erasure queue is empty.
+  5. Destroy the KMS key (all versions). This crypto-shreds the wrapped workspace and credential keys, so content and keys in database backups become unreadable.
+  6. Remove the Fly app, the Neon project and its backups, DNS and remaining secrets.
 - **Watchdog:** `.github/workflows/watchdog.yml` runs every five minutes and can be triggered manually. Set `WATCHDOG_WEBHOOK_URL` for operator notification. Sentry/Better Stack are optional operator choices, not bundled dependencies.

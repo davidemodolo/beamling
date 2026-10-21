@@ -19,7 +19,7 @@ export function useSidebar() {
   return useContext(SidebarContext);
 }
 
-function Frame({ children }: { children: ReactNode }) {
+function Frame({ children, notice }: { children: ReactNode; notice?: string }) {
   const { user, error } = useStore();
   const [open, setOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -39,18 +39,34 @@ function Frame({ children }: { children: ReactNode }) {
     [],
   );
 
+  const shell = (
+    <div className="app-shell">
+      <Sidebar />
+      {error && !user ? (
+        <main className="main-pane" id="main">
+          <WorkspaceError message={error} />
+        </main>
+      ) : (
+        children
+      )}
+    </div>
+  );
+
   return (
     <SidebarContext.Provider value={value}>
-      <div className="app-shell">
-        <Sidebar />
-        {error && !user ? (
-          <main className="main-pane" id="main">
-            <WorkspaceError message={error} />
-          </main>
-        ) : (
-          children
-        )}
-      </div>
+      {notice ? (
+        <div className="app-noticed">
+          <div className="service-notice" role="alert">
+            {notice}{" "}
+            <button type="button" onClick={() => value.openSettings("account")}>
+              Download my data
+            </button>
+          </div>
+          {shell}
+        </div>
+      ) : (
+        shell
+      )}
       {open ? (
         <>
           <button type="button" className="overlay" aria-label="Close menu" onClick={closeDrawer} tabIndex={-1} />
@@ -67,11 +83,12 @@ function Frame({ children }: { children: ReactNode }) {
   );
 }
 
-export function ChatShell({ children }: { children: ReactNode }) {
+/** `notice` is a deployment-wide message shown above the app, such as a scheduled shutdown. */
+export function ChatShell({ children, notice }: { children: ReactNode; notice?: string }) {
   return (
     <StoreProvider>
       <AnswerStreamsProvider>
-        <Frame>{children}</Frame>
+        <Frame notice={notice}>{children}</Frame>
       </AnswerStreamsProvider>
     </StoreProvider>
   );

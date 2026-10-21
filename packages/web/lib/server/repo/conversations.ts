@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, count, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
 import { CONVERSATION_PAGE_SIZE, DEFAULT_CONVERSATION_TITLE, MESSAGE_PAGE_SIZE } from "../../data";
+import { CONVERSATION_RETENTION_DAYS, MAX_CONVERSATIONS } from "../../legal";
 import type { Conversation, ConversationPage, ConversationSummary, Message, Mode } from "../../types";
 import { db } from "../db";
 import { ApiError, isUuid } from "../http";
@@ -84,7 +85,7 @@ export async function conversationExists(userId: string, id: string): Promise<bo
   return (await getConversationRow(userId, id)) !== null;
 }
 
-/** Attaches sources to a bounded page of messages (at most MESSAGE_PAGE_SIZE ids per query). */
+/** Attaches sources to a bounded batch of messages (one query for the whole batch). */
 async function withSources(rows: MessageRow[]): Promise<Message[]> {
   const ids = rows.filter((row) => row.role === "assistant").map((row) => row.id);
   const sourceRows = ids.length
@@ -151,6 +152,42 @@ export async function getEarlierMessages(
   return messagePage(userId, conversationId, anchor);
 }
 
+/**
+ * Keeps at most MAX_CONVERSATIONS per account by deleting the ones that sort last in the sidebar:
+ * unpinned before pinned, then least recently active. `keepId` (the conversation just created) is
+ * never removed. Returns the ids that were deleted.
+ */
+export async function trimConversations(userId: string, keepId: string): Promise<string[]> {
+  const result = await db.execute<{ id: string }>(sql`
+    delete from conversations
+    where id in (
+      select id from conversations
+      where user_id = ${userId} and id <> ${keepId}
+      order by pinned desc, updated_at desc, id desc
+      offset ${MAX_CONVERSATIONS - 1}
+    )
+    returning id
+  `);
+  return result.rows.map((row) => row.id);
+}
+
+/** Conversations deleted per cleanup run, so a backlog cannot hold the pool. */
+const EXPIRY_BATCH = 1000;
+
+/** Deletes conversations whose last activity is older than CONVERSATION_RETENTION_DAYS. */
+export async function deleteExpiredConversations(): Promise<number> {
+  const result = await db.execute<{ id: string }>(sql`
+    delete from conversations
+    where id in (
+      select id from conversations
+      where updated_at < clock_timestamp() - make_interval(days => ${CONVERSATION_RETENTION_DAYS})
+      limit ${EXPIRY_BATCH}
+    )
+    returning id
+  `);
+  return result.rows.length;
+}
+
 export async function createConversation(userId: string, mode: Mode): Promise<ConversationSummary> {
   const id = randomUUID();
   const [row] = await db
@@ -209,4 +246,33 @@ export async function deleteConversation(userId: string, id: string): Promise<bo
     .where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
     .returning({ id: conversations.id });
   return result.length > 0;
+}
+
+// Messages whose sources are read in one query during export.
+const EXPORT_SOURCE_BATCH = 500;
+
+/**
+ * Every conversation of the account with all its messages and sources, oldest first, for data export.
+ * Reads all messages in one query and sources in large batches, instead of one query per conversation.
+ */
+export async function exportConversations(userId: string): Promise<(ConversationSummary & { messages: Message[] })[]> {
+  const [rows, messageRows] = await Promise.all([
+    db.select().from(conversations).where(eq(conversations.userId, userId)).orderBy(asc(conversations.createdAt), asc(conversations.id)),
+    db.select().from(messages).where(eq(messages.userId, userId)).orderBy(asc(messages.createdAt), asc(messages.id)),
+  ]);
+  const mapped: Message[] = [];
+  for (let start = 0; start < messageRows.length; start += EXPORT_SOURCE_BATCH) {
+    mapped.push(...(await withSources(messageRows.slice(start, start + EXPORT_SOURCE_BATCH))));
+  }
+  // mapMessage keeps the row order, so each conversation's messages stay oldest first.
+  const byConversation = groupBy(
+    mapped.map((message, index) => ({ message, conversationId: messageRows[index]!.conversationId })),
+    (item) => item.conversationId,
+  );
+  return Promise.all(
+    rows.map(async (row) => ({
+      ...(await mapSummary(userId, row)),
+      messages: (byConversation.get(row.id) ?? []).map((item) => item.message),
+    })),
+  );
 }

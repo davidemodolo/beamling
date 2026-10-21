@@ -27,6 +27,9 @@ function ModelBadges({ selected, searchProvider, usage }: { selected?: string; s
   const rerouted = resolved && selected && resolved !== selected;
   return (
     <>
+      <span className="badge" title="Generated automatically by an AI model. Check the sources.">
+        AI-generated
+      </span>
       {selected ? (
         <span className="badge badge-mono" title={`Selected model: ${selected}`}>
           {llmModelName(selected)}

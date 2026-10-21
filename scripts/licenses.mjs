@@ -13,6 +13,7 @@ const allowed = [
   "BSD-3-Clause",
   "ISC",
   "MIT",
+  "MIT-0",
   "OFL-1.1",
 ];
 const exceptions = {

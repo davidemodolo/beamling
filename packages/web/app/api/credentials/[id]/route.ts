@@ -3,6 +3,7 @@ import { BUDGET_PERIODS, BRAVE_PLANS } from "@/lib/contracts";
 import { ApiError, idParam, json, notFound, parseBody } from "@/lib/server/http";
 import { deleteCredential, getCredentialById, updateCredentialLimits } from "@/lib/server/repo";
 import { apiRoute } from "@/lib/server/route";
+import { audit } from "@/lib/server/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,8 +45,10 @@ export const PATCH = apiRoute<{ params: Promise<{ id: string }> }>(async ({ requ
   return json({ credential });
 });
 
-export const DELETE = apiRoute<{ params: Promise<{ id: string }> }>(async ({ context, user }) => {
-  const deleted = await deleteCredential(user.id, await idParam(context));
+export const DELETE = apiRoute<{ params: Promise<{ id: string }> }>(async ({ request, context, user }) => {
+  const id = await idParam(context);
+  const deleted = await deleteCredential(user.id, id);
   if (!deleted) throw notFound("Credential not found.");
+  audit("credential_deleted", { userId: user.id, headers: request.headers, fields: { credentialId: id } });
   return json({ ok: true });
 });

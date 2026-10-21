@@ -3,6 +3,7 @@ import { analytics } from "./analytics";
 import { processAnalyticsErasures } from "./analytics-erasure";
 import { pool } from "./db";
 import { productionConfigErrors, productionConfigWarnings } from "./env";
+import { processShutdown } from "./shutdown";
 import { beginShutdown } from "./shutdown-state";
 import { log } from "./log";
 import { cleanupExpired, interruptStaleAnswers } from "./repo";
@@ -58,6 +59,7 @@ export async function startServer(): Promise<void> {
         })
         .catch((error) => log.error("Cleanup failed", error)),
       processAnalyticsErasures().catch((error) => log.error("PostHog erasure run failed", error)),
+      processShutdown().catch((error) => log.error("Shutdown run failed", error)),
     ]);
   void cleanup();
   setInterval(cleanup, CLEANUP_INTERVAL_MS).unref();

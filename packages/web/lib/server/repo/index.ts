@@ -1,4 +1,12 @@
-export { cleanupExpired, deleteAccount, deleteSessions, getState } from "./account";
+export {
+  acceptTerms,
+  cleanupExpired,
+  deleteAccount,
+  deleteSessions,
+  getState,
+  setAnalyticsOptOut,
+} from "./account";
+export { exportAccount } from "./export";
 export {
   cleanupEmptyConversations,
   conversationExists,
@@ -6,9 +14,12 @@ export {
   createConversation,
   deleteConversation,
   deleteConversationIfEmpty,
+  deleteExpiredConversations,
+  exportConversations,
   getConversation,
   getEarlierMessages,
   listConversationPage,
+  trimConversations,
   updateConversation,
 } from "./conversations";
 export {
@@ -16,12 +27,13 @@ export {
   getCredentialById,
   getCredentialRow,
   listCredentials,
+  readCredentialKey,
   recordCredentialUsage,
   saveCredential,
   updateCredentialLimits,
   updateCredentialValidation,
 } from "./credentials";
-export { consumeRateLimit, reserveProviderSlot } from "./limits";
+export { consumeRateLimit, consumeValidation, reserveProviderSlot } from "./limits";
 export {
   completeAssistant,
   createExchange,
@@ -44,3 +56,14 @@ export {
   setAcceptingNewStreams,
   type SystemFlag,
 } from "./system-flags";
+export {
+  accountsToRetire,
+  cancelShutdown,
+  getShutdown,
+  markShutdownNotified,
+  scheduleShutdown,
+  shutdownProgress,
+  shutdownRecipients,
+  withShutdownLock,
+  type Shutdown,
+} from "./shutdown";

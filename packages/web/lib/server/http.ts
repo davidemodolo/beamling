@@ -121,7 +121,16 @@ export function isUuid(value: string): boolean {
   return uuidSchema.safeParse(value).success;
 }
 
+/**
+ * CSRF check for mutations. Browsers send Origin on cross-origin POST/PATCH/DELETE and
+ * Sec-Fetch-Site on every request; either one marking the request as cross-site rejects it.
+ * Requests with neither (non-browser clients) are left to the SameSite=Lax session cookie.
+ */
 export function assertSameOrigin(request: Request): void {
+  const site = request.headers.get("sec-fetch-site");
+  if (site && site !== "same-origin" && site !== "none") {
+    throw new ApiError("INVALID_ORIGIN", "Cross-origin request rejected.", 403);
+  }
   const origin = request.headers.get("origin");
   if (!origin) return;
   try {

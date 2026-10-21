@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { LegalPage } from "@/components/legal-page";
 import { getReadiness, type Readiness } from "@/lib/server/readiness";
+import { getShutdown } from "@/lib/server/repo";
+import { isClosed, shutdownDateLabel } from "@/lib/server/shutdown";
 
 export const metadata: Metadata = { title: "Status" };
 export const dynamic = "force-dynamic";
@@ -21,11 +23,21 @@ function rows(readiness: Readiness) {
 
 export default async function StatusPage() {
   const readiness = await getReadiness();
+  const shutdown = await getShutdown().catch(() => null);
   return (
     <LegalPage
       title="Status"
       intro="Live readiness of this deployment. An incident here may also affect the page itself."
     >
+      {shutdown ? (
+        <p>
+          <strong>
+            {isClosed(shutdown)
+              ? "Beamling has shut down; every account has been deleted."
+              : `Scheduled shutdown: ${shutdownDateLabel(shutdown.scheduledAt)}. Every account and its data will then be deleted. Download your data from Settings → Account before then.`}
+          </strong>
+        </p>
+      ) : null}
       <p>
         Overall: <strong>{readiness.ok ? "Operational" : "Incident"}</strong>
       </p>

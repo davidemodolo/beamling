@@ -71,8 +71,17 @@ function doneMessage(result: DoneEvent): string {
  * the user switches conversations, and each view shows only its own conversation's answer.
  */
 export function AnswerStreamsProvider({ children }: { children: ReactNode }) {
-  const { addMessages, updateMessage, removeMessages, loadThread, titleFromFirstQuestion, dropFailedMessages, threads, settings } =
-    useStore();
+  const {
+    addMessages,
+    updateMessage,
+    removeMessages,
+    loadThread,
+    titleFromFirstQuestion,
+    dropFailedMessages,
+    forgetConversations,
+    threads,
+    settings,
+  } = useStore();
   const [live, setLive] = useState<Record<string, LiveAnswer>>({});
   const [announcements, setAnnouncements] = useState<Record<string, string>>({});
   const handles = useRef(new Map<string, StreamHandle>());
@@ -272,6 +281,7 @@ export function AnswerStreamsProvider({ children }: { children: ReactNode }) {
             messageId = meta.messageId;
             userMessageId = meta.userMessageId;
             patch((current) => ({ ...current, messageId: meta.messageId, userMessageId: meta.userMessageId }));
+            if (meta.removed.length) forgetConversations(meta.removed);
           },
           onStage: (stage, detail) => {
             patch((current) => ({ ...current, stage, detail: detail ?? "" }));
@@ -311,7 +321,7 @@ export function AnswerStreamsProvider({ children }: { children: ReactNode }) {
       handles.current.set(conversationId, handle);
       return true;
     },
-    [addMessages, updateMessage, removeMessages, loadThread, titleFromFirstQuestion, dropFailedMessages],
+    [addMessages, updateMessage, removeMessages, loadThread, titleFromFirstQuestion, dropFailedMessages, forgetConversations],
   );
 
   const stop = useCallback((conversationId: string) => {

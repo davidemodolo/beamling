@@ -17,12 +17,17 @@ export async function GET(request: Request) {
       error: summarizeError(error),
       code: error instanceof Error && "code" in error ? String(error.code) : undefined,
     });
+    const code = error instanceof ApiError ? error.code : undefined;
     const reason =
-      error instanceof ApiError && error.code === "SIGNUPS_PAUSED"
+      code === "SIGNUPS_PAUSED"
         ? "signups_paused"
-        : error instanceof ApiError && error.code === "SIGNUP_NOT_INVITED"
+        : code === "SIGNUP_NOT_INVITED"
           ? "signup_not_invited"
-          : "auth_failed";
+          : code === "SERVICE_CLOSING"
+            ? "service_closing"
+            : code === "SERVICE_CLOSED"
+              ? "service_closed"
+              : "auth_failed";
     return privateRedirect(`${appUrl()}/login?error=${reason}`);
   }
 }

@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { db } from "../db";
-import { ApiError } from "../http";
+import { ApiError, clientIpKey } from "../http";
 import { providerSlots, rateLimits } from "../schema";
 
 /** Fixed-window counter in a single atomic upsert, so concurrent requests cannot both pass the limit. */
@@ -31,6 +31,20 @@ export async function consumeRateLimit(
   if (row.count > limit) {
     throw new ApiError("RATE_LIMITED", "Too many requests. Try again later.", 429);
   }
+}
+
+/** Provider key checks per account per day, and per client address per hour. */
+const VALIDATIONS_PER_DAY = 50;
+// Generous enough for an office or campus behind one address onboarding together.
+const VALIDATIONS_PER_IP_PER_HOUR = 120;
+
+/**
+ * Budget for calls that check a key against its provider. It keeps the server from being used to
+ * test lists of leaked keys: the cap is per account per day and per address, not only per hour.
+ */
+export async function consumeValidation(userId: string, headers: Headers): Promise<void> {
+  await consumeRateLimit(`validations:${userId}`, VALIDATIONS_PER_DAY, 86_400);
+  await consumeRateLimit(`validations-ip:${clientIpKey(headers)}`, VALIDATIONS_PER_IP_PER_HOUR, 3600);
 }
 
 /**

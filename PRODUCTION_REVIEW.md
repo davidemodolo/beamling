@@ -1,6 +1,6 @@
 # Beamling — Production Readiness Review
 
-> **Status:** historical review at commit `9b0efd9`. Subsequent commits changed several behaviors and line numbers. Use `TECHNICAL.md` and the current code for the present state.
+> **Status:** historical review at commit `9b0efd9`, superseded by [`TECHNICAL.md`](TECHNICAL.md) and the current code. It describes an older guest-account model that no longer exists (accounts are Google-only), and later commits changed many behaviors and line numbers. Do not use it as a description of the present state.
 
 **Scope:** full repo at `9b0efd9` (web app, mascot package, Docker/Compose, migrations, tests). No code was changed.
 

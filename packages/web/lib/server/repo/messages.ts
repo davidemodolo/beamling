@@ -5,6 +5,7 @@ import { DEFAULT_SEARCH_PROVIDER } from "../../provider-catalog";
 import type { Message, Mode, SearchProvider, SearchTrace, Source, Usage } from "../../types";
 import { db } from "../db";
 import { maxConcurrentChats, maxConcurrentChatsPerUser } from "../env";
+
 import { ApiError, pgErrorCode, storableText } from "../http";
 import { conversations, messages, sources } from "../schema";
 import { decryptText, encryptText } from "../workspace-key";
@@ -15,6 +16,11 @@ const LOCK_NOT_AVAILABLE = "55P03";
 const HISTORY_MESSAGES = 6;
 // Serializes the global concurrency check across instances (transaction-scoped advisory lock).
 const CHAT_SLOT_LOCK_ID = 7_314_002_918;
+
+/** At most half of the global answer slots may run Deeper at once. */
+function deeperSlots(): number {
+  return Math.max(1, Math.floor(maxConcurrentChats() / 2));
+}
 
 /** The messages before `before` that form the prompt's conversation context, oldest first. */
 export async function getHistory(userId: string, conversationId: string, before: Date): Promise<Message[]> {
@@ -124,6 +130,19 @@ export async function createExchange(input: {
         .where(and(eq(messages.status, "streaming"), gt(messages.createdAt, staleBeforeSql())));
       if (inFlight >= maxConcurrentChats()) {
         throw new ApiError("SERVER_BUSY", "Beamling is busy right now. Try again in a minute.", 503);
+      }
+
+      // Deeper answers run for minutes; capping their share keeps a few accounts from holding every slot.
+      if (input.mode === "deeper") {
+        const [{ value: deeperInFlight }] = await tx
+          .select({ value: count() })
+          .from(messages)
+          .where(
+            and(eq(messages.status, "streaming"), eq(messages.mode, "deeper"), gt(messages.createdAt, staleBeforeSql())),
+          );
+        if (deeperInFlight >= deeperSlots()) {
+          throw new ApiError("SERVER_BUSY", "Deeper answers are busy right now. Try Deep, or try again in a minute.", 503);
+        }
       }
 
       const [{ value: userInFlight }] = await tx

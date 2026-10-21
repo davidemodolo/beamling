@@ -5,6 +5,7 @@ export const DEFAULT_SETTINGS: Settings = {
   llmModel: DEFAULT_LLM_MODEL,
   defaultSearchProvider: DEFAULT_SEARCH_PROVIDER,
   defaultMode: "quick",
+  analyticsOptOut: false,
 };
 
 export const DEFAULT_CONVERSATION_TITLE = "New conversation";

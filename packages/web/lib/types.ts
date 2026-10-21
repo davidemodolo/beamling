@@ -112,6 +112,8 @@ export interface Settings {
   llmModel: string;
   defaultSearchProvider: SearchProvider;
   defaultMode: Mode;
+  /** The account objected to product analytics; no events are sent for it. */
+  analyticsOptOut: boolean;
 }
 
 export interface User {

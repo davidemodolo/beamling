@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { LEGAL_VERSION } from "../legal";
 import { hmacToken } from "./crypto";
-import { assertSameOrigin, clientIpKey, errorResponse, PRIVATE_HEADERS } from "./http";
+import { ApiError, assertSameOrigin, clientIpKey, errorResponse, PRIVATE_HEADERS } from "./http";
 import { log } from "./log";
 import { consumeRateLimit } from "./repo";
 import { getCurrentUser, requireUser, type SessionUser } from "./session";
@@ -10,6 +11,11 @@ type SessionMode = "required" | "optional";
 interface RouteOptions<S extends SessionMode> {
   /** "optional" lets the handler run without a session, e.g. sign-out. */
   session?: S;
+  /**
+   * false lets an account that has not accepted the current terms call the route: reading and
+   * accepting the terms, exporting data, signing out and deleting the account.
+   */
+  requireTerms?: boolean;
 }
 
 type RouteUser<S extends SessionMode> = S extends "optional" ? SessionUser | null : SessionUser;
@@ -24,6 +30,9 @@ interface RouteInput<P, S extends SessionMode> {
 const READS_PER_WINDOW = 600;
 const READS_PER_IP_WINDOW = 3000;
 const READ_WINDOW_SECONDS = 600;
+/** Writes per user and window, across every mutation route; routes add tighter limits of their own. */
+const WRITES_PER_WINDOW = 300;
+const WRITE_WINDOW_SECONDS = 600;
 
 const loaders: Record<SessionMode, () => Promise<SessionUser | null>> = {
   required: requireUser,
@@ -32,24 +41,32 @@ const loaders: Record<SessionMode, () => Promise<SessionUser | null>> = {
 
 /**
  * Wraps a route handler with the checks every API route needs: same-origin for mutations, the
- * session, a per-user read limit for GETs, private cache headers and the stable error shape.
+ * session, acceptance of the current terms, per-user read and write limits, private cache headers
+ * and the stable error shape.
  */
 export function apiRoute<P = unknown, S extends SessionMode = "required">(
   handler: (input: RouteInput<P, S>) => Promise<Response>,
   options: RouteOptions<S> = {},
 ): (request: Request, context: P) => Promise<Response> {
   const session = options.session ?? "required";
+  const requireTerms = options.requireTerms ?? true;
   return async (request, context) => {
     const requestId = randomUUID();
     const started = Date.now();
     let user: SessionUser | null = null;
     let status = 500;
     try {
-      if (request.method !== "GET" && request.method !== "HEAD") assertSameOrigin(request);
+      const isRead = request.method === "GET" || request.method === "HEAD";
+      if (!isRead) assertSameOrigin(request);
       user = await loaders[session]();
-      if (user && request.method === "GET") {
+      if (user && requireTerms && user.termsVersion !== LEGAL_VERSION) {
+        throw new ApiError("TERMS_REQUIRED", "Accept the updated terms and privacy notice to continue.", 403);
+      }
+      if (user && isRead) {
         await consumeRateLimit(`reads:${user.id}`, READS_PER_WINDOW, READ_WINDOW_SECONDS);
         await consumeRateLimit(`reads-ip:${clientIpKey(request.headers)}`, READS_PER_IP_WINDOW, READ_WINDOW_SECONDS);
+      } else if (user) {
+        await consumeRateLimit(`writes:${user.id}`, WRITES_PER_WINDOW, WRITE_WINDOW_SECONDS);
       }
       const response = await handler({ request, context, user: user as RouteUser<S> });
       status = response.status;

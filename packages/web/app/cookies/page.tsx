@@ -26,7 +26,7 @@ export default function CookiesPage() {
                 <code>__Host-beamling_session</code>
               </td>
               <td>Keeps you signed in. HttpOnly, Secure, SameSite=Lax, host-only.</td>
-              <td>30 days, sliding</td>
+              <td>30 days without use, at most 90 days after sign-in</td>
             </tr>
             <tr>
               <td>

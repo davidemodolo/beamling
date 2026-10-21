@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { test, type TestContext } from "node:test";
+import { LEGAL_VERSION } from "../lib/legal";
 
 process.env.CREDENTIAL_MASTER_KEY = randomBytes(32).toString("base64");
 process.env.AUTH_SECRET = randomBytes(32).toString("base64");
@@ -55,7 +56,13 @@ async function createAccount(t: TestContext, options: { keys?: boolean } = {}): 
   const suffix = randomBytes(8).toString("hex");
   const [user] = await db
     .insert(users)
-    .values({ googleSub: `test-${suffix}`, email: `${suffix}@example.test`, emailVerified: true })
+    .values({
+      googleSub: `test-${suffix}`,
+      email: `${suffix}@example.test`,
+      emailVerified: true,
+      termsVersion: LEGAL_VERSION,
+      termsAcceptedAt: new Date(),
+    })
     .returning();
   t.after(() => deleteAccount(user.id));
   await ensureSettings(user.id);
@@ -624,6 +631,78 @@ test("cleanup removes expired sessions but keeps accounts", { skip }, async (t) 
   assert.equal(remaining.id, account.id);
 });
 
+test("cleanup deletes inactive accounts and accounts that never accepted the terms", { skip }, async (t) => {
+  const { db } = await import("../lib/server/db");
+  const { users } = await import("../lib/server/schema");
+  const { cleanupExpired } = await import("../lib/server/repo");
+  const { inArray } = await import("drizzle-orm");
+  const day = 86_400_000;
+  const insert = async (values: Partial<typeof users.$inferInsert>) => {
+    const suffix = randomBytes(8).toString("hex");
+    const [row] = await db
+      .insert(users)
+      .values({ googleSub: `retention-${suffix}`, email: `${suffix}@example.test`, emailVerified: true, ...values })
+      .returning({ id: users.id });
+    return row.id;
+  };
+  const accepted = { termsVersion: LEGAL_VERSION, termsAcceptedAt: new Date() };
+  const inactive = await insert({ ...accepted, lastSeenAt: new Date(Date.now() - 750 * day) });
+  const active = await insert({ ...accepted, lastSeenAt: new Date(Date.now() - 300 * day) });
+  const abandoned = await insert({ createdAt: new Date(Date.now() - 8 * day) });
+  const pending = await insert({ createdAt: new Date(Date.now() - 2 * day) });
+  const ids = [inactive, active, abandoned, pending];
+  t.after(() => db.delete(users).where(inArray(users.id, ids)));
+
+  await cleanupExpired();
+  const remaining = new Set((await db.select({ id: users.id }).from(users).where(inArray(users.id, ids))).map((row) => row.id));
+  assert.deepEqual([...remaining].sort(), [active, pending].sort());
+});
+
+test("data export returns decrypted content and never key material", { skip }, async (t) => {
+  const userId = await createAccount(t);
+  const { prepared } = await ask(userId, { question: "What is in my export?", mode: "quick" });
+  const { exportAccount } = await import("../lib/server/repo");
+  const data = await exportAccount(userId);
+  assert.ok(data);
+  assert.equal(data.account.termsVersion, LEGAL_VERSION);
+  assert.equal(data.credentials.length, 2);
+  const conversation = data.conversations.find((item) => item.id === prepared.conversationId);
+  assert.ok(conversation);
+  assert.equal(conversation.messages[0].content, "What is in my export?");
+  assert.ok(conversation.messages[1].sources?.length);
+  const text = JSON.stringify(data);
+  assert.doesNotMatch(text, /enc:v1:/, "content must be decrypted");
+  assert.doesNotMatch(text, /test-openrouter|test-brave/, "provider keys must never be exported");
+  assert.doesNotMatch(text, /wrappedDek|ciphertext|tokenHash/);
+});
+
+test("opting out of analytics records the objection and queues erasure", { skip }, async (t) => {
+  const userId = await createAccount(t, { keys: false });
+  const { eq } = await import("drizzle-orm");
+  const { db } = await import("../lib/server/db");
+  const { analyticsErasures } = await import("../lib/server/schema");
+  const { ensureSettings, setAnalyticsOptOut } = await import("../lib/server/repo");
+  const { analyticsExcluded } = await import("../lib/server/repo/settings");
+  const distinctId = `optout-${randomBytes(8).toString("hex")}`;
+  t.after(() => db.delete(analyticsErasures).where(eq(analyticsErasures.distinctId, distinctId)));
+
+  assert.equal(await analyticsExcluded(userId, distinctId), false);
+  await setAnalyticsOptOut(userId, true, distinctId);
+  assert.equal(await analyticsExcluded(userId, distinctId), true);
+  assert.equal((await ensureSettings(userId)).analyticsOptOut, true);
+  const queued = await db.select().from(analyticsErasures).where(eq(analyticsErasures.distinctId, distinctId));
+  assert.equal(queued.length, 1);
+
+  // Opting back in keeps capture off until the pending erasure is done, so it cannot delete new events.
+  await setAnalyticsOptOut(userId, false, distinctId);
+  assert.equal((await ensureSettings(userId)).analyticsOptOut, false);
+  assert.equal(await analyticsExcluded(userId, distinctId), true);
+  await db.delete(analyticsErasures).where(eq(analyticsErasures.distinctId, distinctId));
+  assert.equal(await analyticsExcluded(userId, distinctId), true, "cached for a short time");
+  await setAnalyticsOptOut(userId, false, distinctId);
+  assert.equal(await analyticsExcluded(userId, distinctId), false);
+});
+
 test("new accounts stop at the hourly sign-up cap", { skip }, async (t) => {
   const { eq } = await import("drizzle-orm");
   const { db } = await import("../lib/server/db");
@@ -824,4 +903,105 @@ test("the new-stream flag defaults open and can be blocked explicitly", { skip }
   const reopened = await setAcceptingNewStreams(true);
   assert.equal(reopened.enabled, true);
   assert.equal(reopened.reason, null);
+});
+
+test("an account keeps at most 100 conversations, dropping unpinned ones first", { skip }, async (t) => {
+  const userId = await createAccount(t, { keys: false });
+  const { sql } = await import("drizzle-orm");
+  const { db } = await import("../lib/server/db");
+  const { conversations } = await import("../lib/server/schema");
+  const { countConversations, createConversation, trimConversations, updateConversation } = await import("../lib/server/repo");
+  const { MAX_CONVERSATIONS } = await import("../lib/legal");
+  const created: string[] = [];
+  for (let i = 0; i < MAX_CONVERSATIONS; i++) created.push((await createConversation(userId, "quick")).id);
+  // Oldest first: give each a distinct, increasing activity time.
+  await db.execute(sql`
+    update ${conversations} c set updated_at = now() - make_interval(mins => 1000 - o.n::int)
+    from (select id, row_number() over (order by created_at, id) as n from ${conversations} where user_id = ${userId}) o
+    where c.id = o.id
+  `);
+  const [oldest, secondOldest, thirdOldest] = await db
+    .select({ id: conversations.id })
+    .from(conversations)
+    .where(sql`${conversations.userId} = ${userId}`)
+    .orderBy(conversations.updatedAt)
+    .limit(3);
+  await updateConversation(userId, oldest.id, { pinned: true });
+
+  const fresh = await createConversation(userId, "quick");
+  assert.deepEqual(await trimConversations(userId, fresh.id), [secondOldest.id], "the pinned oldest one is kept");
+  assert.equal(await countConversations(userId), MAX_CONVERSATIONS);
+  const another = await createConversation(userId, "quick");
+  assert.deepEqual(await trimConversations(userId, another.id), [thirdOldest.id]);
+  assert.equal(await countConversations(userId), MAX_CONVERSATIONS);
+
+  // A question that fails before it is stored (here: no keys) must not cost an older conversation.
+  const before = new Set((await db.select({ id: conversations.id }).from(conversations).where(sql`${conversations.userId} = ${userId}`)).map((row) => row.id));
+  await assert.rejects(ask(userId, { question: "No keys yet", mode: "quick" }));
+  const after = new Set((await db.select({ id: conversations.id }).from(conversations).where(sql`${conversations.userId} = ${userId}`)).map((row) => row.id));
+  assert.deepEqual(after, before);
+});
+
+test("conversations expire 60 days after their last activity, pinned or not", { skip }, async (t) => {
+  const userId = await createAccount(t, { keys: false });
+  const { eq, sql } = await import("drizzle-orm");
+  const { db } = await import("../lib/server/db");
+  const { conversations } = await import("../lib/server/schema");
+  const { createConversation, deleteExpiredConversations, updateConversation } = await import("../lib/server/repo");
+  const expired = await createConversation(userId, "quick");
+  const pinnedExpired = await createConversation(userId, "quick");
+  const recent = await createConversation(userId, "quick");
+  await updateConversation(userId, pinnedExpired.id, { pinned: true });
+  for (const [id, days] of [[expired.id, 61], [pinnedExpired.id, 61], [recent.id, 59]] as const) {
+    await db.update(conversations).set({ updatedAt: sql`now() - make_interval(days => ${days})` }).where(eq(conversations.id, id));
+  }
+  assert.ok((await deleteExpiredConversations()) >= 2);
+  const left = (await db.select({ id: conversations.id }).from(conversations).where(eq(conversations.userId, userId))).map((row) => row.id);
+  assert.deepEqual(left, [recent.id]);
+});
+
+test("a scheduled shutdown notifies every account once, then deletes them all on the date", { skip }, async (t) => {
+  const { db } = await import("../lib/server/db");
+  const { users } = await import("../lib/server/schema");
+  const { cancelShutdown, getShutdown, scheduleShutdown, shutdownProgress, withShutdownLock } = await import("../lib/server/repo");
+  const { admitNewAccount } = await import("../lib/server/auth");
+  const { processShutdown } = await import("../lib/server/shutdown");
+  t.after(() => cancelShutdown());
+  const { setMailTransport } = await import("../lib/server/mail");
+  const sent: string[] = [];
+  // Capture mail instead of sending it.
+  setMailTransport({ sendMail: async (message: { to?: unknown }) => (sent.push(String(message.to)), {} as never) });
+  t.after(() => setMailTransport(undefined));
+  withEnv(t, { SMTP_URL: "smtp://mail.example.test:587", MAIL_FROM: "Beamling <noreply@example.test>" });
+
+  const first = await createAccount(t, { keys: false });
+  const second = await createAccount(t, { keys: false });
+  const closesAt = new Date(Date.now() + 14 * 86_400_000);
+
+  // Scheduled without notice, the cleanup job never emails anyone.
+  await scheduleShutdown(closesAt, null, false);
+  await processShutdown();
+  assert.equal(sent.length, 0, "notify: false sends nothing");
+
+  await scheduleShutdown(closesAt, "Hosting ends.", true);
+  assert.ok(await getShutdown());
+  await assert.rejects(admitNewAccount("new@example.test", "client"), (error: { code?: string }) => error.code === "SERVICE_CLOSING");
+
+  await processShutdown();
+  const progress = await shutdownProgress();
+  assert.equal(progress.notified, progress.accounts);
+  const emails = new Set((await db.select({ email: users.email }).from(users)).map((row) => row.email));
+  assert.deepEqual(new Set(sent), emails, "every account gets exactly one notice");
+  await processShutdown();
+  assert.equal(sent.length, emails.size, "a second run sends nothing new");
+
+  // While another instance holds the lock, this one does no shutdown work.
+  let nested: boolean | undefined;
+  assert.equal(await withShutdownLock(async () => void (nested = await withShutdownLock(async () => {}))), true);
+  assert.equal(nested, false);
+
+  await scheduleShutdown(new Date(Date.now() - 1000), null, true);
+  await processShutdown();
+  assert.equal((await shutdownProgress()).accounts, 0);
+  assert.ok(first && second);
 });

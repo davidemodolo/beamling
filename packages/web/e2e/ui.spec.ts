@@ -1,6 +1,17 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
-import { answers, ask, composer, connectKeys, createConversation, sidebarItem, signIn, watchConsole, workingAnswer } from "./helpers";
+import {
+  answers,
+  ask,
+  composer,
+  connectKeys,
+  createConversation,
+  KILL_SWITCH_SECRET,
+  sidebarItem,
+  signIn,
+  watchConsole,
+  workingAnswer,
+} from "./helpers";
 
 test("onboarding connects keys and keeps the saved model and mode", async ({ page }) => {
   const problems = watchConsole(page);
@@ -25,6 +36,7 @@ test("onboarding connects keys and keeps the saved model and mode", async ({ pag
     llmModel: "anthropic/claude-haiku-4.5",
     defaultSearchProvider: "brave",
     defaultMode: "deep",
+    analyticsOptOut: false,
   });
   expect(problems).toEqual([]);
 });
@@ -264,12 +276,12 @@ test("older conversations load on demand", async ({ page }) => {
 test("the generated license page and public legal footer resolve", async ({ page }) => {
   await page.goto("/licenses");
   await expect(page.getByRole("heading", { name: "Open-source licenses" })).toBeVisible();
-  await expect(page.getByText("The Beamling application source is proprietary")).toBeVisible();
+  await expect(page.getByRole("main").getByRole("link", { name: "MIT License" })).toBeVisible();
   await expect(page.locator(".license-item")).not.toHaveCount(0);
   expect(await page.locator(".license-item").count()).toBeGreaterThan(100);
   await expect(page.getByText("caniuse-lite", { exact: true })).toBeVisible();
 
-  const hrefs = await page.locator(".legal-foot a").evaluateAll((links) =>
+  const hrefs = await page.locator(".legal-foot nav a").evaluateAll((links) =>
     links.map((link) => (link as HTMLAnchorElement).getAttribute("href")).filter(Boolean),
   );
   expect([...new Set(hrefs)].sort()).toEqual(["/contact", "/cookies", "/licenses", "/privacy", "/security", "/status", "/subprocessors", "/terms"]);
@@ -280,6 +292,32 @@ test("the generated license page and public legal footer resolve", async ({ page
 
   await page.goto("/");
   await expect(page.locator("footer").getByRole("link", { name: "Licenses" })).toHaveAttribute("href", "/licenses");
+});
+
+test("a new account accepts the terms before reaching the app", async ({ page }) => {
+  await signIn(page.request, { pendingTerms: true });
+  await page.goto("/chat");
+  await expect(page).toHaveURL(/\/welcome\?next=%2Fchat$/);
+  const accept = page.getByRole("button", { name: "Accept and continue" });
+  await expect(accept).toBeDisabled();
+  await page.getByLabel(/at least 18 years old/).check();
+  await expect(accept).toBeDisabled();
+  await page.getByLabel(/I accept the Terms/).check();
+  await accept.click();
+  await expect(page).toHaveURL(/\/chat$/);
+  await page.goto("/welcome");
+  await expect(page).toHaveURL(/\/chat$/);
+});
+
+test("/welcome has no CSP violations or serious accessibility issues", async ({ page }) => {
+  const problems = watchConsole(page);
+  await signIn(page.request, { pendingTerms: true });
+  await page.goto("/welcome");
+  await page.waitForLoadState("networkidle");
+  expect(problems).toEqual([]);
+  const results = await new AxeBuilder({ page }).analyze();
+  const serious = results.violations.filter((violation) => violation.impact === "serious" || violation.impact === "critical");
+  expect(serious.map((violation) => violation.id)).toEqual([]);
 });
 
 for (const path of ["/", "/chat", "/onboarding", "/privacy", "/terms", "/licenses", "/cookies", "/subprocessors", "/security", "/status", "/contact"]) {
@@ -296,3 +334,35 @@ for (const path of ["/", "/chat", "/onboarding", "/privacy", "/terms", "/license
     expect(serious).toEqual([]);
   });
 }
+
+test("a scheduled shutdown is announced in the app, at sign-in and on the status page", async ({ page }) => {
+  const operator = { Authorization: `Bearer ${KILL_SWITCH_SECRET}` };
+  const shutdown = (data: object) => page.request.post("/api/internal/shutdown", { headers: operator, data });
+  try {
+    const noMail = await shutdown({ action: "schedule" });
+    expect(noMail.status()).toBe(409);
+    expect((await noMail.json()).error.code).toBe("MAIL_NOT_CONFIGURED");
+    expect((await shutdown({ action: "schedule", days: 3, notify: false })).status()).toBe(400);
+    const scheduled = await shutdown({ action: "schedule", notify: false });
+    expect(scheduled.ok()).toBe(true);
+    const days = (new Date((await scheduled.json()).shutdown.scheduledAt).getTime() - Date.now()) / 86_400_000;
+    expect(Math.round(days)).toBe(14);
+
+    await page.goto("/login");
+    await expect(page.getByRole("status").filter({ hasText: "Beamling shuts down on" })).toBeVisible();
+    await page.goto("/status");
+    await expect(page.getByText(/Scheduled shutdown:/)).toBeVisible();
+
+    await connectKeys(page.request);
+    await page.goto("/chat");
+    const banner = page.getByRole("alert").filter({ hasText: "Beamling shuts down on" });
+    await expect(banner).toBeVisible();
+    await expect(page.getByText("Chats are deleted 60 days after their last message.").first()).toBeVisible();
+    await banner.getByRole("button", { name: "Download my data" }).click();
+    await expect(page.getByRole("link", { name: "Download" })).toHaveAttribute("href", "/api/account/export");
+  } finally {
+    expect((await shutdown({ action: "cancel" })).ok()).toBe(true);
+  }
+  await page.goto("/chat");
+  await expect(page.getByRole("alert").filter({ hasText: "Beamling shuts down on" })).toHaveCount(0);
+});

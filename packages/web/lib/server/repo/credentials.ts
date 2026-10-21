@@ -1,9 +1,10 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { Credential, CredentialKind, CredentialProvider, CredentialStatus } from "../../types";
-import { decryptCredential, providerSlotKey, type EncryptedSecret } from "../crypto";
+import { decryptCredential, encryptCredential, providerSlotKey, type EncryptedSecret } from "../crypto";
+import { currentKmsKeyId } from "../kms";
 import { db } from "../db";
 import { credentialUsage, credentials, providerSlots } from "../schema";
-import { mapCredential, type CredentialUsageSummary } from "./shared";
+import { mapCredential, type CredentialRow, type CredentialUsageSummary } from "./shared";
 
 async function usageFor(rows: { id: string; budgetPeriod: string | null; budgetStartedAt: Date | null; createdAt: Date }[]) {
   if (!rows.length) return new Map<string, CredentialUsageSummary>();
@@ -79,6 +80,33 @@ export async function getCredentialById(userId: string, id: string) {
     .where(and(eq(credentials.id, id), eq(credentials.userId, userId)))
     .limit(1);
   return row ?? null;
+}
+
+/**
+ * Decrypts a stored provider key. Once the configured KMS key has changed, the key is re-encrypted
+ * under the current one (same row id, so usage history stays), letting the old KMS key be retired.
+ */
+export async function readCredentialKey(userId: string, row: CredentialRow): Promise<string> {
+  const plaintext = await decryptCredential(userId, row);
+  if (row.keyId !== (await currentKmsKeyId().catch(() => row.keyId))) {
+    try {
+      const { keyId, wrappedDek, dekNonce, dekTag, nonce, ciphertext, tag } = await encryptCredential(
+        userId,
+        row.kind,
+        row.provider,
+        plaintext,
+        row.id,
+      );
+      // Matching the old wrapped key skips a row the user replaced in the meantime.
+      await db
+        .update(credentials)
+        .set({ keyId, wrappedDek, dekNonce, dekTag, nonce, ciphertext, tag })
+        .where(and(eq(credentials.id, row.id), eq(credentials.wrappedDek, row.wrappedDek)));
+    } catch {
+      // A failed opportunistic re-wrap must not fail the request; try again on the next read.
+    }
+  }
+  return plaintext;
 }
 
 export async function saveCredential(input: {

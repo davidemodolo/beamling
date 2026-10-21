@@ -1,4 +1,5 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
+import { audit } from "./audit";
 import { internalSecret } from "./env";
 import { json } from "./http";
 
@@ -10,10 +11,11 @@ export function authorizeInternal(request: Request, name: "KILL_SWITCH_SECRET" |
   if (!expected) return "disabled";
   const authorization = request.headers.get("authorization") ?? "";
   const provided = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
-  if (!provided) return "unauthorized";
-  const left = Buffer.from(provided, "utf8");
-  const right = Buffer.from(expected, "utf8");
-  return left.length === right.length && timingSafeEqual(left, right) ? "ok" : "unauthorized";
+  // Comparing fixed-length digests keeps the comparison constant-time without revealing the secret's length.
+  const digest = (value: string) => createHash("sha256").update(value, "utf8").digest();
+  if (provided && timingSafeEqual(digest(provided), digest(expected))) return "ok";
+  audit("internal_auth_failed", { headers: request.headers, fields: { endpoint: name } });
+  return "unauthorized";
 }
 
 export function internalAuthResponse(auth: Exclude<InternalAuth, "ok">): Response {

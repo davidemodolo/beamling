@@ -133,7 +133,7 @@ export function Composer({
         </div>
       </form>
       <div className="composer-hint">
-        Beamling uses your keys. Answers can be wrong — check the sources.
+        Answers are AI-generated with your keys and can be wrong — check the sources.
       </div>
     </div>
   );

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useDeferredValue, useMemo, useState, type Ref } from "react";
+import { CONVERSATION_RETENTION_DAYS, CONVERSATION_WARNING_THRESHOLD, MAX_CONVERSATIONS } from "@/lib/legal";
 import { useStore } from "@/lib/store";
 import type { ConversationSummary } from "@/lib/types";
 import { dayGroup } from "@/lib/utils";
@@ -20,6 +21,7 @@ interface SidebarProps {
 function SidebarContent({ mobile, onNavigate }: SidebarProps) {
   const {
     conversations,
+    conversationCount,
     hasMoreConversations,
     loadMoreConversations,
     deleteConversation,
@@ -194,6 +196,17 @@ function SidebarContent({ mobile, onNavigate }: SidebarProps) {
                 ? "Load older chats"
                 : "Show older conversations"}
           </button>
+        ) : null}
+        {ready && !error ? (
+          <p
+            className={`history-retention${conversationCount >= CONVERSATION_WARNING_THRESHOLD ? " warn" : ""}`}
+            role={conversationCount >= CONVERSATION_WARNING_THRESHOLD ? "status" : undefined}
+          >
+            {conversationCount >= CONVERSATION_WARNING_THRESHOLD
+              ? `${Math.min(conversationCount, MAX_CONVERSATIONS)} of ${MAX_CONVERSATIONS} chats. New chats replace the oldest unpinned ones. `
+              : null}
+            Chats are deleted {CONVERSATION_RETENTION_DAYS} days after their last message.
+          </p>
         ) : null}
       </div>
 

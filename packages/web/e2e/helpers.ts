@@ -3,9 +3,9 @@ import { expect, type APIRequestContext, type APIResponse, type Page } from "@pl
 export const KILL_SWITCH_SECRET = "e2e-kill-switch-secret-0000000000000000";
 export const METRICS_SECRET = "e2e-metrics-secret-000000000000000000";
 
-/** Signs in through the test-only auth route and creates fixture keys. */
-export async function signIn(request: APIRequestContext): Promise<APIResponse> {
-  const response = await request.post("/api/auth/test-login");
+/** Signs in through the test-only auth route. The account has accepted the current terms unless `pendingTerms`. */
+export async function signIn(request: APIRequestContext, options: { pendingTerms?: boolean } = {}): Promise<APIResponse> {
+  const response = await request.post(`/api/auth/test-login${options.pendingTerms ? "?terms=pending" : ""}`);
   expect(response.ok()).toBe(true);
   return response;
 }

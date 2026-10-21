@@ -65,6 +65,7 @@ export function mapSettings(row: SettingsRow | undefined): Settings {
     llmModel: row.llmModel,
     defaultSearchProvider: isSearchProvider(row.defaultSearchProvider) ? row.defaultSearchProvider : DEFAULT_SEARCH_PROVIDER,
     defaultMode: row.defaultMode === "deeper" ? "deeper" : row.defaultMode === "deep" ? "deep" : "quick",
+    analyticsOptOut: row.analyticsOptOut,
   };
 }
 

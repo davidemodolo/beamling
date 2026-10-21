@@ -1,3 +1,4 @@
+import { LEGAL_VERSION } from "@/lib/legal";
 import { db } from "@/lib/server/db";
 import { appUrl, isFakeProviders } from "@/lib/server/env";
 import { ApiError, assertSameOrigin, errorResponse, json } from "@/lib/server/http";
@@ -13,13 +14,14 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   try {
     assertSameOrigin(request);
-    return await testLogin();
+    // `?terms=pending` leaves the terms unaccepted, to exercise the acceptance step.
+    return await testLogin(new URL(request.url).searchParams.get("terms") !== "pending");
   } catch (error) {
     return errorResponse(error);
   }
 }
 
-async function testLogin() {
+async function testLogin(acceptTerms: boolean) {
   const local = new URL(appUrl()).hostname === "localhost";
   if (process.env.BEAMLING_TEST_AUTH !== "1" || !local || !isFakeProviders()) {
     throw new ApiError("NOT_FOUND", "Not found.", 404);
@@ -29,7 +31,13 @@ async function testLogin() {
   const suffix = crypto.randomUUID();
   const [user] = await db
     .insert(users)
-    .values({ googleSub: `e2e-${suffix}`, email: `${suffix}@e2e.beamling.local`, emailVerified: true, name: "E2E Test" })
+    .values({
+      googleSub: `e2e-${suffix}`,
+      email: `${suffix}@e2e.beamling.local`,
+      emailVerified: true,
+      name: "E2E Test",
+      ...(acceptTerms ? { termsVersion: LEGAL_VERSION, termsAcceptedAt: new Date() } : {}),
+    })
     .returning({ id: users.id });
   await ensureSettings(user.id);
   await ensureWorkspaceKey(user.id);

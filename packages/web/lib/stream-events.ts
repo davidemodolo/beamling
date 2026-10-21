@@ -10,6 +10,8 @@ export interface StreamMeta {
   conversationId: string;
   messageId: string;
   userMessageId: string;
+  /** Conversations the server deleted to keep the account within its cap. */
+  removed: string[];
 }
 
 export interface StreamProgress {
@@ -66,8 +68,9 @@ export function parseStreamEvent(name: string, input: unknown): StreamEvent | nu
       const conversationId = text(data.conversationId);
       const messageId = text(data.messageId);
       const userMessageId = text(data.userMessageId);
+      const removed = Array.isArray(data.removed) ? data.removed.filter((id): id is string => typeof id === "string") : [];
       return conversationId && messageId && userMessageId
-        ? { event: "meta", data: { conversationId, messageId, userMessageId } }
+        ? { event: "meta", data: { conversationId, messageId, userMessageId, removed } }
         : null;
     }
     case "stage": {

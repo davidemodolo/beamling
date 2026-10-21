@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { EncryptJWT, jwtDecrypt } from "jose";
 import { cookies } from "next/headers";
 import { analytics } from "./analytics";
+import { audit } from "./audit";
 import { db } from "./db";
 import {
   appUrl,
@@ -22,7 +23,7 @@ import {
 } from "./env";
 import { ApiError } from "./http";
 import { log, summarizeError } from "./log";
-import { consumeRateLimit, ensureSettings } from "./repo";
+import { consumeRateLimit, ensureSettings, getShutdown } from "./repo";
 import { users } from "./schema";
 import { createSession } from "./session";
 import { ensureWorkspaceKey } from "./workspace-key";
@@ -107,6 +108,9 @@ function verifiedEmail(claims: OidcClaims): string {
  * primary control; the counters remain a backstop when registration is explicitly open.
  */
 export async function admitNewAccount(email: string, clientIp: string): Promise<void> {
+  if (await getShutdown()) {
+    throw new ApiError("SERVICE_CLOSING", "Beamling is shutting down and no longer accepts new accounts.", 403);
+  }
   const mode = signupMode();
   if (mode === "paused") {
     throw new ApiError("SIGNUPS_PAUSED", "New sign-ups are paused. Try again later.", 429);
@@ -220,8 +224,14 @@ export async function completeLogin(requestUrl: string, clientIp: string): Promi
     throw new ApiError("AUTH_FAILED", "Google sign-in could not be completed. Try again.", 502);
   }
 
+  // After the closing date every account is being deleted; nobody signs back in.
+  const shutdown = await getShutdown();
+  if (shutdown && shutdown.scheduledAt.getTime() <= Date.now()) {
+    throw new ApiError("SERVICE_CLOSED", "Beamling has shut down.", 403);
+  }
   const user = await upsertUser(claims as OidcClaims, clientIp);
   await createSession(user.id);
+  audit("sign_in", { userId: user.id, ipKey: clientIp, fields: { newAccount: user.isNew } });
   if (user.isNew) analytics.capture(user.id, "account_created", {});
   return { returnTo: user.isNew ? "/onboarding" : transaction.returnTo };
 }

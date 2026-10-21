@@ -3,6 +3,7 @@ import Link from "next/link";
 import licenseData from "@/lib/generated/licenses.json";
 import { LegalFooter } from "@/components/legal-footer";
 import { Wordmark } from "@/components/wordmark";
+import { SOURCE_URL } from "@/lib/legal";
 
 export const metadata: Metadata = { title: "Open-source licenses" };
 
@@ -21,8 +22,10 @@ export default function LicensesPage() {
         <h1>Open-source licenses</h1>
         <p className="updated">Generated from the production dependency graph</p>
         <p>
-          Beamling uses open-source software. The Beamling application source is proprietary and is not licensed
-          under the terms below.
+          Beamling is open source under the <a href={`${SOURCE_URL}/blob/main/LICENSE`}>MIT License</a>: you may use,
+          copy, modify, distribute and sell it, provided the copyright and license notice are kept. The source is at{" "}
+          <a href={SOURCE_URL}>{SOURCE_URL.replace("https://", "")}</a>. Beamling also uses the third-party open-source
+          packages below, each under its own license.
         </p>
         <p>
           This page lists {licenseData.packages.length} installed production packages, their versions, license,

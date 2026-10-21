@@ -11,7 +11,7 @@ import { shortDate } from "@/lib/utils";
 
 export function AccountPanel() {
   const router = useRouter();
-  const { user, conversationCount, credentials, deleteAccount, signOut } = useStore();
+  const { user, conversationCount, credentials, deleteAccount, settings, signOut, updateSettings } = useStore();
   const [confirm, setConfirm] = useState("");
   const [pending, setPending] = useState(false);
   const [toast, showToast] = useToast();
@@ -25,6 +25,15 @@ export function AccountPanel() {
     } catch (cause) {
       showToast(errorMessage(cause, "Could not delete the account"));
       setPending(false);
+    }
+  };
+
+  const toggleAnalytics = async (optOut: boolean) => {
+    try {
+      await updateSettings({ analyticsOptOut: optOut });
+      showToast(optOut ? "Excluded from analytics. Past events are being deleted." : "Analytics enabled again.");
+    } catch (cause) {
+      showToast(errorMessage(cause, "Could not update the analytics preference"));
     }
   };
 
@@ -79,9 +88,50 @@ export function AccountPanel() {
             <div className="grow">
               <div className="row-title">Cookie</div>
               <div className="row-hint">
-                HttpOnly, SameSite=Lax. Expires after 30 days without use. Signing out revokes it immediately.
+                HttpOnly, SameSite=Lax. Expires after 30 days without use and 90 days after sign-in. Signing out
+                revokes it immediately.
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="settings-card">
+        <div className="settings-card-head">
+          <div style={{ flex: 1 }}>
+            <h2>Your data</h2>
+            <p>Your rights under the GDPR, without having to write to us.</p>
+          </div>
+        </div>
+        <div className="settings-card-body tight">
+          <div className="setting-row">
+            <div className="grow">
+              <div className="row-title">Download my data</div>
+              <div className="row-hint">
+                A JSON file with your account, settings, conversations, sources and key metadata. Keys themselves are
+                never included.
+              </div>
+            </div>
+            <a className="btn btn-secondary btn-sm" href="/api/account/export" download>
+              Download
+            </a>
+          </div>
+          <div className="setting-row">
+            <label className="grow check-row" htmlFor="analytics-opt-out" style={{ alignItems: "flex-start" }}>
+              <input
+                id="analytics-opt-out"
+                type="checkbox"
+                checked={settings.analyticsOptOut}
+                onChange={(event) => void toggleAnalytics(event.target.checked)}
+              />
+              <span>
+                <span className="row-title">Exclude me from product analytics</span>
+                <span className="row-hint" style={{ display: "block", fontWeight: 400 }}>
+                  Stops usage metadata being sent and deletes what was already collected. Questions, answers and keys
+                  are never part of analytics.
+                </span>
+              </span>
+            </label>
           </div>
         </div>
       </section>
@@ -90,7 +140,11 @@ export function AccountPanel() {
         <div className="settings-card-head">
           <div style={{ flex: 1 }}>
             <h2 style={{ color: "var(--error)" }}>Delete account</h2>
-            <p>Remove every conversation, source, key and workspace data key.</p>
+            <p>
+              Permanently delete your account, sessions, settings, conversations, sources, keys, usage records and
+              analytics. To also remove Beamling&apos;s access to your Google account, visit your Google account&apos;s
+              third-party connections page.
+            </p>
           </div>
         </div>
         <form
@@ -118,8 +172,9 @@ export function AccountPanel() {
       </section>
 
       <p className="hint">
-        By using Beamling you agree to the <a href="/terms" style={{ color: "var(--accent)", textDecoration: "underline" }}>terms</a> and{" "}
-        <a href="/privacy" style={{ color: "var(--accent)", textDecoration: "underline" }}>privacy policy</a>.
+        Read the <a href="/terms" style={{ color: "var(--accent)", textDecoration: "underline" }}>terms</a> and{" "}
+        <a href="/privacy" style={{ color: "var(--accent)", textDecoration: "underline" }}>privacy notice</a> you
+        accepted.
       </p>
 
       {toast}

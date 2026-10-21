@@ -129,6 +129,8 @@ export function createAnalytics(options: {
   /** Defaults to `config`; set separately so the kill switch does not stop deletions. */
   deletionConfig?: PostHogConfig | null;
   fetchImpl?: Fetch;
+  /** True for an account that objected to analytics; its events are dropped before they are sent. */
+  isExcluded?: (userId: string) => Promise<boolean>;
   captureTimeoutMs?: number;
   deleteTimeoutMs?: number;
 }): AnalyticsClient {
@@ -152,16 +154,21 @@ export function createAnalytics(options: {
   function capture<E extends AnalyticsEvent>(userId: string, event: E, properties: AnalyticsEventMap[E]): void {
     if (!config || inFlight.size >= MAX_IN_FLIGHT) return;
     const payload = buildAnalyticsPayload(config, userId, event, properties as Record<string, unknown>);
-    const task = deliver(
-      `${config.host}/i/v0/e/`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(captureTimeoutMs),
-      },
-      event,
-    );
+    const task = (async () => {
+      // An objection must be honoured even when the check fails: no answer means no event.
+      const excluded = options.isExcluded ? await options.isExcluded(userId).catch(() => true) : false;
+      if (excluded) return;
+      await deliver(
+        `${config.host}/i/v0/e/`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(captureTimeoutMs),
+        },
+        event,
+      );
+    })();
     inFlight.add(task);
     void task.then(
       () => inFlight.delete(task),
@@ -216,7 +223,10 @@ export function createAnalytics(options: {
 // One client per process: the shutdown hook is bundled separately from the route handlers, and its
 // flush must see the events those handlers still have in flight.
 const globalForAnalytics = globalThis as unknown as { __beamlingAnalytics?: AnalyticsClient };
-export const analytics = (globalForAnalytics.__beamlingAnalytics ??= createAnalytics({
+export const analytics: AnalyticsClient = (globalForAnalytics.__beamlingAnalytics ??= createAnalytics({
   config: posthogConfig(),
   deletionConfig: posthogDeletionConfig(),
+  // Loaded lazily: the analytics module stays importable without a database (unit tests, tooling).
+  isExcluded: async (userId): Promise<boolean> =>
+    (await import("./repo/settings")).analyticsExcluded(userId, analytics.distinctIdFor(userId)),
 }));

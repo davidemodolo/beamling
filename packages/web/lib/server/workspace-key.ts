@@ -50,7 +50,7 @@ async function readStoredKey(userId: string): Promise<Buffer | null> {
   if (key.length !== 32) throw new Error("Workspace key has the wrong length.");
   // Lazy rotation: once the configured KMS key changes, re-wrap the workspace key on the next read.
   // The stored key id is authoritative until then, so a rotation never makes existing content unreadable.
-  const currentKeyId = currentKmsKeyId();
+  const currentKeyId = await currentKmsKeyId().catch(() => row.keyId);
   if (row.keyId !== currentKeyId) {
     try {
       const rewrapped = await wrapKey(key, wdkAad(userId));

@@ -1,11 +1,12 @@
 import { z } from "zod";
 import { BUDGET_PERIODS, BRAVE_PLANS, CREDENTIAL_KINDS, CREDENTIAL_PROVIDER_IDS } from "@/lib/contracts";
 import { analytics } from "@/lib/server/analytics";
+import { audit } from "@/lib/server/audit";
 import { encryptCredential } from "@/lib/server/crypto";
 import { ApiError, json, parseBody } from "@/lib/server/http";
 import { validateProviderKey } from "@/lib/server/providers";
 import { credentialStatusFor } from "@/lib/server/providers/errors";
-import { consumeRateLimit, getCredentialRow, saveCredential } from "@/lib/server/repo";
+import { consumeRateLimit, consumeValidation, getCredentialRow, saveCredential } from "@/lib/server/repo";
 import { apiRoute } from "@/lib/server/route";
 
 export const runtime = "nodejs";
@@ -21,7 +22,7 @@ const schema = z
     budgetUsd: z.number().positive().max(1_000_000).optional().nullable(),
     budgetPeriod: z.enum(BUDGET_PERIODS).optional().nullable(),
     // false saves the key as unverified without calling the provider, for providers whose only
-    // check is a billable search. The key is checked later with the validate endpoint.
+    // check is a billable search (Brave, Exa). The key is checked later with the validate endpoint.
     validate: z.boolean().optional(),
   })
   .superRefine((value, ctx) => {
@@ -37,6 +38,9 @@ const schema = z
     ) {
       ctx.addIssue({ code: "custom", path: ["provider"], message: "Plan and limits apply only to Brave Search keys." });
     }
+    if (value.validate === false && value.provider !== "brave" && value.provider !== "exa") {
+      ctx.addIssue({ code: "custom", path: ["validate"], message: "Only Brave and Exa keys can be saved without a check." });
+    }
     if (value.expiresOn) {
       const expiry = new Date(`${value.expiresOn}T23:59:59Z`);
       if (expiry.getTime() <= Date.now()) {
@@ -48,6 +52,7 @@ const schema = z
 export const POST = apiRoute(async ({ request, user }) => {
   const input = await parseBody(request, schema);
   await consumeRateLimit(`credentials:${user.id}`, 20, 3600);
+  if (input.validate !== false) await consumeValidation(user.id, request.headers);
   if ((input.kind === "llm") !== (input.provider === "openrouter")) {
     throw new ApiError("INVALID_PROVIDER", "Provider does not match credential kind.", 400);
   }
@@ -82,6 +87,11 @@ export const POST = apiRoute(async ({ request, user }) => {
     budgetUsd: input.budgetUsd ?? null,
     budgetPeriod: input.budgetPeriod ?? (input.budgetUsd == null ? null : "month"),
     preserveUsage: Boolean(existing),
+  });
+  audit("credential_saved", {
+    userId: user.id,
+    headers: request.headers,
+    fields: { credentialId: credential.id, provider: credential.provider, replaced: Boolean(existing) },
   });
   analytics.capture(user.id, "credential_added", {
     kind: credential.kind,
