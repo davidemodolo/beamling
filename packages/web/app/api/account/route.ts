@@ -1,4 +1,5 @@
 import { abortChats } from "@/lib/server/active-chats";
+import { analytics } from "@/lib/server/analytics";
 import { json } from "@/lib/server/http";
 import { deleteAccount } from "@/lib/server/repo";
 import { apiRoute } from "@/lib/server/route";
@@ -12,6 +13,7 @@ export const DELETE = apiRoute(
     if (user) {
       await deleteAccount(user.id);
       abortChats({ userId: user.id });
+      await analytics.deleteUser(user.id);
     }
     await clearSessionCookie();
     return json({ ok: true });

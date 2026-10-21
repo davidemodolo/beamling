@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { test, type TestContext } from "node:test";
+import {
+  ANALYTICS_EVENT_PROPERTIES,
+  analyticsDistinctId,
+  buildAnalyticsPayload,
+  createAnalytics,
+} from "../lib/server/analytics";
 import { newCitations, sanitizeCitations, stripCitations } from "../lib/server/citations";
 import { decryptCredential, encryptCredential } from "../lib/server/crypto";
 import { ApiError } from "../lib/server/http";
@@ -8,6 +14,7 @@ import { searchBrave, validateBraveKey } from "../lib/server/providers/brave";
 import { exaError, searchExa, validateExaKey } from "../lib/server/providers/exa";
 import { searchTavily, tavilyError, validateTavilyKey } from "../lib/server/providers/tavily";
 import { DEFAULT_LLM_MODEL, OPENROUTER_MODEL_IDS, isAllowedModel } from "../lib/providers";
+import { APP_VERSION } from "../lib/version";
 
 process.env.CREDENTIAL_MASTER_KEY = randomBytes(32).toString("base64");
 process.env.AUTH_SECRET = randomBytes(32).toString("base64");
@@ -615,6 +622,34 @@ test("production refuses unsafe configuration", async (t) => {
   assert.match(errorsWith({ BEAMLING_FAKE_PROVIDERS: "1" }), /BEAMLING_FAKE_PROVIDERS/);
   assert.match(errorsWith({ AUTH_SECRET: "short" }), /32 bytes/);
   assert.match(errorsWith({ KMS_PROVIDER: "env" }), /KMS_PROVIDER=env/);
+  assert.match(errorsWith({ ANALYTICS_ENABLED: "yes" }), /exactly true or false/);
+  const analyticsErrors = errorsWith({ ANALYTICS_ENABLED: "true" });
+  assert.match(analyticsErrors, /POSTHOG_API_KEY/);
+  assert.match(analyticsErrors, /POSTHOG_PERSONAL_API_KEY/);
+  assert.match(analyticsErrors, /POSTHOG_PROJECT_ID/);
+  assert.match(analyticsErrors, /ANALYTICS_SALT/);
+  assert.match(
+    errorsWith({
+      ANALYTICS_ENABLED: "true",
+      POSTHOG_API_KEY: "phc_test",
+      POSTHOG_PERSONAL_API_KEY: "phx_test",
+      POSTHOG_PROJECT_ID: "not-a-number",
+      ANALYTICS_SALT: "x".repeat(32),
+      POSTHOG_HOST: "https://eu.i.posthog.com",
+    }),
+    /POSTHOG_PROJECT_ID must be numeric/,
+  );
+  assert.equal(
+    errorsWith({
+      ANALYTICS_ENABLED: "true",
+      POSTHOG_API_KEY: "phc_test",
+      POSTHOG_PERSONAL_API_KEY: "phx_test",
+      POSTHOG_PROJECT_ID: "123",
+      ANALYTICS_SALT: "x".repeat(32),
+      POSTHOG_HOST: "https://eu.i.posthog.com",
+    }),
+    "",
+  );
   // A local Docker run is allowed, without Secure cookies.
   assert.equal(errorsWith({ APP_URL: "http://localhost:3000", TRUSTED_PROXY_HOPS: undefined }), "");
 
@@ -694,4 +729,153 @@ test("only answers about the key change its stored status", async () => {
   assert.equal(credentialStatusFor(error("PROVIDER_RATE_LIMITED")), "rate_limited");
   assert.equal(credentialStatusFor(error("PROVIDER_UNAVAILABLE")), null);
   assert.equal(credentialStatusFor(new TypeError("fetch failed")), null);
+});
+
+const ANALYTICS_CONFIG = {
+  apiKey: "phc_test",
+  host: "https://eu.i.posthog.com",
+  appHost: "https://eu.posthog.com",
+  salt: "analytics-test-salt-at-least-32-bytes",
+  personalApiKey: "phx_test",
+  projectId: "123",
+};
+
+test("analytics payloads contain allowlisted metadata only", () => {
+  const userId = "private-user-id-0123456789";
+  const payload = buildAnalyticsPayload(ANALYTICS_CONFIG, userId, "answer_completed", {
+    mode: "quick",
+    search_provider: "tavily",
+    llm_model: "deepseek/deepseek-v4.1-flash",
+    tokens_in: 12,
+    tokens_out: 34,
+    cost_usd: 0.001,
+    search_cost_usd: 0.008,
+    search_requests: 1,
+    search_failures: 0,
+    latency_ms: 500,
+    uncited: false,
+    no_sources: false,
+    degraded: false,
+    question: "must never leave the server",
+    answer: "must never leave the server",
+    source_url: "https://private.example",
+    error_message: "must never leave the server",
+  });
+
+  assert.equal(payload.distinct_id, analyticsDistinctId(userId, ANALYTICS_CONFIG.salt));
+  assert.match(payload.distinct_id, /^[0-9a-f]{32}$/);
+  assert.notEqual(payload.distinct_id, userId);
+  assert.equal(payload.properties.search_provider, "tavily");
+  assert.equal(payload.properties.app_version, APP_VERSION);
+  assert.equal(payload.properties.$geoip_disable, true);
+  assert.equal(payload.properties.$ip, "0.0.0.0");
+  assert.ok(!("question" in payload.properties));
+  assert.ok(!("answer" in payload.properties));
+  assert.ok(!("source_url" in payload.properties));
+  assert.ok(!("error_message" in payload.properties));
+  assert.ok(!JSON.stringify(payload).includes(userId));
+});
+
+test("analytics allowlist has no content or identity properties", () => {
+  const forbidden = new Set(["question", "answer", "title", "source_url", "snippet", "key", "email", "ip", "error_message"]);
+  for (const properties of Object.values(ANALYTICS_EVENT_PROPERTIES)) {
+    for (const property of properties) assert.equal(forbidden.has(property), false, property);
+  }
+});
+
+test("analytics is inert when disabled", async () => {
+  let calls = 0;
+  const client = createAnalytics({
+    config: null,
+    fetchImpl: (async () => {
+      calls += 1;
+      return new Response("{}");
+    }) as typeof fetch,
+  });
+  client.capture("user", "account_created", {});
+  await client.flush();
+  assert.equal(calls, 0);
+  assert.equal(await client.deleteUser("user"), false);
+  assert.equal(calls, 0);
+});
+
+test("analytics sends events and queues person deletion", async () => {
+  const requests: { url: string; init: RequestInit }[] = [];
+  const client = createAnalytics({
+    config: ANALYTICS_CONFIG,
+    fetchImpl: (async (input, init) => {
+      requests.push({ url: String(input), init: init ?? {} });
+      return new Response("{}", { status: 200 });
+    }) as typeof fetch,
+  });
+  const userId = "analytics-delivery-user";
+  client.capture(userId, "credential_added", { kind: "search", provider: "exa", status: "active" });
+  await client.flush();
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].url, "https://eu.i.posthog.com/i/v0/e/");
+  const body = JSON.parse(String(requests[0].init.body)) as {
+    event: string;
+    distinct_id: string;
+    properties: Record<string, unknown>;
+  };
+  assert.equal(body.event, "credential_added");
+  assert.equal(body.distinct_id, analyticsDistinctId(userId, ANALYTICS_CONFIG.salt));
+  assert.equal(body.properties.provider, "exa");
+  assert.equal(body.properties.status, "active");
+  assert.equal(body.properties.$geoip_disable, true);
+
+  assert.equal(await client.deleteUser(userId), true);
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1].url, "https://eu.posthog.com/api/projects/123/persons/bulk_delete/");
+  const headers = new Headers(requests[1].init.headers);
+  assert.equal(headers.get("Authorization"), "Bearer phx_test");
+  const deletion = JSON.parse(String(requests[1].init.body)) as {
+    distinct_ids: string[];
+    delete_events: boolean;
+    delete_recordings: boolean;
+  };
+  assert.deepEqual(deletion.distinct_ids, [analyticsDistinctId(userId, ANALYTICS_CONFIG.salt)]);
+  assert.equal(deletion.delete_events, true);
+  assert.equal(deletion.delete_recordings, true);
+});
+
+test("analytics delivery failures never reject", async () => {
+  const client = createAnalytics({
+    config: ANALYTICS_CONFIG,
+    fetchImpl: (async () => {
+      throw new Error("network down");
+    }) as typeof fetch,
+  });
+  client.capture("user", "account_created", {});
+  await assert.doesNotReject(client.flush());
+  await assert.doesNotReject(client.deleteUser("user"));
+});
+
+test("PostHog configuration is opt-in and derives the EU app host", async (t) => {
+  const { posthogConfig } = await import("../lib/server/env");
+  withEnv(t, {
+    ANALYTICS_ENABLED: undefined,
+    POSTHOG_API_KEY: undefined,
+    POSTHOG_PERSONAL_API_KEY: undefined,
+    POSTHOG_PROJECT_ID: undefined,
+    ANALYTICS_SALT: undefined,
+    POSTHOG_HOST: undefined,
+    POSTHOG_APP_HOST: undefined,
+  });
+  assert.equal(posthogConfig(), null);
+
+  withEnv(t, {
+    ANALYTICS_ENABLED: "true",
+    POSTHOG_API_KEY: "phc_test",
+    POSTHOG_PERSONAL_API_KEY: "phx_test",
+    POSTHOG_PROJECT_ID: "123",
+    ANALYTICS_SALT: "x".repeat(32),
+    POSTHOG_HOST: undefined,
+    POSTHOG_APP_HOST: undefined,
+  });
+  const config = posthogConfig();
+  assert.equal(config?.host, "https://eu.i.posthog.com");
+  assert.equal(config?.appHost, "https://eu.posthog.com");
+  assert.equal(config?.apiKey, "phc_test");
 });

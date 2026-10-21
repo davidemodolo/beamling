@@ -3,6 +3,7 @@ import * as client from "openid-client";
 import { eq } from "drizzle-orm";
 import { EncryptJWT, jwtDecrypt } from "jose";
 import { cookies } from "next/headers";
+import { analytics } from "./analytics";
 import { db } from "./db";
 import {
   appUrl,
@@ -186,6 +187,7 @@ export async function completeLogin(requestUrl: string): Promise<{ returnTo: str
 
   const user = await upsertUser(claims as OidcClaims);
   await createSession(user.id);
+  if (user.isNew) analytics.capture(user.id, "account_created", {});
   const store = await cookies();
   // `delete()` omits Secure, which browsers reject for a __Host- cookie; set an explicit expired
   // cookie with the same attributes instead.

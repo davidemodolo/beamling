@@ -37,6 +37,11 @@ export default function PrivacyPage() {
           </li>
           <li>Usage: token counts, model, recorded cost and latency. Retained with your conversations until deleted.</li>
           <li>
+            Product analytics when enabled: metadata such as mode, search provider, model, token counts, estimated cost,
+            latency and error codes, linked to a keyed hash of your account identifier. Questions, answers, titles, source
+            content, keys, email addresses and IP addresses are never sent.
+          </li>
+          <li>
             Logs: structured error and security logs without keys, session tokens, request bodies or message text, kept for
             at most 30 days.
           </li>
@@ -60,14 +65,17 @@ export default function PrivacyPage() {
           Your account and conversations stay until you delete them. Signing in again does not create a new workspace.
           Sessions expire after 30 days without use; expired sessions are deleted, but the account and its content remain
           so that you can sign in again. Deleting your account hard-deletes the account, conversations, messages, sources,
-          credentials, usage records and workspace encryption key immediately. When database backups are enabled, they expire within 30 days.
+          credentials, usage records and workspace encryption key immediately. When product analytics is enabled, account
+          deletion also requests deletion of the hashed analytics person and its events. When database backups are enabled,
+          they expire within 30 days.
         </p>
 
         <h2>Subprocessors</h2>
         <p>
           A production deployment uses Google for sign-in, a hosting platform, a managed Postgres database, OpenRouter,
-          the search providers you choose (Brave, Tavily or Exa), a managed KMS master-key provider and optional error tracking. There is no email provider or
-          advertising network in Alpha 1.
+          the search providers you choose (Brave, Tavily or Exa), a managed KMS master-key provider, PostHog Cloud EU when
+          product analytics is enabled, and optional error tracking. There is no email provider or advertising network in
+          Alpha 1.
         </p>
 
         <h2>Contact</h2>

@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { isAllowedModel, SEARCH_PROVIDER_IDS } from "@/lib/providers";
+import { analytics } from "@/lib/server/analytics";
 import { ApiError, json, parseBody } from "@/lib/server/http";
-import { updateSettings } from "@/lib/server/repo";
+import { ensureSettings, updateSettings } from "@/lib/server/repo";
 import { apiRoute } from "@/lib/server/route";
 
 export const runtime = "nodejs";
@@ -18,5 +19,13 @@ export const PATCH = apiRoute(async ({ request, user }) => {
   if (patch.llmModel && !isAllowedModel(patch.llmModel)) {
     throw new ApiError("MODEL_NOT_ALLOWED", "That model is not in the Alpha 1 allowlist.", 400);
   }
-  return json({ settings: await updateSettings(user.id, patch) });
+  const previous = patch.defaultSearchProvider ? await ensureSettings(user.id) : null;
+  const settings = await updateSettings(user.id, patch);
+  if (previous && previous.defaultSearchProvider !== settings.defaultSearchProvider) {
+    analytics.capture(user.id, "search_provider_selected", {
+      search_provider: settings.defaultSearchProvider,
+      previous_provider: previous.defaultSearchProvider,
+    });
+  }
+  return json({ settings });
 });

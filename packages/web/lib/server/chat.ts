@@ -5,6 +5,7 @@ import { z } from "zod";
 import { DEFAULT_LLM_MODEL, isAllowedModel, isSearchProvider, searchProviderName } from "../providers";
 import type { DoneEvent, Message, Mode, SearchProvider, SearchTrace, Source, Usage } from "../types";
 import { isShutdown } from "./active-chats";
+import { analytics } from "./analytics";
 import { hasValidCitation, newCitations, sanitizeCitations } from "./citations";
 import { decryptCredential } from "./crypto";
 import { appUrl, isFakeProviders } from "./env";
@@ -718,6 +719,38 @@ export async function runChat(prepared: PreparedChat, options: { signal: AbortSi
     return usage;
   };
 
+  const answerProperties = (usage: Usage) => ({
+    mode: prepared.mode,
+    search_provider: prepared.searchProvider,
+    llm_model: prepared.model,
+    resolved_model: usage.resolvedModel,
+    upstream_provider: usage.upstreamProvider,
+    tokens_in: usage.tokensIn,
+    tokens_out: usage.tokensOut,
+    cost_usd: usage.costUsd,
+    search_cost_usd: usage.searchCostUsd,
+    search_requests: state.searchRequests,
+    search_failures: state.searchFailures,
+    latency_ms: usage.latencyMs ?? Date.now() - prepared.startedAt,
+  });
+
+  const trackAnswerFailure = (usage: Usage, errorCode: string) =>
+    analytics.capture(prepared.userId, "answer_failed", {
+      mode: prepared.mode,
+      search_provider: prepared.searchProvider,
+      llm_model: prepared.model,
+      error_code: errorCode,
+      latency_ms: usage.latencyMs ?? Date.now() - prepared.startedAt,
+      search_failures: state.searchFailures,
+    });
+
+  const trackAnswerStopped = (usage: Usage) =>
+    analytics.capture(prepared.userId, "answer_stopped", {
+      mode: prepared.mode,
+      search_provider: prepared.searchProvider,
+      latency_ms: usage.latencyMs ?? Date.now() - prepared.startedAt,
+    });
+
   emit("meta", {
     conversationId: prepared.conversationId,
     messageId: prepared.messageId,
@@ -759,40 +792,53 @@ export async function runChat(prepared: PreparedChat, options: { signal: AbortSi
       finished = true;
       emit("usage", usage);
       emit("done", { noSources: true, degraded: state.degraded, searchFailures: state.searchFailures });
+      analytics.capture(prepared.userId, "answer_completed", {
+        ...answerProperties(usage),
+        uncited: true,
+        no_sources: true,
+        degraded: state.degraded,
+      });
       return;
     }
 
     const result = await streamSynthesis(ctx, state, queries);
     const content = sanitizeCitations(result.content || state.content, state.sources.length);
     const truncated = result.finishReason === "length";
-    const usage = await complete({
-      content,
-      status: "complete",
-      sources: state.sources,
-      uncited: !hasValidCitation(content, state.sources.length),
-      truncated,
-    });
+    const uncited = !hasValidCitation(content, state.sources.length);
+    const usage = await complete({ content, status: "complete", sources: state.sources, uncited, truncated });
     finished = true;
     emit("usage", usage);
     emit("done", { noSources: false, truncated, degraded: state.degraded, searchFailures: state.searchFailures });
+    analytics.capture(prepared.userId, "answer_completed", {
+      ...answerProperties(usage),
+      uncited,
+      no_sources: false,
+      degraded: state.degraded,
+    });
   } catch (error) {
     if (finished) throw error;
     const aborted = signal.aborted || (error instanceof Error && error.name === "AbortError");
     if (aborted) {
       const outcome = abortOutcome(signal, prepared.mode);
-      await complete({ content: sanitizeCitations(state.content, state.sources.length), sources: state.sources, ...outcome });
+      const usage = await complete({
+        content: sanitizeCitations(state.content, state.sources.length),
+        sources: state.sources,
+        ...outcome,
+      });
       if (outcome.status === "stopped") {
         emit("stage", { stage: "stopped", detail: outcome.errorMessage ?? "Answer stopped" });
       } else {
         emit("error", { code: outcome.errorCode, message: outcome.errorMessage });
       }
+      if (outcome.errorCode) trackAnswerFailure(usage, outcome.errorCode);
+      else trackAnswerStopped(usage);
       return;
     }
 
     const code = error instanceof ApiError ? error.code : "INTERNAL";
     const message = error instanceof ApiError ? error.message : "The answer could not be completed.";
     if (!(error instanceof ApiError)) log.error("Answer failed", error);
-    await complete({
+    const usage = await complete({
       content: sanitizeCitations(state.content, state.sources.length),
       status: "error",
       sources: state.sources,
@@ -800,6 +846,7 @@ export async function runChat(prepared: PreparedChat, options: { signal: AbortSi
       errorMessage: message,
     });
     emit("error", { code, message, provider: error instanceof ApiError ? error.provider : undefined });
+    trackAnswerFailure(usage, code);
   }
 }
 

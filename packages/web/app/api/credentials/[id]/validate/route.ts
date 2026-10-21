@@ -1,3 +1,4 @@
+import { analytics } from "@/lib/server/analytics";
 import { decryptCredential } from "@/lib/server/crypto";
 import { ApiError, idParam, json, notFound } from "@/lib/server/http";
 import { isSearchProvider } from "@/lib/providers";
@@ -30,6 +31,13 @@ export const POST = apiRoute<{ params: Promise<{ id: string }> }>(async ({ conte
     await validateProviderKey(provider, key, row.plan === "paid" ? "paid" : "free");
   } catch (error) {
     const status = credentialStatusFor(error);
+    if (status && error instanceof ApiError) {
+      analytics.capture(user.id, "credential_validation_failed", {
+        kind: row.kind === "llm" ? "llm" : "search",
+        provider,
+        error_code: error.code,
+      });
+    }
     // The response carries the stored credential, so the UI shows the status the server recorded.
     const credential = status ? await updateCredentialValidation(user.id, id, status) : null;
     if (error instanceof ApiError) {

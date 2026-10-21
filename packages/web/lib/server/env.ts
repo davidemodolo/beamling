@@ -4,6 +4,15 @@ const DEV_DATABASE_URL = "postgres://beamling:beamling@127.0.0.1:5432/beamling";
 const DEV_APP_URL = "http://localhost:3000";
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
+export interface PostHogConfig {
+  apiKey: string;
+  host: string;
+  appHost: string;
+  salt: string;
+  personalApiKey: string;
+  projectId: string;
+}
+
 function isProduction(): boolean {
   return process.env.NODE_ENV === "production";
 }
@@ -31,6 +40,47 @@ function isLocalHost(hostname: string): boolean {
 function isLocalAppUrl(): boolean {
   const url = parseUrl(appUrl());
   return url !== null && isLocalHost(url.hostname);
+}
+
+function validOrigin(value: string | undefined): string | undefined {
+  const raw = value?.trim();
+  if (!raw) return undefined;
+  const url = parseUrl(raw);
+  if (!url || (url.protocol !== "https:" && !isLocalHost(url.hostname))) return undefined;
+  if (url.username || url.password || url.pathname !== "/" || url.search || url.hash) return undefined;
+  return url.origin;
+}
+
+function posthogIngestionHost(): string | undefined {
+  return process.env.POSTHOG_HOST ? validOrigin(process.env.POSTHOG_HOST) : validOrigin("https://eu.i.posthog.com");
+}
+
+/** PostHog's app host serves the personal API used for person deletion; ingestion uses the i. host. */
+function posthogAppHost(ingestionHost: string): string | undefined {
+  if (process.env.POSTHOG_APP_HOST) return validOrigin(process.env.POSTHOG_APP_HOST);
+  if (ingestionHost === "https://eu.i.posthog.com") return "https://eu.posthog.com";
+  if (ingestionHost === "https://us.i.posthog.com") return "https://us.posthog.com";
+  return ingestionHost;
+}
+
+/**
+ * Analytics is opt-in. `ANALYTICS_ENABLED=false` is the kill switch; without `=true` no events leave
+ * the process. Local and test environments therefore stay silent unless explicitly configured.
+ */
+export function analyticsEnabled(): boolean {
+  return process.env.ANALYTICS_ENABLED === "true";
+}
+
+export function posthogConfig(): PostHogConfig | null {
+  if (!analyticsEnabled()) return null;
+  const apiKey = process.env.POSTHOG_API_KEY?.trim();
+  const salt = process.env.ANALYTICS_SALT?.trim();
+  const personalApiKey = process.env.POSTHOG_PERSONAL_API_KEY?.trim();
+  const projectId = process.env.POSTHOG_PROJECT_ID?.trim();
+  const host = posthogIngestionHost();
+  const appHost = host ? posthogAppHost(host) : undefined;
+  if (!apiKey || !salt || !personalApiKey || !projectId || !host || !appHost) return null;
+  return { apiKey, salt, host, appHost, personalApiKey, projectId };
 }
 
 export function databaseUrl(): string | undefined {
@@ -266,6 +316,34 @@ export function productionConfigErrors(): string[] {
   }
   if (process.env.BEAMLING_FAKE_PROVIDERS === "1" && !isLocalAppUrl()) {
     errors.push("BEAMLING_FAKE_PROVIDERS=1 is only allowed when APP_URL is a localhost URL.");
+  }
+  errors.push(...analyticsConfigErrors());
+  return errors;
+}
+
+function analyticsConfigErrors(): string[] {
+  const flag = process.env.ANALYTICS_ENABLED;
+  if (flag && flag !== "true" && flag !== "false") {
+    return ["ANALYTICS_ENABLED must be exactly true or false."];
+  }
+  if (!analyticsEnabled()) return [];
+  const errors: string[] = [];
+  if (!process.env.POSTHOG_API_KEY?.trim()) errors.push("POSTHOG_API_KEY is required when analytics is enabled.");
+  if (!process.env.POSTHOG_PERSONAL_API_KEY?.trim()) {
+    errors.push("POSTHOG_PERSONAL_API_KEY is required when analytics is enabled, so account deletion can remove events.");
+  }
+  if (!process.env.POSTHOG_PROJECT_ID?.trim()) {
+    errors.push("POSTHOG_PROJECT_ID is required when analytics is enabled.");
+  } else if (!/^\d+$/.test(process.env.POSTHOG_PROJECT_ID.trim())) {
+    errors.push("POSTHOG_PROJECT_ID must be numeric.");
+  }
+  const salt = process.env.ANALYTICS_SALT?.trim();
+  if (!salt || Buffer.byteLength(salt, "utf8") < 32) {
+    errors.push("ANALYTICS_SALT must be at least 32 bytes when analytics is enabled.");
+  }
+  if (!posthogIngestionHost()) errors.push("POSTHOG_HOST must be an https origin outside localhost.");
+  if (process.env.POSTHOG_APP_HOST && !validOrigin(process.env.POSTHOG_APP_HOST)) {
+    errors.push("POSTHOG_APP_HOST must be an https origin outside localhost.");
   }
   return errors;
 }

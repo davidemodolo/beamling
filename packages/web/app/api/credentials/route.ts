@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { analytics } from "@/lib/server/analytics";
 import { encryptCredential } from "@/lib/server/crypto";
 import { ApiError, json, parseBody } from "@/lib/server/http";
 import { validateProviderKey } from "@/lib/server/providers";
+import { credentialStatusFor } from "@/lib/server/providers/errors";
 import { consumeRateLimit, deleteCredential, getCredentialRow, saveCredential } from "@/lib/server/repo";
 import { apiRoute } from "@/lib/server/route";
 
@@ -42,7 +44,19 @@ export const POST = apiRoute(async ({ request, user }) => {
     throw new ApiError("INVALID_PROVIDER", "Provider does not match credential kind.", 400);
   }
 
-  await validateProviderKey(input.provider, input.key, input.plan ?? "free");
+  try {
+    await validateProviderKey(input.provider, input.key, input.plan ?? "free");
+  } catch (error) {
+    const status = credentialStatusFor(error);
+    if (status && error instanceof ApiError) {
+      analytics.capture(user.id, "credential_validation_failed", {
+        kind: input.kind,
+        provider: input.provider,
+        error_code: error.code,
+      });
+    }
+    throw error;
+  }
 
   const existing = await getCredentialRow(user.id, input.kind, input.provider);
   const sameKey = existing?.fingerprint === fingerprint(input.key);
@@ -65,6 +79,11 @@ export const POST = apiRoute(async ({ request, user }) => {
     budgetUsd: input.budgetUsd ?? null,
     budgetPeriod: input.budgetPeriod ?? (input.budgetUsd == null ? null : "month"),
     preserveUsage: sameKey,
+  });
+  analytics.capture(user.id, "credential_added", {
+    kind: credential.kind,
+    provider: credential.provider,
+    status: credential.status,
   });
   return json({ credential }, { status: 201 });
 });

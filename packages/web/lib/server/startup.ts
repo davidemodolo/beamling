@@ -1,4 +1,5 @@
 import { abortAllChats } from "./active-chats";
+import { analytics } from "./analytics";
 import { pool } from "./db";
 import { productionConfigErrors, productionConfigWarnings } from "./env";
 import { log } from "./log";
@@ -26,6 +27,7 @@ async function shutdown(signal: string): Promise<void> {
   } catch (error) {
     log.error("Shutdown cleanup failed", error);
   }
+  await analytics.flush();
   await pool.end().catch(() => {});
   process.exit(0);
 }

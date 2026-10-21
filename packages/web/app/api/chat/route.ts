@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { watchChat } from "@/lib/server/active-chats";
+import { analytics } from "@/lib/server/analytics";
 import { prepareChat, publicError, runChat, TIMEOUT_MS, type ChatEmit } from "@/lib/server/chat";
 import { cleanText, clientIpKey, parseBody } from "@/lib/server/http";
 import { consumeRateLimit } from "@/lib/server/repo";
@@ -50,6 +51,11 @@ export const POST = apiRoute(async ({ request, user }) => {
   await consumeRateLimit(`chat:${user.id}`, CHATS_PER_USER_PER_HOUR, 3600);
   await consumeRateLimit(`chat-ip:${clientIpKey(request.headers)}`, CHATS_PER_IP_PER_HOUR, 3600);
   const prepared = await prepareChat({ userId: user.id, ...input });
+  analytics.capture(user.id, "question_asked", {
+    mode: prepared.mode,
+    search_provider: prepared.searchProvider,
+    llm_model: prepared.model,
+  });
 
   const internal = new AbortController();
   const signal = AbortSignal.any([request.signal, AbortSignal.timeout(TIMEOUT_MS[input.mode]), internal.signal]);
