@@ -16,8 +16,13 @@ swap_size_mb = 512
   KMS_PROVIDER = "gcp"
   DATABASE_SSL = "true"
   DATABASE_SSL_REJECT_UNAUTHORIZED = "true"
-  MAX_CONCURRENT_CHATS = "50"
+  # Keep in-flight streams below the platform connection ceiling so health checks and
+  # ordinary requests retain headroom.
+  MAX_CONCURRENT_CHATS = "30"
+  PLATFORM_CONNECTION_LIMIT = "50"
   DATABASE_POOL_MAX = "10"
+  # Safe default: only invited addresses may create accounts. Set to "open" to launch publicly.
+  SIGNUP_MODE = "allowlist"
 
 [http_service]
   internal_port = 3000

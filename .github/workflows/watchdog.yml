@@ -1,0 +1,35 @@
+name: Watchdog
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe public liveness and readiness
+        env:
+          PUBLIC_URL: ${{ vars.PUBLIC_APP_URL || 'https://beamling.app' }}
+        run: |
+          curl --fail --silent --show-error --max-time 10 "$PUBLIC_URL/api/live" >/dev/null
+          curl --fail --silent --show-error --max-time 10 "$PUBLIC_URL/api/health" >/dev/null
+          curl --fail --silent --show-error --max-time 10 "$PUBLIC_URL/" >/dev/null
+      - name: Notify operator
+        if: failure()
+        env:
+          WEBHOOK: ${{ secrets.WATCHDOG_WEBHOOK_URL }}
+          PUBLIC_URL: ${{ vars.PUBLIC_APP_URL || 'https://beamling.app' }}
+        run: |
+          if [ -z "$WEBHOOK" ]; then
+            echo "No WATCHDOG_WEBHOOK_URL secret; relying on GitHub failure notifications."
+            exit 0
+          fi
+          curl --fail --silent --show-error --max-time 10 \
+            -H "Content-Type: application/json" \
+            -d "{\"text\":\"Beamling watchdog failed for $PUBLIC_URL at $(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
+            "$WEBHOOK"

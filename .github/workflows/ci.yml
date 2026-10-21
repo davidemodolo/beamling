@@ -34,15 +34,17 @@ jobs:
       DATABASE_URL: postgres://beamling:beamling@localhost:5432/beamling_test
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
-      - uses: pnpm/action-setup@v6.1.0
-      - uses: actions/setup-node@v7.1.0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: 24
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Build workspace packages
+        run: pnpm mascot:build
       - name: License allowlist
         run: pnpm licenses:check
       - name: Dependency audit (production)
@@ -64,7 +66,7 @@ jobs:
         run: pnpm --filter @beamling/web exec playwright install --with-deps chromium
       - name: End-to-end tests
         run: pnpm --filter @beamling/web test:e2e
-      - uses: actions/upload-artifact@v7.0.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: failure()
         with:
           name: playwright-traces
@@ -82,8 +84,9 @@ jobs:
     outputs:
       released: ${{ steps.version.outputs.exists == 'false' }}
       version: ${{ steps.version.outputs.version }}
+      image: ${{ steps.build.outputs.image }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
       - name: Resolve version
@@ -100,6 +103,7 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
       - name: Build and push image
+        id: build
         if: steps.version.outputs.exists == 'false'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -108,6 +112,7 @@ jobs:
         run: |
           IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"
           BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "build_time=$BUILD_TIME" >> "$GITHUB_OUTPUT"
           echo "$GITHUB_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           docker build \
             --build-arg APP_VERSION="$VERSION" \
@@ -117,6 +122,8 @@ jobs:
             -t "$IMAGE:latest" .
           docker push "$IMAGE:$TAG"
           docker push "$IMAGE:latest"
+          DIGEST="$(docker buildx imagetools inspect "$IMAGE:$TAG" --format '{{.Manifest.Digest}}')"
+          echo "image=$IMAGE@$DIGEST" >> "$GITHUB_OUTPUT"
       - name: Create tag and GitHub release
         if: steps.version.outputs.exists == 'false'
         env:
@@ -142,18 +149,24 @@ jobs:
       group: deploy-production
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       # Pinned to master as of 2026-10-21; flyctl itself is pinned to 0.4.120.
       - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
         with:
           version: 0.4.120
-      - name: Deploy image
+      - name: Deploy the released digest
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-          VERSION: ${{ needs.release.outputs.version }}
+          IMAGE: ${{ needs.release.outputs.image }}
         run: |
-          BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          flyctl deploy --remote-only --ha=false \
-            --build-arg APP_VERSION="$VERSION" \
-            --build-arg GIT_COMMIT="$GITHUB_SHA" \
-            --build-arg BUILD_TIME="$BUILD_TIME"
+          test -n "$IMAGE"
+          flyctl deploy --image "$IMAGE" --ha=false
+      - name: Post-deploy smoke test
+        env:
+          SMOKE_URL: ${{ vars.PUBLIC_APP_URL || 'https://beamling.app' }}
+        run: |
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if curl --fail --silent --show-error "$SMOKE_URL/api/health"; then exit 0; fi
+            sleep 6
+          done
+          exit 1

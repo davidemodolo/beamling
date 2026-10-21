@@ -119,6 +119,8 @@ services:
       MAX_CONCURRENT_CHATS: ${MAX_CONCURRENT_CHATS:-50}
       BRAVE_MIN_INTERVAL_MS: ${BRAVE_MIN_INTERVAL_MS:-1100}
       BEAMLING_FAKE_PROVIDERS: "0"
+      # Local parity uses the seeded Dex account; keep registration open for local testing.
+      SIGNUP_MODE: open
     volumes:
       - beamling-local-certs:/certs:ro
     stop_grace_period: 15s
