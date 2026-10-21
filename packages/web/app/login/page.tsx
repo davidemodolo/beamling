@@ -29,7 +29,13 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             <p className="validation-err" role="alert">
               {params.error === "signups_paused"
                 ? "New sign-ups are paused for a while. Try again in an hour."
-                : "Sign-in did not complete. Try again."}
+                : params.error === "signup_not_invited"
+                  ? "This alpha is invite-only. Ask the operator for an invitation."
+                  : params.error === "login_rate_limited"
+                    ? "Too many sign-in attempts. Wait a few minutes and try again."
+                    : params.error === "auth_unavailable"
+                      ? "Google sign-in is temporarily unavailable. Try again shortly or check the status page."
+                      : "Sign-in did not complete. Try again."}
             </p>
           ) : null}
           <a className="btn btn-primary btn-lg" href={`/api/auth/login?next=${encodeURIComponent(next)}`}>
@@ -37,7 +43,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           </a>
           <p className="hint">
             By continuing you agree to the <Link href="/terms">Terms</Link> and{" "}
-            <Link href="/privacy">Privacy Policy</Link>.
+            <Link href="/privacy">Privacy Policy</Link>. Need help? <Link href="/contact">Contact us</Link>.
           </p>
         </section>
       </main>

@@ -272,7 +272,7 @@ test("the generated license page and public legal footer resolve", async ({ page
   const hrefs = await page.locator(".legal-foot a").evaluateAll((links) =>
     links.map((link) => (link as HTMLAnchorElement).getAttribute("href")).filter(Boolean),
   );
-  expect([...new Set(hrefs)].sort()).toEqual(["/licenses", "/privacy", "/terms"]);
+  expect([...new Set(hrefs)].sort()).toEqual(["/contact", "/cookies", "/licenses", "/privacy", "/security", "/status", "/subprocessors", "/terms"]);
   for (const href of hrefs) {
     const response = await page.request.get(href!);
     expect(response.ok(), href!).toBe(true);
@@ -282,9 +282,10 @@ test("the generated license page and public legal footer resolve", async ({ page
   await expect(page.locator("footer").getByRole("link", { name: "Licenses" })).toHaveAttribute("href", "/licenses");
 });
 
-for (const path of ["/", "/chat", "/onboarding", "/privacy", "/terms", "/licenses"]) {
+for (const path of ["/", "/chat", "/onboarding", "/privacy", "/terms", "/licenses", "/cookies", "/subprocessors", "/security", "/status", "/contact"]) {
   test(`${path} has no CSP violations or serious accessibility issues`, async ({ page }) => {
     const problems = watchConsole(page);
+    if (path === "/chat" || path === "/onboarding") await signIn(page.request);
     await page.goto(path);
     await page.waitForLoadState("networkidle");
     expect(problems).toEqual([]);

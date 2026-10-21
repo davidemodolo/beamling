@@ -145,3 +145,31 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+.legal-table-wrap {
+  overflow-x: auto;
+  margin: 10px 0 16px;
+}
+.legal table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.legal th,
+.legal td {
+  border-bottom: 1px solid var(--line);
+  padding: 9px 10px;
+  text-align: left;
+  vertical-align: top;
+  color: var(--muted);
+}
+.legal th {
+  color: var(--text);
+  font-weight: 600;
+}
+.legal code {
+  color: var(--text);
+  font-family: var(--font-code);
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
