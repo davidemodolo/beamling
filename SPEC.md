@@ -1210,7 +1210,7 @@ Deleting an account removes its wrapped data key, so content retained in backups
 | GET | `/api/conversations/:id/messages?before=` | The 60 messages before a message ID, with sources | Session |
 | PATCH | `/api/conversations/:id` | Change the conversation mode | Session |
 | DELETE | `/api/conversations/:id` | Delete conversation | Session |
-| POST | `/api/credentials` | Create and validate a credential with plan/limit metadata | Session |
+| POST | `/api/credentials` | Create and validate a credential with plan/limit metadata; `validate: false` saves it unverified | Session |
 | POST | `/api/credentials/:id/validate` | Re-validate the key | Session |
 | PATCH | `/api/credentials/:id` | Update declared plan, expiry or budget without the key | Session |
 | DELETE | `/api/credentials/:id` | Delete credential and its usage | Session |

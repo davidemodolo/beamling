@@ -1,3 +1,11 @@
+CREATE TABLE "analytics_erasures" (
+	"distinct_id" text PRIMARY KEY NOT NULL,
+	"passes_left" integer DEFAULT 2 NOT NULL,
+	"attempts" integer DEFAULT 0 NOT NULL,
+	"next_attempt_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "auth_sessions" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" uuid NOT NULL,
@@ -64,6 +72,7 @@ CREATE TABLE "messages" (
 	"searches" text,
 	"reasoning" text,
 	"llm_model" text,
+	"search_provider" text DEFAULT 'brave' NOT NULL,
 	"resolved_model" text,
 	"upstream_provider" text,
 	"search_requests" integer DEFAULT 0 NOT NULL,
@@ -94,6 +103,7 @@ CREATE TABLE "rate_limits" (
 CREATE TABLE "settings" (
 	"user_id" uuid PRIMARY KEY NOT NULL,
 	"llm_model" text DEFAULT 'deepseek/deepseek-v4.1-flash' NOT NULL,
+	"default_search_provider" text DEFAULT 'brave' NOT NULL,
 	"default_mode" text DEFAULT 'quick' NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -139,6 +149,7 @@ ALTER TABLE "messages" ADD CONSTRAINT "messages_user_id_users_id_fk" FOREIGN KEY
 ALTER TABLE "settings" ADD CONSTRAINT "settings_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "sources" ADD CONSTRAINT "sources_message_id_messages_id_fk" FOREIGN KEY ("message_id") REFERENCES "public"."messages"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "user_data_keys" ADD CONSTRAINT "user_data_keys_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "analytics_erasures_next_attempt_idx" ON "analytics_erasures" USING btree ("next_attempt_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "auth_sessions_token_hash_idx" ON "auth_sessions" USING btree ("token_hash");--> statement-breakpoint
 CREATE INDEX "auth_sessions_user_idx" ON "auth_sessions" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "auth_sessions_expires_idx" ON "auth_sessions" USING btree ("expires_at");--> statement-breakpoint

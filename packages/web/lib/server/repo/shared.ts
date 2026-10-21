@@ -197,6 +197,6 @@ export function mapCredential(row: CredentialRow, usage?: CredentialUsageSummary
     spentUsd: usage?.spentUsd,
     requests: usage?.requests,
     warning: warningFor(row, usage),
-    lastValidatedAt: row.lastValidatedAt ? iso(row.lastValidatedAt) : iso(row.createdAt),
+    lastValidatedAt: row.lastValidatedAt ? iso(row.lastValidatedAt) : undefined,
   };
 }

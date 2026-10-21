@@ -65,6 +65,7 @@ function ChatPane({ conversationId }: ChatViewProps) {
     conversations,
     threads,
     settings,
+    credentials,
     loadThread,
     loadEarlierMessages,
     createConversation,
@@ -88,6 +89,12 @@ function ChatPane({ conversationId }: ChatViewProps) {
   const mode = summary?.mode ?? draftMode ?? settings.defaultMode;
   const [draftSearchProvider, setDraftSearchProvider] = useState<SearchProvider | null>(null);
   const searchProvider = draftSearchProvider ?? settings.defaultSearchProvider;
+  // Marks keyless providers in the picker only. Sending is not blocked here: the store can be stale
+  // (a key added in another tab), and the server answers a missing key with a "Key needed" card.
+  const keyedProviders = useMemo(
+    () => new Set(credentials.filter((credential) => credential.kind === "search").map((credential) => credential.provider)),
+    [credentials],
+  );
   const [activeSource, setActiveSource] = useState<number | null>(null);
   const [sourceMessageId, setSourceMessageId] = useState<string | null>(null);
   const [sourcesHidden, setSourcesHidden] = useState(false);
@@ -396,6 +403,7 @@ function ChatPane({ conversationId }: ChatViewProps) {
           else setDraftMode(next);
         }}
         searchProvider={searchProvider}
+        keyedProviders={keyedProviders}
         onSearchProviderChange={setDraftSearchProvider}
         modelLabel={modelName}
         inputRef={inputRef}

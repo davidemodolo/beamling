@@ -42,11 +42,14 @@ function isLocalAppUrl(): boolean {
   return url !== null && isLocalHost(url.hostname);
 }
 
+/** An https origin; plain-http localhost is accepted outside production only, for local fakes. */
 function validOrigin(value: string | undefined): string | undefined {
   const raw = value?.trim();
   if (!raw) return undefined;
   const url = parseUrl(raw);
-  if (!url || (url.protocol !== "https:" && !isLocalHost(url.hostname))) return undefined;
+  if (!url) return undefined;
+  const local = isLocalHost(url.hostname);
+  if (local ? isProduction() : url.protocol !== "https:") return undefined;
   if (url.username || url.password || url.pathname !== "/" || url.search || url.hash) return undefined;
   return url.origin;
 }
@@ -71,8 +74,20 @@ export function analyticsEnabled(): boolean {
   return process.env.ANALYTICS_ENABLED === "true";
 }
 
+/** Capture settings: present only while analytics is enabled. */
 export function posthogConfig(): PostHogConfig | null {
-  if (!analyticsEnabled()) return null;
+  return analyticsEnabled() ? posthogSettings() : null;
+}
+
+/**
+ * Deletion settings ignore the kill switch: events captured before `ANALYTICS_ENABLED=false` still
+ * have to be erasable when their account is deleted.
+ */
+export function posthogDeletionConfig(): PostHogConfig | null {
+  return posthogSettings();
+}
+
+function posthogSettings(): PostHogConfig | null {
   const apiKey = process.env.POSTHOG_API_KEY?.trim();
   const salt = process.env.ANALYTICS_SALT?.trim();
   const personalApiKey = process.env.POSTHOG_PERSONAL_API_KEY?.trim();

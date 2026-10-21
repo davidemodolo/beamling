@@ -19,6 +19,8 @@ interface ComposerProps {
   mode: Mode;
   onModeChange: (mode: Mode) => void;
   searchProvider: SearchProvider;
+  /** Providers with a saved key; the others are listed but marked. */
+  keyedProviders: ReadonlySet<string>;
   onSearchProviderChange: (provider: SearchProvider) => void;
   modelLabel: string;
   inputRef: RefObject<HTMLTextAreaElement | null>;
@@ -35,6 +37,7 @@ export function Composer({
   mode,
   onModeChange,
   searchProvider,
+  keyedProviders,
   onSearchProviderChange,
   modelLabel,
   inputRef,
@@ -117,7 +120,9 @@ export function Composer({
               }}
             >
               {SEARCH_PROVIDERS.map((provider) => (
-                <option key={provider.id} value={provider.id}>{provider.name}</option>
+                <option key={provider.id} value={provider.id}>
+                  {keyedProviders.has(provider.id) ? provider.name : `${provider.name} · no key`}
+                </option>
               ))}
             </select>
           </label>

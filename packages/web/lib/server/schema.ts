@@ -238,3 +238,19 @@ export const providerSlots = pgTable(
   },
   (table) => [index("provider_slots_next_at_idx").on(table.nextAt)],
 );
+
+/**
+ * PostHog persons still to erase after an account deletion. Holds only the keyed hash, never the
+ * account id. Each row runs twice on success, the second pass catching events that were in flight.
+ */
+export const analyticsErasures = pgTable(
+  "analytics_erasures",
+  {
+    distinctId: text("distinct_id").primaryKey(),
+    passesLeft: integer("passes_left").notNull().default(2),
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("analytics_erasures_next_attempt_idx").on(table.nextAttemptAt)],
+);

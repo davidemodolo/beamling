@@ -78,6 +78,16 @@ test("a different search provider can be selected for an answer", async ({ page 
   await expect(answers(page).last().locator(".badge").filter({ hasText: "Tavily" })).toBeVisible();
 });
 
+test("a search provider without a key is marked and asks for a key", async ({ page }) => {
+  await connectKeys(page.request);
+  await page.goto("/chat");
+  const picker = page.getByLabel("Search provider");
+  await expect(picker.locator("option[value=exa]")).toHaveText("Exa · no key");
+  await picker.selectOption("exa");
+  await ask(page, "This should not be sent");
+  await expect(answers(page).last()).toContainText("Key needed");
+});
+
 test("Deeper mode runs a research loop and persists the mode", async ({ page }) => {
   const problems = watchConsole(page);
   await connectKeys(page.request);

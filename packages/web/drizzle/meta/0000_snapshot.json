@@ -1,9 +1,72 @@
 {
-  "id": "8df9c987-6e8b-4ffc-9c90-3f723781e244",
+  "id": "6ffc1697-d6fd-45f9-98d2-c287c9ca2b87",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
+    "public.analytics_erasures": {
+      "name": "analytics_erasures",
+      "schema": "",
+      "columns": {
+        "distinct_id": {
+          "name": "distinct_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "passes_left": {
+          "name": "passes_left",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 2
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "next_attempt_at": {
+          "name": "next_attempt_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "analytics_erasures_next_attempt_idx": {
+          "name": "analytics_erasures_next_attempt_idx",
+          "columns": [
+            {
+              "expression": "next_attempt_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.auth_sessions": {
       "name": "auth_sessions",
       "schema": "",
@@ -623,6 +686,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "search_provider": {
+          "name": "search_provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'brave'"
+        },
         "resolved_model": {
           "name": "resolved_model",
           "type": "text",
@@ -927,6 +997,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'deepseek/deepseek-v4.1-flash'"
+        },
+        "default_search_provider": {
+          "name": "default_search_provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'brave'"
         },
         "default_mode": {
           "name": "default_mode",

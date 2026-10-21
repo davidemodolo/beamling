@@ -95,10 +95,23 @@ async function requestSearch(key: string, query: string, options: SearchOptions)
   return send();
 }
 
+interface TavilyUsageResponse {
+  key?: { usage?: number | null; limit?: number | null };
+}
+
+/** Checks the key with the usage endpoint, which reports credits without spending one. */
 export async function validateTavilyKey(key: string): Promise<void> {
-  const response = await requestSearch(key, "Beamling connectivity test", { count: 1 });
+  const response = await providerFetch("tavily", "https://api.tavily.com/usage", {
+    method: "GET",
+    headers: { Accept: "application/json", Authorization: `Bearer ${key}` },
+    signal: requestSignal(),
+    cache: "no-store",
+  });
   if (!response.ok) throw await readError(response);
-  await response.arrayBuffer().catch(() => {});
+  const body = (await response.json().catch(() => null)) as TavilyUsageResponse | null;
+  const usage = body?.key?.usage;
+  const limit = body?.key?.limit;
+  if (typeof usage === "number" && typeof limit === "number" && usage >= limit) throw tavilyError(433);
 }
 
 export async function searchTavily(key: string, query: string, options: SearchOptions): Promise<RetrievedSource[]> {

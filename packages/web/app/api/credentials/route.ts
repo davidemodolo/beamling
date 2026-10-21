@@ -20,6 +20,9 @@ const schema = z
     expiresOn: z.string().date().optional().nullable(),
     budgetUsd: z.number().positive().max(1_000_000).optional().nullable(),
     budgetPeriod: z.enum(["month", "total"]).optional().nullable(),
+    // false saves the key as unverified without calling the provider, for providers whose only
+    // check is a billable search. The key is checked later with the validate endpoint.
+    validate: z.boolean().optional(),
   })
   .superRefine((value, ctx) => {
     if (value.provider === "brave" && !value.plan) {
@@ -44,8 +47,9 @@ export const POST = apiRoute(async ({ request, user }) => {
     throw new ApiError("INVALID_PROVIDER", "Provider does not match credential kind.", 400);
   }
 
+  const validate = input.validate !== false;
   try {
-    await validateProviderKey(input.provider, input.key, input.plan ?? "free");
+    if (validate) await validateProviderKey(input.provider, input.key, input.plan ?? "free");
   } catch (error) {
     const status = credentialStatusFor(error);
     if (status && error instanceof ApiError) {
@@ -73,7 +77,7 @@ export const POST = apiRoute(async ({ request, user }) => {
       input.key,
       sameKey ? existing?.id : undefined,
     ),
-    status: "active",
+    status: validate ? "active" : "unverified",
     plan: input.provider === "brave" ? (input.plan ?? "free") : null,
     expiresOn: input.expiresOn ?? null,
     budgetUsd: input.budgetUsd ?? null,

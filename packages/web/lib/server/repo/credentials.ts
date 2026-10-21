@@ -103,7 +103,7 @@ export async function saveCredential(input: {
     budgetUsd: input.budgetUsd == null ? null : input.budgetUsd.toFixed(2),
     budgetPeriod: input.budgetPeriod ?? (input.budgetUsd == null ? null : "month"),
     budgetStartedAt: input.budgetUsd == null ? null : existing?.budgetStartedAt ?? now,
-    lastValidatedAt: now,
+    lastValidatedAt: input.status === "unverified" ? null : now,
     updatedAt: now,
   };
   const [row] = await db

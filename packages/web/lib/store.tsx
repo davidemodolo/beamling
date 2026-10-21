@@ -69,6 +69,7 @@ interface StoreValue {
     expiresOn?: string | null;
     budgetUsd?: number | null;
     budgetPeriod?: BudgetPeriod | null;
+    validate?: boolean;
   }) => Promise<Credential>;
   updateCredentialLimits: (
     id: string,
@@ -406,6 +407,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     expiresOn?: string | null;
     budgetUsd?: number | null;
     budgetPeriod?: BudgetPeriod | null;
+    validate?: boolean;
   }) => {
     const { credential } = await api<{ credential: Credential }>("/api/credentials", {
       method: "POST",

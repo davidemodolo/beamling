@@ -13,10 +13,12 @@ export const OPENROUTER_MODEL_IDS = OPENROUTER_MODELS.map((model) => model.id);
 export const llmModelName = (modelId: string) =>
   OPENROUTER_MODELS.find((model) => model.id === modelId)?.name ?? modelId;
 
+// `freeValidation`: the provider can check a key without spending a search request. Where it
+// cannot, the key form offers to save the key unvalidated.
 export const SEARCH_PROVIDERS = [
-  { id: "brave", name: "Brave Search", shortName: "Brave", placeholder: "BSA...", keyUrl: "https://api-dashboard.search.brave.com/app/keys" },
-  { id: "tavily", name: "Tavily", shortName: "Tavily", placeholder: "tvly-...", keyUrl: "https://app.tavily.com/home" },
-  { id: "exa", name: "Exa", shortName: "Exa", placeholder: "exa-...", keyUrl: "https://dashboard.exa.ai/api-keys" },
+  { id: "brave", name: "Brave Search", shortName: "Brave", placeholder: "BSA...", keyUrl: "https://api-dashboard.search.brave.com/app/keys", freeValidation: false },
+  { id: "tavily", name: "Tavily", shortName: "Tavily", placeholder: "tvly-...", keyUrl: "https://app.tavily.com/home", freeValidation: true },
+  { id: "exa", name: "Exa", shortName: "Exa", placeholder: "exa-...", keyUrl: "https://dashboard.exa.ai/api-keys", freeValidation: false },
 ] as const;
 
 export type SearchProviderInfo = (typeof SEARCH_PROVIDERS)[number];

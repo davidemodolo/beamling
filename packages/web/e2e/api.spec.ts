@@ -139,6 +139,25 @@ test("Brave plan, expiry and budget are stored as user-declared limits", async (
   expect(updated.budgetUsd).toBe(10);
 });
 
+test("an Exa key can be saved without validation and checked later", async ({ request }) => {
+  await signIn(request);
+  // Fixture providers reject keys without the test- prefix, so a 201 proves no check ran.
+  const saved = await request.post("/api/credentials", {
+    data: { kind: "search", provider: "exa", key: "exa-not-checked-yet", validate: false },
+  });
+  expect(saved.status()).toBe(201);
+  const credential = (await saved.json()).credential;
+  expect(credential.status).toBe("unverified");
+  expect(credential.lastValidatedAt).toBeUndefined();
+
+  const checked = await request.post(`/api/credentials/${credential.id}/validate`);
+  expect(checked.status()).toBe(400);
+  const state = await (await request.get("/api/state")).json();
+  const stored = state.credentials.find((item: { id: string }) => item.id === credential.id);
+  expect(stored.status).toBe("invalid");
+  expect(stored.lastValidatedAt).toBeTruthy();
+});
+
 test("the default search provider can be changed and invalid providers are rejected", async ({ request }) => {
   await signIn(request);
   const saved = await request.patch("/api/settings", { data: { defaultSearchProvider: "tavily" } });

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { SecretKeyInput } from "@/components/secret-key-input";
+import { ValidateNowField } from "@/components/settings/keys-panel";
 import { Icon } from "@/components/ui/icon";
 import { Wordmark } from "@/components/wordmark";
 import { WorkspaceError } from "@/components/workspace-error";
@@ -23,6 +24,7 @@ export default function OnboardingPage() {
   const providerInfo = searchProviderInfo(searchProvider);
   const [llmKey, setLlmKey] = useState("");
   const [searchKey, setSearchKey] = useState("");
+  const [validateSearch, setValidateSearch] = useState(true);
   const [bravePlan, setBravePlan] = useState<"free" | "paid">("free");
   const [expiresOn, setExpiresOn] = useState("");
   const [budgetUsd, setBudgetUsd] = useState("");
@@ -75,6 +77,7 @@ export default function OnboardingPage() {
           expiresOn: searchProvider === "brave" && expiresOn ? expiresOn : null,
           budgetUsd: searchProvider === "brave" && budgetUsd ? Number(budgetUsd) : null,
           budgetPeriod: "month",
+          validate: providerInfo.freeValidation || validateSearch,
         });
         setSearchKey("");
       } catch (cause) {
@@ -236,10 +239,13 @@ export default function OnboardingPage() {
                   <p className="validation-err" role="alert">
                     <Icon name="alert" size={12} /> {searchError}
                   </p>
-                ) : (
-                  <p className="hint">Validated with one minimal request.</p>
-                )}
+                ) : providerInfo.freeValidation ? (
+                  <p className="hint">Validated with {providerInfo.name}&apos;s usage endpoint; no search credit is spent.</p>
+                ) : null}
               </div>
+              {providerInfo.freeValidation ? null : (
+                <ValidateNowField id="search-key" checked={validateSearch} onChange={setValidateSearch} />
+              )}
               {searchProvider === "brave" ? (
                 <>
                   <div className="field">
@@ -294,7 +300,7 @@ export default function OnboardingPage() {
           <div className="onboard-actions">
             <button type="submit" className="btn btn-primary btn-lg" disabled={pending || !ready}>
               {pending ? <Icon name="loader" size={15} className="spin" /> : <Icon name="sparkles" size={15} />}
-              {pending ? "Validating…" : "Start asking"}
+              {pending ? (providerInfo.freeValidation || validateSearch ? "Validating…" : "Saving…") : "Start asking"}
             </button>
           </div>
         </form>

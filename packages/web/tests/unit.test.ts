@@ -148,9 +148,14 @@ test("Brave validates and searches only the base Web Search endpoint", async (t)
   assert.equal(sources[0].snippet, "Standard search snippet.");
 });
 
-test("Tavily validates and searches with a minimal basic request", async (t) => {
+test("Tavily validates with the free usage endpoint and searches with a minimal basic request", async (t) => {
   const bodies: Record<string, unknown>[] = [];
-  const calls = mockFetch(t, (_url, init) => {
+  const calls = mockFetch(t, (url, init) => {
+    if (url === "https://api.tavily.com/usage") {
+      assert.equal(init?.method, "GET");
+      assert.equal(new Headers(init?.headers).get("Authorization"), "Bearer tvly-unique");
+      return jsonResponse({ key: { usage: 10, limit: 1000 }, account: { current_plan: "Researcher" } });
+    }
     bodies.push(JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>);
     return jsonResponse({
       results: [{
@@ -163,12 +168,11 @@ test("Tavily validates and searches with a minimal basic request", async (t) => 
   });
   await validateTavilyKey("tvly-unique");
   const sources = await searchTavily("tvly-unique", "test", { count: 2, freshnessDays: 7 });
-  assert.equal(calls.length, 2);
-  assert.equal(bodies[0].max_results, 1);
-  assert.equal(bodies[1].max_results, 2);
-  assert.equal(bodies[1].search_depth, "basic");
-  assert.equal(bodies[1].time_range, "week");
-  assert.equal(bodies[1].include_raw_content, false);
+  assert.deepEqual(calls, ["https://api.tavily.com/usage", "https://api.tavily.com/search"]);
+  assert.equal(bodies[0].max_results, 2);
+  assert.equal(bodies[0].search_depth, "basic");
+  assert.equal(bodies[0].time_range, "week");
+  assert.equal(bodies[0].include_raw_content, false);
   assert.equal(sources[0].snippet, "Tavily snippet.");
   assert.equal(sources[0].publishedAt, "2026-10-01");
 });
@@ -211,6 +215,17 @@ test("Tavily and Exa map provider statuses to stable codes", () => {
     assert.equal(tavilyError(status).code, code);
     if (status !== 432 && status !== 433) assert.equal(exaError(status).code, code);
   }
+});
+
+test("Tavily validation rejects an exhausted or unknown key without searching", async (t) => {
+  const calls = mockFetch(t, (_url, init) =>
+    new Headers(init?.headers).get("Authorization") === "Bearer tvly-spent"
+      ? jsonResponse({ key: { usage: 1000, limit: 1000 } })
+      : jsonResponse({ detail: { error: "Unauthorized" } }, 401),
+  );
+  await assert.rejects(validateTavilyKey("tvly-spent"), (error: ApiError) => error.code === "QUOTA_EXCEEDED");
+  await assert.rejects(validateTavilyKey("tvly-wrong"), (error: ApiError) => error.code === "CREDENTIAL_INVALID");
+  assert.deepEqual(calls, ["https://api.tavily.com/usage", "https://api.tavily.com/usage"]);
 });
 
 test("Tavily retries a 429 once and Exa surfaces a rejected request", async (t) => {
@@ -795,8 +810,49 @@ test("analytics is inert when disabled", async () => {
   client.capture("user", "account_created", {});
   await client.flush();
   assert.equal(calls, 0);
-  assert.equal(await client.deleteUser("user"), false);
+  assert.equal(client.distinctIdFor("user"), null);
+  assert.equal(await client.deletePerson("anything"), false);
   assert.equal(calls, 0);
+});
+
+test("analytics deletion still works behind the kill switch", async () => {
+  const requests: string[] = [];
+  const client = createAnalytics({
+    config: null,
+    deletionConfig: ANALYTICS_CONFIG,
+    fetchImpl: (async (input) => {
+      requests.push(String(input));
+      return new Response("{}", { status: 200 });
+    }) as typeof fetch,
+  });
+  client.capture("user", "account_created", {});
+  await client.flush();
+  assert.equal(requests.length, 0);
+  const distinctId = client.distinctIdFor("user");
+  assert.equal(distinctId, analyticsDistinctId("user", ANALYTICS_CONFIG.salt));
+  assert.equal(await client.deletePerson(distinctId as string), true);
+  assert.deepEqual(requests, ["https://eu.posthog.com/api/projects/123/persons/bulk_delete/"]);
+});
+
+test("analytics reports an incomplete PostHog deletion as a failure", async () => {
+  const client = createAnalytics({
+    config: ANALYTICS_CONFIG,
+    fetchImpl: (async () => Response.json({ deletion_errors: [{ id: "x" }] })) as typeof fetch,
+  });
+  assert.equal(await client.deletePerson("abc"), false);
+});
+
+test("the analytics client is shared across module copies", async () => {
+  const { analytics } = await import("../lib/server/analytics");
+  const holder = globalThis as unknown as { __beamlingAnalytics?: unknown };
+  assert.equal(holder.__beamlingAnalytics, analytics);
+});
+
+test("analytics erasure retries back off from five minutes to a day", async () => {
+  const { erasureBackoffMs } = await import("../lib/server/repo/analytics-erasures");
+  assert.equal(erasureBackoffMs(0), 5 * 60_000);
+  assert.equal(erasureBackoffMs(1), 10 * 60_000);
+  assert.equal(erasureBackoffMs(50), 24 * 60 * 60_000);
 });
 
 test("analytics sends events and queues person deletion", async () => {
@@ -825,7 +881,7 @@ test("analytics sends events and queues person deletion", async () => {
   assert.equal(body.properties.status, "active");
   assert.equal(body.properties.$geoip_disable, true);
 
-  assert.equal(await client.deleteUser(userId), true);
+  assert.equal(await client.deletePerson(client.distinctIdFor(userId) as string), true);
   assert.equal(requests.length, 2);
   assert.equal(requests[1].url, "https://eu.posthog.com/api/projects/123/persons/bulk_delete/");
   const headers = new Headers(requests[1].init.headers);
@@ -849,7 +905,7 @@ test("analytics delivery failures never reject", async () => {
   });
   client.capture("user", "account_created", {});
   await assert.doesNotReject(client.flush());
-  await assert.doesNotReject(client.deleteUser("user"));
+  assert.equal(await client.deletePerson("user"), false);
 });
 
 test("PostHog configuration is opt-in and derives the EU app host", async (t) => {
@@ -878,4 +934,29 @@ test("PostHog configuration is opt-in and derives the EU app host", async (t) =>
   assert.equal(config?.host, "https://eu.i.posthog.com");
   assert.equal(config?.appHost, "https://eu.posthog.com");
   assert.equal(config?.apiKey, "phc_test");
+});
+
+test("PostHog hosts must be https, and localhost is refused in production", async (t) => {
+  const { productionConfigErrors, posthogConfig } = await import("../lib/server/env");
+  withEnv(t, {
+    ANALYTICS_ENABLED: "true",
+    POSTHOG_API_KEY: "phc_test",
+    POSTHOG_PERSONAL_API_KEY: "phx_test",
+    POSTHOG_PROJECT_ID: "123",
+    ANALYTICS_SALT: "x".repeat(32),
+    POSTHOG_APP_HOST: undefined,
+    NODE_ENV: "development",
+    POSTHOG_HOST: "http://localhost:8010",
+  });
+  assert.equal(posthogConfig()?.host, "http://localhost:8010");
+
+  withEnv(t, { POSTHOG_HOST: "http://posthog.example.com" });
+  assert.equal(posthogConfig(), null);
+
+  withEnv(t, { NODE_ENV: "production", POSTHOG_HOST: "http://localhost:8010" });
+  assert.equal(posthogConfig(), null);
+  assert.match(productionConfigErrors().join(" "), /POSTHOG_HOST must be an https origin outside localhost/);
+
+  withEnv(t, { POSTHOG_HOST: "https://localhost" });
+  assert.match(productionConfigErrors().join(" "), /POSTHOG_HOST must be an https origin outside localhost/);
 });

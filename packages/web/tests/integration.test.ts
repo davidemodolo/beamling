@@ -671,3 +671,49 @@ test.after(async () => {
   const { pool } = await import("../lib/server/db");
   await pool.end();
 });
+
+test("a key saved without validation is unverified and has no check date", { skip }, async (t) => {
+  const userId = await createAccount(t, { keys: false });
+  const { encryptCredential } = await import("../lib/server/crypto");
+  const { saveCredential } = await import("../lib/server/repo");
+  const credential = await saveCredential({
+    userId,
+    kind: "search",
+    provider: "exa",
+    encrypted: await encryptCredential(userId, "search", "exa", "exa-unchecked-key"),
+    status: "unverified",
+  });
+  assert.equal(credential.status, "unverified");
+  assert.equal(credential.lastValidatedAt, undefined);
+});
+
+test("analytics erasures run twice on success and back off on failure", { skip }, async (t) => {
+  const { claimAnalyticsErasures, enqueueAnalyticsErasure, recordAnalyticsErasure } = await import("../lib/server/repo");
+  const { db } = await import("../lib/server/db");
+  const { analyticsErasures } = await import("../lib/server/schema");
+  const { eq } = await import("drizzle-orm");
+  const distinctId = `erasure-${randomBytes(6).toString("hex")}`;
+  t.after(() => db.delete(analyticsErasures).where(eq(analyticsErasures.distinctId, distinctId)));
+  const read = async () => (await db.select().from(analyticsErasures).where(eq(analyticsErasures.distinctId, distinctId)))[0];
+
+  await enqueueAnalyticsErasure(distinctId);
+  const [first] = await claimAnalyticsErasures({ distinctId });
+  assert.equal(first.passesLeft, 2);
+  // A claimed row is hidden from other instances until its claim expires.
+  assert.deepEqual(await claimAnalyticsErasures({ distinctId }), []);
+
+  await recordAnalyticsErasure(first, false);
+  let row = await read();
+  assert.equal(row.attempts, 1);
+  assert.equal(row.passesLeft, 2);
+  assert.ok(row.nextAttemptAt.getTime() > Date.now() + 4 * 60_000);
+
+  await recordAnalyticsErasure({ ...first, attempts: 1 }, true);
+  row = await read();
+  assert.equal(row.passesLeft, 1);
+  assert.equal(row.attempts, 0);
+  assert.ok(row.nextAttemptAt.getTime() > Date.now() + 59 * 60_000);
+
+  await recordAnalyticsErasure({ distinctId, passesLeft: 1, attempts: 0 }, true);
+  assert.equal(await read(), undefined);
+});

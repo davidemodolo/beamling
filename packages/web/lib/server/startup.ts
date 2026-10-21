@@ -1,5 +1,6 @@
 import { abortAllChats } from "./active-chats";
 import { analytics } from "./analytics";
+import { processAnalyticsErasures } from "./analytics-erasure";
 import { pool } from "./db";
 import { productionConfigErrors, productionConfigWarnings } from "./env";
 import { log } from "./log";
@@ -48,11 +49,14 @@ export async function startServer(): Promise<void> {
   }
 
   const cleanup = () =>
-    cleanupExpired()
-      .then(({ failures }) => {
-        for (const failure of failures) log.error("Cleanup step failed", failure);
-      })
-      .catch((error) => log.error("Cleanup failed", error));
+    Promise.all([
+      cleanupExpired()
+        .then(({ failures }) => {
+          for (const failure of failures) log.error("Cleanup step failed", failure);
+        })
+        .catch((error) => log.error("Cleanup failed", error)),
+      processAnalyticsErasures().catch((error) => log.error("PostHog erasure run failed", error)),
+    ]);
   void cleanup();
   setInterval(cleanup, CLEANUP_INTERVAL_MS).unref();
 }

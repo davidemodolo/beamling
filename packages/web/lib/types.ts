@@ -108,7 +108,8 @@ export interface Credential {
   spentUsd?: number;
   requests?: number;
   warning?: "budget_80" | "budget_100" | "expiry_14" | "expiry_7" | "expiry_1";
-  lastValidatedAt: string;
+  /** Absent for a key saved without validation. */
+  lastValidatedAt?: string;
 }
 
 export interface Settings {

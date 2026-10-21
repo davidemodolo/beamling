@@ -43,7 +43,7 @@ Current external dependencies:
 | KMS | Wrapping workspace keys and credential data keys; LocalStack locally, GCP Cloud KMS in production |
 | OpenRouter | Model validation and streamed chat completions |
 | Brave Search API | Web Search validation and retrieval |
-| Tavily Search API | Search validation and retrieval |
+| Tavily Search API | Retrieval; key validation through the free usage endpoint |
 | Exa Search API | Search validation and retrieval |
 | PostHog Cloud EU | Optional server-side, metadata-only product events |
 | Browser | Session cookie, SSE consumption, UI state |
@@ -145,7 +145,7 @@ Production startup refuses to boot when any of these checks fails:
 - `BEAMLING_FAKE_PROVIDERS=1` outside a localhost `APP_URL`.
 - `ANALYTICS_ENABLED` is set to anything other than `true` or `false`.
 - Analytics is enabled without `POSTHOG_API_KEY`, `POSTHOG_PERSONAL_API_KEY`, `POSTHOG_PROJECT_ID` or at least 32 bytes of `ANALYTICS_SALT`.
-- The PostHog ingestion or app host is not a valid HTTPS origin, or `POSTHOG_PROJECT_ID` is not numeric.
+- The PostHog ingestion or app host is not an HTTPS origin outside localhost, or `POSTHOG_PROJECT_ID` is not numeric. Outside production, plain-HTTP localhost is accepted for a local fake.
 
 ### 3.2 Optional
 
@@ -175,7 +175,7 @@ Production startup refuses to boot when any of these checks fails:
 | `POSTHOG_HOST` | Ingestion origin, default `https://eu.i.posthog.com`. |
 | `POSTHOG_APP_HOST` | Personal API origin; derived from the EU/US ingestion host or set explicitly for self-hosted PostHog. |
 | `POSTHOG_API_KEY` | Project token; required when analytics is enabled. |
-| `POSTHOG_PERSONAL_API_KEY` | Personal key with `person:write`, used to delete a person and events on account deletion; required when analytics is enabled. |
+| `POSTHOG_PERSONAL_API_KEY` | Personal key with `person:write`, used to delete a person and events on account deletion; required when analytics is enabled. Keep it, with the project id, salt and hosts, after setting the kill switch: deletions keep running while capture is off. |
 | `POSTHOG_PROJECT_ID` | Numeric PostHog project id; required when analytics is enabled. |
 | `ANALYTICS_SALT` | HMAC-SHA256 salt for the distinct id; at least 32 bytes and required when analytics is enabled. |
 
@@ -236,7 +236,7 @@ Details:
 - Missing or expired session on a protected route returns `UNAUTHENTICATED` with HTTP 401.
 - `/chat` and `/onboarding` are server-guarded and redirect to `/login` when signed out.
 - `POST /api/auth/logout` revokes the current session and clears the cookie. `POST /api/auth/logout?scope=all` revokes every session of the account (Settings → Account → Sign out everywhere).
-- `DELETE /api/account` deletes the account, all rows and the wrapped workspace key, asks PostHog to delete the hashed analytics person when analytics is enabled, clears the cookie, and returns `{ "ok": true }`.
+- `DELETE /api/account` queues the PostHog erasure of the hashed analytics identity (when PostHog deletion is configured), deletes the account, all rows and the wrapped workspace key, makes a first erasure attempt, clears the cookie, and returns `{ "ok": true }`. See §13.7.
 - Cleanup removes expired sessions and counters; it does not delete inactive accounts because Google sign-in can return to them.
 - `POST /api/auth/test-login` exists only when `BEAMLING_TEST_AUTH=1`, `BEAMLING_FAKE_PROVIDERS=1` and `APP_URL` is localhost. It creates a unique test account for each new request context and is used by Playwright. Otherwise it returns `NOT_FOUND` (404).
 
@@ -257,8 +257,10 @@ IP handling:
 |---|---|---|
 | `llm` | `openrouter` | `GET https://openrouter.ai/api/v1/key`, 15-second timeout |
 | `search` | `brave` | `GET https://api.search.brave.com/res/v1/web/search?q=Beamling%20connectivity%20test&count=1` |
-| `search` | `tavily` | `POST https://api.tavily.com/search` with one basic result |
+| `search` | `tavily` | `GET https://api.tavily.com/usage`; spends no credit and rejects a key whose usage has reached its limit |
 | `search` | `exa` | `POST https://api.exa.ai/search` with one highlight result |
+
+Brave and Exa have no free key check, so their validation spends one search request. `POST /api/credentials` accepts `validate: false` to skip the call: the key is encrypted and saved with `status = unverified` and no `last_validated_at`. The Keys panel and onboarding offer this as a "Validate the key now" checkbox (on by default) for Brave and Exa, and an unverified key shows a Validate button that calls the revalidation endpoint. An unverified key is used for answers like any other; a wrong one fails at the first search.
 
 The API schema accepts OpenRouter as the only LLM provider and Brave, Tavily or Exa as search providers. A credential kind must match its provider (`llm` ↔ `openrouter`, `search` ↔ one launch search provider).
 
@@ -298,7 +300,7 @@ Display data:
 
 ### 5.3 Validation and status
 
-Creating a credential validates it before saving. A validation failure maps to a stable provider error and no row is written.
+Creating a credential validates it before saving unless the request sets `validate: false` (§5.1). A validation failure maps to a stable provider error and no row is written.
 
 A saved credential can be revalidated:
 
@@ -408,6 +410,9 @@ rate_limits
 
 provider_slots
   key (primary key), next_at
+
+analytics_erasures
+  distinct_id (primary key), passes_left, attempts, next_attempt_at, created_at
 ```
 
 Important indexes and constraints:
@@ -419,7 +424,7 @@ Important indexes and constraints:
 - `messages(conversation_id, created_at, id)` supports message pagination.
 - A partial unique index allows at most one `messages.status = 'streaming'` row per conversation.
 - `sources(message_id, position)` is unique.
-- `rate_limits.expires_at` and `provider_slots.next_at` are indexed for cleanup.
+- `rate_limits.expires_at`, `provider_slots.next_at` and `analytics_erasures.next_attempt_at` are indexed for cleanup.
 - Users cascade to sessions, workspace keys, credentials, settings, conversations, messages and sources.
 
 The migration also creates a `beamling_migrations(filename, applied_at)` ledger in the migration script.
@@ -481,6 +486,7 @@ On retry, the old answer is deleted before a new placeholder is created, so its 
 - Delete expired rate-limit rows.
 - Delete provider slots whose `next_at` is more than one hour in the past.
 - Mark stale streaming answers as `error` / `INTERRUPTED`.
+- Run due PostHog erasures (§13.7), up to 20 per run.
 
 Each step runs even if another fails; failures are logged. The process continues serving requests if cleanup fails.
 
@@ -1084,9 +1090,9 @@ Error mapping:
 
 ### 11.3 Tavily
 
-Validation and retrieval use `POST https://api.tavily.com/search` with `Authorization: Bearer <key>`. The adapter never requests raw page content, images or a generated answer.
+Retrieval uses `POST https://api.tavily.com/search` with `Authorization: Bearer <key>`. The adapter never requests raw page content, images or a generated answer.
 
-- Validation sends a short probe query with `max_results=1`, `search_depth=basic`, `include_answer=false`, `include_raw_content=false`, `include_images=false` and `include_usage=true`.
+- Validation calls `GET https://api.tavily.com/usage` with the same header, which reports credits without spending one. `401` maps to `CREDENTIAL_INVALID`; a `key.usage` at or above a non-null `key.limit` maps to `QUOTA_EXCEEDED`.
 - Retrieval uses `search_depth=basic`, `max_results=1–20`, `include_published_date=true`, `safe_search=true`, and `topic=news` only for a recent-information question.
 - A freshness window maps to `time_range`: `day`, `week`, `month` or `year`.
 - Results map `title`, `url`, `content` and `published_date`; `content` is tag-stripped and capped at 1,800 characters. Results without a usable snippet are dropped.
@@ -1189,7 +1195,7 @@ The Next.js metadata base is `https://beamling.ai`; the landing demo also prints
 - Answer cards show **Searches** (query, status, result count) and **Model reasoning** as `<details>` panels, collapsed by default. The same panels appear live while the answer streams.
 - Sidebar: title search over loaded pages, a Pinned section, Today/Yesterday/Previous groups in UTC, exact-title links, per-conversation pin/unpin and delete confirmation, “Show older conversations” pagination, Settings entry, signed-in email and sign-out.
 - Thread: user bubbles, answer cards, a working answer card, earlier-message button, empty state, not-found state, load-error state.
-- Composer: auto-growing textarea up to 190 px, Enter sends, Shift+Enter inserts a newline, Quick/Deep/Deeper segmented control, model badge, search-provider selector and Stop button while busy.
+- Composer: auto-growing textarea up to 190 px, Enter sends, Shift+Enter inserts a newline, Quick/Deep/Deeper segmented control, model badge, search-provider selector and Stop button while busy. Providers without a saved key are listed as "· no key". Sending is not blocked on the client, whose credential list can be stale; the server's `CREDENTIAL_MISSING` shows the "Key needed" card.
 - Source panel: desktop right-hand pane; mobile bottom sheet with focus trap; source count, provider badge, title/domain/date/snippet/link. The badge comes from the answer’s stored provider.
 - Tables render with a header, alignment and horizontal scrolling; the parser also handles headings, lists, quotes, code fences, links and citations.
 - Answer card: streamed markdown, citation buttons, model/search-provider/resolved-provider badges, usage line, copy button, sources button, stopped/error/uncited/no-sources/truncated/degraded/partial-search notices, retry button for the latest failed or stopped answer.
@@ -1211,7 +1217,7 @@ Settings is a modal with three keyboard-navigable tabs:
 
 | Tab | Behavior |
 |---|---|
-| Keys | Add/replace/validate/delete OpenRouter, Brave, Tavily and Exa credentials; masked last four, status, Brave plan, declared expiry/budget, estimated spend and warnings; edit Brave limits |
+| Keys | Add/replace/validate/delete OpenRouter, Brave, Tavily and Exa credentials; optional save without validation for Brave and Exa; masked last four, status, Brave plan, declared expiry/budget, estimated spend and warnings; edit Brave limits |
 | Defaults | Default mode (Quick/Deep/Deeper), OpenRouter model select, default search provider (Brave/Tavily/Exa) |
 | Account | Google name/email, conversation and credential counts, session explanation, sign out, sign out everywhere, delete account with typed `DELETE` |
 
@@ -1327,18 +1333,23 @@ frame-ancestors 'none'
 - Local active chats are aborted; remote instances stop on the next poll.
 - The cleanup job removes expired sessions and counters; accounts are retained for a future Google sign-in.
 - There is no soft-delete or recovery path.
-- When analytics is enabled, account deletion also asks PostHog to bulk-delete the HMAC distinct id and its events; failure is logged but never blocks the application-data deletion.
+- When PostHog deletion is configured, account deletion also erases the PostHog person through a durable queue in `analytics_erasures`, which holds only the HMAC distinct id:
+  - The row is written before the account data is deleted, so a crash or PostHog outage cannot lose it.
+  - The first attempt runs in the deletion request; the cleanup job runs the rest. Rows are claimed with `FOR UPDATE SKIP LOCKED` and hidden for 5 minutes, so instances never run the same row at once.
+  - A failure retries with exponential backoff from 5 minutes, capped at 24 hours, and is never dropped. From the fifth failed attempt each failure is logged as an error (`PostHog erasure keeps failing`) with the distinct id, for alerting and manual cleanup.
+  - A success schedules one confirming pass an hour later, which catches events that were still in flight when the account was deleted. The row is deleted after the second success.
+  - Deletion uses its own configuration, so it keeps running behind the `ANALYTICS_ENABLED=false` kill switch as long as the PostHog variables stay set.
 
 ### 13.8 Analytics privacy
 
 Analytics is disabled unless `ANALYTICS_ENABLED=true` and the full PostHog configuration is present. It is server-side only: the browser loads no PostHog SDK and there is no autocapture, session replay, heatmap, survey or feature flag.
 
-- `lib/server/analytics.ts` owns the event map, property allowlist, HMAC identity, timeout, in-flight cap and deletion call.
+- `lib/server/analytics.ts` owns the event map, property allowlist, HMAC identity, timeout, in-flight cap and deletion call. The client is kept on `globalThis`, so the shutdown hook (bundled separately from the route handlers) flushes the same in-flight set the routes fill. `lib/server/analytics-erasure.ts` runs the erasure queue.
 - `distinctId = HMAC-SHA256(userId, ANALYTICS_SALT)` truncated to 32 hex characters. Raw user ids, email addresses, session tokens and IP addresses are never sent. Keep the salt stable for the life of the PostHog project; rotating it orphans existing events and makes deletion by the new hash incomplete.
 - Every payload is rebuilt from the allowlist, so unknown keys and non-scalar values are dropped even if a caller passes them accidentally.
 - `$geoip_disable` is true and `$ip` is `0.0.0.0`.
 - Events are best-effort: at most eight requests are in flight, each has a 2-second timeout, failures are dropped and logged without payloads, and there are no retries that block a request.
-- Account deletion calls PostHog's `bulk_delete` endpoint with `delete_events` and `delete_recordings`; the personal key and project id never enter the browser.
+- Erasure calls PostHog's `bulk_delete` endpoint with `delete_events` and `delete_recordings`; a non-2xx response or any `deletion_errors` counts as a failure. The personal key and project id never enter the browser.
 - Local and test environments remain silent because the flag is opt-in. Production refuses to start with an incomplete enabled configuration.
 
 ---
@@ -1400,7 +1411,7 @@ The image applies Alpine security updates, removes npm/corepack from the runtime
 
 `scripts/migrate.mjs`:
 
-- `0000_init.sql` contains the pre-launch complete schema; `0001_search_providers.sql` adds `settings.default_search_provider` and `messages.search_provider` with `brave` defaults for existing rows.
+- `0000_init.sql` contains the complete pre-launch schema. There is no deployed database yet, so schema changes regenerate it instead of adding migrations.
 - Requires `DATABASE_URL`.
 - Takes a PostgreSQL advisory lock (`7314002917`) so concurrent deploys serialize.
 - Creates `beamling_migrations` if absent.
@@ -1448,9 +1459,9 @@ The repository contains four layers.
 | Suite | Count | Coverage |
 |---|---|---|
 | `packages/mascot/test/geometry.test.mjs` | 6 | Eye/beam geometry, expressions, state mapping |
-| `packages/web/tests/unit.test.ts` | 40 | KMS-backed credential encryption/rotation, model allowlist, Brave/Tavily/Exa/OpenRouter mapping, 429 retry, network vs abort, citations, ranking, freshness, language, prompt injection, client IP HMAC, same-origin anchors, production config, analytics allowlist/identity/delivery/deletion, body limits, provider-safe log redaction |
-| `packages/web/tests/integration.test.ts` | 26 | Database-backed account persistence, content encryption, Quick/Deep/Deeper, the Deeper AI SDK tool loop, planner repair/degrade, partial search, missing keys, selected-provider persistence and cost, no fallback, one stream per conversation, global concurrency, lock timeout, stop flag, mid-answer delete, timeout, NUL, retry, stale repair, pinned ordering, pagination, session cleanup, rate limits, Brave spacing, key replacement |
-| `packages/web/e2e/*.spec.ts` | 27 | 9 API checks, 13 UI flows and 5 route variants for CSP and axe; Quick checks search details, reasoning and tables, provider selection checks Tavily, Deeper checks the third mode, and sidebar checks pinning and title search |
+| `packages/web/tests/unit.test.ts` | 46 | KMS-backed credential encryption/rotation, model allowlist, Brave/Tavily/Exa/OpenRouter mapping, 429 retry, network vs abort, citations, ranking, freshness, language, prompt injection, client IP HMAC, same-origin anchors, production config and PostHog host rules, analytics allowlist/identity/delivery/deletion/kill-switch deletion/shared client, erasure backoff, Tavily free validation, body limits, provider-safe log redaction |
+| `packages/web/tests/integration.test.ts` | 28 | Database-backed account persistence, content encryption, Quick/Deep/Deeper, the Deeper AI SDK tool loop, planner repair/degrade, partial search, missing keys, selected-provider persistence and cost, no fallback, one stream per conversation, global concurrency, lock timeout, stop flag, mid-answer delete, timeout, NUL, retry, stale repair, pinned ordering, pagination, session cleanup, rate limits, Brave spacing, key replacement, unverified keys, the analytics erasure queue |
+| `packages/web/e2e/*.spec.ts` | 29 | 10 API checks, 14 UI flows and 5 route variants for CSP and axe; Quick checks search details, reasoning and tables, provider selection checks Tavily and marks a provider without a key, an Exa key is saved unvalidated and checked later, Deeper checks the third mode, and sidebar checks pinning and title search |
 
 Commands:
 

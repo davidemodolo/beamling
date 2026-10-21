@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import type { CredentialKind, CredentialStatus, Mode, SearchProvider } from "../types";
 import { APP_VERSION } from "../version";
-import { posthogConfig, type PostHogConfig } from "./env";
+import { posthogConfig, posthogDeletionConfig, type PostHogConfig } from "./env";
 import { log } from "./log";
 
 export interface AnalyticsEventMap {
@@ -74,7 +74,10 @@ const MAX_IN_FLIGHT = 8;
 
 export interface AnalyticsClient {
   capture<E extends AnalyticsEvent>(userId: string, event: E, properties: AnalyticsEventMap[E]): void;
-  deleteUser(userId: string): Promise<boolean>;
+  /** The PostHog identity of an account, or null when person deletion is not configured. */
+  distinctIdFor(userId: string): string | null;
+  /** Deletes a person and their events; resolves false on any failure so the caller can retry. */
+  deletePerson(distinctId: string): Promise<boolean>;
   flush(): Promise<void>;
 }
 
@@ -123,11 +126,14 @@ function failureName(error: unknown): string {
 
 export function createAnalytics(options: {
   config: PostHogConfig | null;
+  /** Defaults to `config`; set separately so the kill switch does not stop deletions. */
+  deletionConfig?: PostHogConfig | null;
   fetchImpl?: Fetch;
   captureTimeoutMs?: number;
   deleteTimeoutMs?: number;
 }): AnalyticsClient {
   const { config } = options;
+  const deletionConfig = options.deletionConfig === undefined ? config : options.deletionConfig;
   const fetchImpl = options.fetchImpl ?? fetch;
   const captureTimeoutMs = options.captureTimeoutMs ?? CAPTURE_TIMEOUT_MS;
   const deleteTimeoutMs = options.deleteTimeoutMs ?? DELETE_TIMEOUT_MS;
@@ -163,18 +169,22 @@ export function createAnalytics(options: {
     );
   }
 
-  async function deleteUser(userId: string): Promise<boolean> {
-    if (!config) return false;
-    const url = `${config.appHost}/api/projects/${encodeURIComponent(config.projectId)}/persons/bulk_delete/`;
+  function distinctIdFor(userId: string): string | null {
+    return deletionConfig ? analyticsDistinctId(userId, deletionConfig.salt) : null;
+  }
+
+  async function deletePerson(distinctId: string): Promise<boolean> {
+    if (!deletionConfig) return false;
+    const url = `${deletionConfig.appHost}/api/projects/${encodeURIComponent(deletionConfig.projectId)}/persons/bulk_delete/`;
     try {
       const response = await fetchImpl(url, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${config.personalApiKey}`,
+          Authorization: `Bearer ${deletionConfig.personalApiKey}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          distinct_ids: [analyticsDistinctId(userId, config.salt)],
+          distinct_ids: [distinctId],
           delete_events: true,
           delete_recordings: true,
         }),
@@ -200,7 +210,13 @@ export function createAnalytics(options: {
     while (inFlight.size) await Promise.allSettled([...inFlight]);
   }
 
-  return { capture, deleteUser, flush };
+  return { capture, distinctIdFor, deletePerson, flush };
 }
 
-export const analytics = createAnalytics({ config: posthogConfig() });
+// One client per process: the shutdown hook is bundled separately from the route handlers, and its
+// flush must see the events those handlers still have in flight.
+const globalForAnalytics = globalThis as unknown as { __beamlingAnalytics?: AnalyticsClient };
+export const analytics = (globalForAnalytics.__beamlingAnalytics ??= createAnalytics({
+  config: posthogConfig(),
+  deletionConfig: posthogDeletionConfig(),
+}));

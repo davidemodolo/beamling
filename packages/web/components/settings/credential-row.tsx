@@ -41,7 +41,8 @@ export function CredentialRow({
         <strong>{label}</strong>
         <span>•••• {credential.last4}</span>
         <span style={{ color: credential.status === "invalid" ? "var(--error)" : "var(--muted)" }}>
-          {STATUS_LABEL[credential.status]} · checked {shortDate(credential.lastValidatedAt)}
+          {STATUS_LABEL[credential.status]}
+          {credential.lastValidatedAt ? ` · checked ${shortDate(credential.lastValidatedAt)}` : " · not checked yet"}
         </span>
         {credential.provider === "brave" ? (
           <span style={{ color: "var(--muted)" }}>
@@ -71,6 +72,12 @@ export function CredentialRow({
           </>
         ) : (
           <>
+            {credential.status === "unverified" ? (
+              <button type="button" className="btn btn-secondary btn-sm" onClick={onValidate} disabled={busy}>
+                {busy ? <Icon name="loader" size={13} className="spin" /> : <Icon name="check" size={13} />}
+                Validate
+              </button>
+            ) : null}
             {onLimits ? (
               <button type="button" className="btn btn-ghost btn-sm" onClick={onLimits}>
                 Limits

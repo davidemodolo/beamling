@@ -17,6 +17,8 @@ const PROVIDERS: {
   description: string;
   inputId: string;
   placeholder: string;
+  /** Checking the key spends a provider request, so saving without the check is offered. */
+  paidValidation: boolean;
 }[] = [
   {
     kind: "llm",
@@ -25,6 +27,7 @@ const PROVIDERS: {
     description: "Used for every answer.",
     inputId: "openrouter-key",
     placeholder: "sk-or-v1-...",
+    paidValidation: false,
   },
   ...SEARCH_PROVIDERS.map((provider) => ({
     kind: "search" as const,
@@ -33,6 +36,7 @@ const PROVIDERS: {
     description: `Used when ${provider.name} is selected for an answer.`,
     inputId: `${provider.id}-key`,
     placeholder: provider.placeholder,
+    paidValidation: !provider.freeValidation,
   })),
 ];
 
@@ -81,6 +85,7 @@ export function KeysPanel() {
   const { credentials, addCredential, removeCredential, validateCredential, updateCredentialLimits } = useStore();
   const [editing, setEditing] = useState<string | null>(null);
   const [key, setKey] = useState("");
+  const [validateNow, setValidateNow] = useState(true);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [validating, setValidating] = useState<string | null>(null);
@@ -99,6 +104,7 @@ export function KeysPanel() {
     const existing = credentialFor(provider);
     setEditing(provider.provider);
     setKey("");
+    setValidateNow(true);
     setPlan(existing?.plan ?? "free");
     setExpiry(existing?.expiresOn ?? "");
     setBudget(existing?.budgetUsd?.toString() ?? "");
@@ -129,8 +135,9 @@ export function KeysPanel() {
         expiresOn: provider.provider === "brave" && expiry ? expiry : null,
         budgetUsd: provider.provider === "brave" && budget ? Number(budget) : null,
         budgetPeriod: "month",
+        validate: provider.paidValidation ? validateNow : true,
       });
-      showToast(`${provider.name} key saved`);
+      showToast(provider.paidValidation && !validateNow ? `${provider.name} key saved, not validated` : `${provider.name} key saved`);
       cancel();
     } catch (cause) {
       setError(errorMessage(cause, `The provider rejected this ${provider.name} key.`));
@@ -244,6 +251,8 @@ export function KeysPanel() {
                   expiry={expiry}
                   budget={budget}
                   showLimits={provider.provider === "brave"}
+                  validateNow={provider.paidValidation ? validateNow : undefined}
+                  onValidateNow={setValidateNow}
                   onPlan={setPlan}
                   onExpiry={setExpiry}
                   onBudget={setBudget}
@@ -256,7 +265,10 @@ export function KeysPanel() {
 
       <div className="notice">
         <Icon name="shield" size={16} />
-        <div>Keys are validated with the provider, encrypted at rest, and never returned to the browser.</div>
+        <div>
+          Keys are validated with the provider unless you choose otherwise, encrypted at rest, and never returned to the
+          browser.
+        </div>
       </div>
 
       {toast}
@@ -278,6 +290,8 @@ function KeyForm({
   expiry,
   budget,
   showLimits,
+  validateNow,
+  onValidateNow,
   onPlan,
   onExpiry,
   onBudget,
@@ -295,6 +309,9 @@ function KeyForm({
   expiry: string;
   budget: string;
   showLimits: boolean;
+  /** Undefined when validation is free and always runs. */
+  validateNow?: boolean;
+  onValidateNow: (value: boolean) => void;
   onPlan: (value: "free" | "paid") => void;
   onExpiry: (value: string) => void;
   onBudget: (value: string) => void;
@@ -322,6 +339,7 @@ function KeyForm({
           <p className="hint">Set on the Brave dashboard. Used only for warnings.</p>
         </div>
       ) : null}
+      {validateNow !== undefined ? <ValidateNowField id={id} checked={validateNow} onChange={onValidateNow} /> : null}
       {error ? (
         <p className="validation-err" role="alert">
           <Icon name="alert" size={12} /> {error}
@@ -330,12 +348,29 @@ function KeyForm({
       <div style={{ display: "flex", gap: 8 }}>
         <button type="submit" className="btn btn-primary btn-sm" disabled={pending || !value.trim()}>
           {pending ? <Icon name="loader" size={13} className="spin" /> : <Icon name="check" size={13} />}
-          {pending ? "Validating…" : "Save key"}
+          {pending ? (validateNow === false ? "Saving…" : "Validating…") : "Save key"}
         </button>
         <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel}>
           Cancel
         </button>
       </div>
     </form>
+  );
+}
+
+/** Opt-out for providers whose only key check is a billable search request. */
+export function ValidateNowField({ id, checked, onChange }: { id: string; checked: boolean; onChange: (value: boolean) => void }) {
+  return (
+    <div>
+      <label className="check-row" htmlFor={`${id}-validate`}>
+        <input id={`${id}-validate`} type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+        Validate the key now
+      </label>
+      <p className="hint">
+        {checked
+          ? "Checking runs one search request on your key."
+          : "The key is saved as unverified. Use Validate in Settings to check it later; a wrong key fails at the first answer."}
+      </p>
+    </div>
   );
 }
