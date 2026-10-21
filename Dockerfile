@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM node:24-alpine@sha256:6a1c190e17215d844926b0677f4bf87273ff7d5e54db06d3b5b5863ab0b09a3d AS base
+FROM node:25-alpine@sha256:bdf2cca6fe3dabd014ea60163eca3f0f7015fbd5c7ee1b0e9ccb4ced6eb02ef4 AS base
 RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -20,7 +20,7 @@ ENV APP_VERSION=$APP_VERSION GIT_COMMIT=$GIT_COMMIT BUILD_TIME=$BUILD_TIME
 COPY . .
 RUN pnpm mascot:build && pnpm --filter @beamling/web build
 
-FROM node:24-alpine@sha256:6a1c190e17215d844926b0677f4bf87273ff7d5e54db06d3b5b5863ab0b09a3d AS runner
+FROM node:25-alpine@sha256:bdf2cca6fe3dabd014ea60163eca3f0f7015fbd5c7ee1b0e9ccb4ced6eb02ef4 AS runner
 ARG APP_VERSION=0.0.0
 ARG GIT_COMMIT=local
 ARG BUILD_TIME
