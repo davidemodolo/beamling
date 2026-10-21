@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { connectKeys, createConversation, signIn } from "./helpers";
+import { connectKeys, createConversation, KILL_SWITCH_SECRET, METRICS_SECRET, signIn } from "./helpers";
 
 test("signed-out requests are refused; signing in creates one reusable session", async ({ request, playwright, baseURL }) => {
   const health = await request.get("/api/health");
@@ -167,4 +167,44 @@ test("the default search provider can be changed and invalid providers are rejec
 
   const invalid = await request.patch("/api/settings", { data: { defaultSearchProvider: "serper" } });
   expect(invalid.status()).toBe(400);
+});
+
+test("the killswitch blocks new streams until an operator explicitly re-enables them", async ({ request }) => {
+  await signIn(request);
+  const blocked = "/api/internal/kill";
+  const bearer = (secret: string) => ({ Authorization: `Bearer ${secret}` });
+
+  expect((await request.post(blocked, { data: { acceptingNewStreams: false } })).status()).toBe(401);
+  expect(
+    (await request.post(blocked, { data: { acceptingNewStreams: false }, headers: bearer(METRICS_SECRET) })).status(),
+  ).toBe(401);
+
+  try {
+    const disabled = await request.post(blocked, {
+      data: { acceptingNewStreams: false, reason: "e2e maintenance" },
+      headers: bearer(KILL_SWITCH_SECRET),
+    });
+    expect(disabled.ok()).toBe(true);
+    expect((await disabled.json()).acceptingNewStreams.enabled).toBe(false);
+
+    const chat = await request.post("/api/chat", { data: { question: "Should not start", mode: "quick" } });
+    expect(chat.status()).toBe(503);
+    expect(chat.headers()["retry-after"]).toBe("60");
+    expect((await chat.json()).error.code).toBe("SERVICE_BUSY");
+
+    expect((await request.get("/api/internal/metrics")).status()).toBe(401);
+    const metrics = await request.get("/api/internal/metrics", { headers: bearer(METRICS_SECRET) });
+    expect(metrics.ok()).toBe(true);
+    const body = await metrics.json();
+    expect(body.acceptingNewStreams.enabled).toBe(false);
+    expect(body.acceptingNewStreams.reason).toBe("e2e maintenance");
+    expect(body.activeStreams).toBeGreaterThanOrEqual(0);
+    expect(body.maxConcurrentChats).toBeGreaterThan(0);
+  } finally {
+    const reopened = await request.post(blocked, {
+      data: { acceptingNewStreams: true },
+      headers: bearer(KILL_SWITCH_SECRET),
+    });
+    expect(reopened.ok()).toBe(true);
+  }
 });

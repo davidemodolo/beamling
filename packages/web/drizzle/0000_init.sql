@@ -100,6 +100,13 @@ CREATE TABLE "rate_limits" (
 	"expires_at" timestamp with time zone NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "system_flags" (
+	"key" text PRIMARY KEY NOT NULL,
+	"enabled" boolean NOT NULL,
+	"reason" text,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "settings" (
 	"user_id" uuid PRIMARY KEY NOT NULL,
 	"llm_model" text DEFAULT 'deepseek/deepseek-v4.1-flash' NOT NULL,

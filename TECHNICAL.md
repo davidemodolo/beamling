@@ -410,6 +410,9 @@ sources
 rate_limits
   key (primary key), window_start, count, expires_at
 
+system_flags
+  key (primary key), enabled, reason, updated_at
+
 provider_slots
   key (primary key), next_at
 
@@ -871,6 +874,8 @@ Error envelope:
 | `DELETE` | `/api/credentials/:id` | Required | — | `{ ok: true }` |
 | `PATCH` | `/api/settings` | Required | `{ llmModel?, defaultSearchProvider?, defaultMode? }` | `{ settings }` |
 | `DELETE` | `/api/account` | Optional | — | `{ ok: true }` and cleared cookie |
+| `POST` | `/api/internal/kill` | Bearer `KILL_SWITCH_SECRET` | `{ acceptingNewStreams: boolean, reason? }` | `{ acceptingNewStreams }` |
+| `GET` | `/api/internal/metrics` | Bearer `METRICS_SECRET` | — | Deployment flag, active streams and build identity |
 | `GET` | `/api/health` | None | — | `{ ok: true, database: "up", version, commit, builtAt }` or 503 `{ ok: false, database: "down", version, commit, builtAt }` |
 
 ### 9.2 Validation and limits
@@ -967,6 +972,7 @@ Errors are stable strings; the UI maps them to copy and actions.
 | `QUOTA_EXCEEDED` | Tavily plan limit reached (`433`) | 402 |
 | `PROVIDER_RATE_LIMITED` | OpenRouter or the selected search provider `429` | 429 |
 | `PROVIDER_UNAVAILABLE` | Timeout, network failure or provider `5xx` | 502 |
+| `SERVICE_BUSY` | The operator killswitch stopped new streams | 503 |
 | `PROVIDER_ERROR` | Other provider rejection | 502 |
 | `SEARCH_FAILED` | Every search failed | 502 |
 | `CONTEXT_TOO_LARGE` | OpenRouter says context is too long | 400 |
@@ -1447,7 +1453,7 @@ Migrations are a release step, not an app-start side effect. The local compose `
 `fly.toml` describes the production topology: one shared-CPU 1 GB machine in `fra`, scale-to-zero, a 20-second shutdown window, HTTP health checks on `/api/health`, and the migration release command.
 
 - Production deploys are gated by the repository variable `FLY_DEPLOY_ENABLED=true`. When a new version tag is created, the `deploy` job in `ci.yml` installs pinned flyctl `0.4.120` and runs `flyctl deploy --remote-only --ha=false`.
-- Required Fly secrets: `DATABASE_URL`, `AUTH_SECRET`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `KMS_KEY_NAME`, `GCP_KMS_CREDENTIALS` and, when analytics is enabled, the PostHog values.
+- Required Fly secrets: `DATABASE_URL`, `AUTH_SECRET`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `KMS_KEY_NAME`, `GCP_KMS_CREDENTIALS`, `KILL_SWITCH_SECRET`, `METRICS_SECRET` and, when analytics is enabled, the PostHog values.
 - `GCP_KMS_CREDENTIALS` is the service-account JSON. It lets the GCP client run on a host with no credentials file; Application Default Credentials remain the fallback.
 - `release_command = "node scripts/migrate.mjs"` applies the schema before the new machine receives traffic.
 - Neon must use its pooled connection string with TLS; `DATABASE_SSL=true` is set in `fly.toml`.
@@ -1464,7 +1470,14 @@ Migrations are a release step, not an app-start side effect. The local compose `
 - Idle-in-transaction timeout 30 seconds.
 - TLS is enabled only when `DATABASE_SSL=true`; CA and certificate verification are configurable. `DATABASE_SSL_CA_FILE` lets the parity stack and scripts read a mounted CA.
 
----
+### 14.8 Operational killswitch
+
+- `system_flags` stores `accepting_new_streams`; a missing row means open, so a fresh database accepts streams.
+- `POST /api/internal/kill` changes the flag with a Bearer `KILL_SWITCH_SECRET` and an optional reason. It never auto-re-enables.
+- `/api/chat` reads the flag before parsing the question or starting work. When closed, it returns 503 `SERVICE_BUSY` with `Retry-After: 60`; existing streams are not aborted.
+- `GET /api/internal/metrics` requires a Bearer `METRICS_SECRET` and returns the flag, active stream count, configured stream cap and build identity.
+- A missing or short secret disables its endpoint (404) and logs a production startup warning. A wrong bearer token returns 401. Neither endpoint uses a session or the public read limiter.
+- The GitHub Actions watchdog and external alerting described in the target operations section are not implemented; an operator or a later watchdog calls the endpoint.
 
 ## 15. Tests
 
@@ -1474,8 +1487,8 @@ The repository contains four layers.
 |---|---|---|
 | `packages/mascot/test/geometry.test.mjs` | 6 | Eye/beam geometry, expressions, state mapping |
 | `packages/web/tests/unit.test.ts` | 46 | KMS-backed credential encryption/rotation, model allowlist, Brave/Tavily/Exa/OpenRouter mapping, 429 retry, network vs abort, citations, ranking, freshness, language, prompt injection, client IP HMAC, same-origin anchors, production config and PostHog host rules, analytics allowlist/identity/delivery/deletion/kill-switch deletion/shared client, erasure backoff, Tavily free validation, body limits, provider-safe log redaction |
-| `packages/web/tests/integration.test.ts` | 28 | Database-backed account persistence, content encryption, Quick/Deep/Deeper, the Deeper AI SDK tool loop, planner repair/degrade, partial search, missing keys, selected-provider persistence and cost, no fallback, one stream per conversation, global concurrency, lock timeout, stop flag, mid-answer delete, timeout, NUL, retry, stale repair, pinned ordering, pagination, session cleanup, rate limits, Brave spacing, key replacement, unverified keys, the analytics erasure queue |
-| `packages/web/e2e/*.spec.ts` | 29 | 10 API checks, 14 UI flows and 5 route variants for CSP and axe; Quick checks search details, reasoning and tables, provider selection checks Tavily and marks a provider without a key, an Exa key is saved unvalidated and checked later, Deeper checks the third mode, and sidebar checks pinning and title search |
+| `packages/web/tests/integration.test.ts` | 29 | Database-backed account persistence, content encryption, Quick/Deep/Deeper, the Deeper AI SDK tool loop, planner repair/degrade, partial search, missing keys, selected-provider persistence and cost, no fallback, one stream per conversation, global concurrency, lock timeout, stop flag, mid-answer delete, timeout, NUL, retry, stale repair, pinned ordering, pagination, session cleanup, rate limits, Brave spacing, key replacement, unverified keys, the analytics erasure queue, the new-stream flag |
+| `packages/web/e2e/*.spec.ts` | 30 | 11 API checks, 14 UI flows and 5 route variants for CSP and axe; Quick checks search details, reasoning and tables, provider selection checks Tavily and marks a provider without a key, an Exa key is saved unvalidated and checked later, the killswitch rejects new streams and metrics stay secret-protected, Deeper checks the third mode, and sidebar checks pinning and title search |
 
 Commands:
 
@@ -1501,6 +1514,7 @@ The Playwright suite checks:
 - Pages carry a nonce-based CSP and all script tags use the nonce.
 - Conversation pagination and cursor rejection, including pinned ordering across pages.
 - Account deletion clears the cookie.
+- The killswitch rejects new streams with `SERVICE_BUSY`/`Retry-After`, requires the kill secret, and keeps metrics behind their separate secret.
 - Onboarding preserves saved model and mode; settings accepts a launch provider and rejects an unknown one.
 - Quick answers stream citations, costs and sources.
 - A Tavily answer can be selected per question and keeps its provider badge after reload.
@@ -1552,6 +1566,7 @@ The Playwright suite checks:
 | Persistence | PostgreSQL 18, Drizzle schema, forward-only migration ledger |
 | Local deployment | Docker Compose app + PostgreSQL, standalone image, build identity, health check, graceful shutdown |
 | Production deploy config | `fly.toml`, gated Fly deploy job, GCP service-account secret support; no live deployment yet |
+| Killswitch | Database flag, chat gate, internal kill/metrics endpoints; watchdog remains target |
 | Observability | Structured JSON logs, versioned health endpoint, build identity in the UI, optional server-side PostHog events |
 | Analytics | Opt-in server-side PostHog events with allowlisted metadata, HMAC ids, kill switch and deletion cleanup |
 | Testing | Unit, integration, E2E and mascot geometry suites |

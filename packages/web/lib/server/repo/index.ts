@@ -35,3 +35,10 @@ export {
   recordAnalyticsErasure,
   type AnalyticsErasure,
 } from "./analytics-erasures";
+export {
+  ACCEPTING_NEW_STREAMS,
+  acceptingNewStreams,
+  activeStreams,
+  setAcceptingNewStreams,
+  type SystemFlag,
+} from "./system-flags";

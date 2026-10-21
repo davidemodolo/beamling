@@ -1,5 +1,8 @@
 import { expect, type APIRequestContext, type APIResponse, type Page } from "@playwright/test";
 
+export const KILL_SWITCH_SECRET = "e2e-kill-switch-secret-0000000000000000";
+export const METRICS_SECRET = "e2e-metrics-secret-000000000000000000";
+
 /** Signs in through the test-only auth route and creates fixture keys. */
 export async function signIn(request: APIRequestContext): Promise<APIResponse> {
   const response = await request.post("/api/auth/test-login");

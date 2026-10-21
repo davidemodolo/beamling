@@ -251,6 +251,14 @@ export function oidcTransactionCookieName(): string {
   return secureCookies() ? "__Host-beamling_oidc" : "beamling_oidc";
 }
 
+export const INTERNAL_SECRET_MIN_BYTES = 32;
+
+/** Operator secrets are accepted only when long enough; otherwise the endpoint stays disabled. */
+export function internalSecret(name: "KILL_SWITCH_SECRET" | "METRICS_SECRET"): string | undefined {
+  const value = process.env[name]?.trim();
+  return value && Buffer.byteLength(value, "utf8") >= INTERNAL_SECRET_MIN_BYTES ? value : undefined;
+}
+
 export function kmsProvider(): "env" | "aws" | "gcp" {
   const value = process.env.KMS_PROVIDER ?? "env";
   if (value === "env" || value === "aws" || value === "gcp") return value;
@@ -402,5 +410,10 @@ export function productionConfigWarnings(): string[] {
   }
   if (database?.password === "beamling") warnings.push("The database uses the default local password.");
   if (trustedProxyHops() === 0) warnings.push("TRUSTED_PROXY_HOPS=0: per-IP limits are shared by every client.");
+  for (const name of ["KILL_SWITCH_SECRET", "METRICS_SECRET"] as const) {
+    if (!internalSecret(name)) {
+      warnings.push(`${name} is missing or shorter than ${INTERNAL_SECRET_MIN_BYTES} bytes; its internal endpoint is disabled.`);
+    }
+  }
   return warnings;
 }

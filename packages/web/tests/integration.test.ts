@@ -718,3 +718,24 @@ test("deleting an account queues its erasure, which runs twice and backs off on 
   await recordAnalyticsErasure({ distinctId, passesLeft: 1, attempts: 0 }, true);
   assert.equal(await read(), undefined);
 });
+
+test("the new-stream flag defaults open and can be blocked explicitly", { skip }, async (t) => {
+  const { ACCEPTING_NEW_STREAMS, acceptingNewStreams, setAcceptingNewStreams } = await import("../lib/server/repo");
+  const { db } = await import("../lib/server/db");
+  const { systemFlags } = await import("../lib/server/schema");
+  const { eq } = await import("drizzle-orm");
+  t.after(() => db.delete(systemFlags).where(eq(systemFlags.key, ACCEPTING_NEW_STREAMS)));
+
+  await db.delete(systemFlags).where(eq(systemFlags.key, ACCEPTING_NEW_STREAMS));
+  assert.equal((await acceptingNewStreams()).enabled, true);
+  t.after(() => setAcceptingNewStreams(true));
+
+  const blocked = await setAcceptingNewStreams(false, "maintenance test");
+  assert.equal(blocked.enabled, false);
+  assert.equal(blocked.reason, "maintenance test");
+  assert.equal((await acceptingNewStreams()).enabled, false);
+
+  const reopened = await setAcceptingNewStreams(true);
+  assert.equal(reopened.enabled, true);
+  assert.equal(reopened.reason, null);
+});

@@ -45,8 +45,8 @@ This file is the **target contract** for Alpha 1 and public launch. It is not an
 | Content at rest | Conversation titles, messages, sources and stored errors are encrypted with per-account workspace keys | Same; GCP KMS in production |
 | Public pages | `/`, `/login`, `/onboarding`, `/chat`, `/chat/[id]`, `/privacy`, `/terms` | Add `/welcome` if needed, full legal/footer surface, docs, status, licenses, support and supporters |
 | Analytics | Server-side PostHog events with an allowlist, HMAC distinct IDs, opt-in kill switch and account-deletion hook; no browser SDK | PostHog Cloud EU, server-side metadata-only events and operator dashboards |
-| Operations | Production-parity Docker Compose with Caddy TLS, Dex OIDC, LocalStack KMS, TLS Postgres and the production image; release migrations, versioned health, tagged releases, graceful shutdown; Fly configuration and gated deploy job, not yet deployed | Fly + Neon, GCP KMS, monitoring, backups, killswitch |
-| Tests | 46 web unit tests, 28 database integration tests, 29 Playwright E2E tests, 6 mascot tests | Add parity-stack smoke, analytics, legal, killswitch, dump-encryption, load and eval gates |
+| Operations | Production-parity Docker Compose with Caddy TLS, Dex OIDC, LocalStack KMS, TLS Postgres and the production image; release migrations, versioned health, tagged releases, graceful shutdown; Fly configuration and gated deploy job, not yet deployed; database killswitch and internal metrics | Fly + Neon, GCP KMS, monitoring, backups, killswitch |
+| Tests | 46 web unit tests, 29 database integration tests, 30 Playwright E2E tests, 6 mascot tests | Add parity-stack smoke, analytics, legal, killswitch, dump-encryption, load and eval gates |
 | Donations | None | Optional post-public `/support` and `/supporters` |
 
 ---
@@ -1215,6 +1215,8 @@ Deleting an account removes its wrapped data key, so content retained in backups
 | PATCH | `/api/credentials/:id` | Update declared plan, expiry or budget without the key | Session |
 | DELETE | `/api/credentials/:id` | Delete credential and its usage | Session |
 | DELETE | `/api/account` | Delete the account and data | Session |
+| POST | `/api/internal/kill` | Open or close new streams | Bearer `KILL_SWITCH_SECRET` |
+| GET | `/api/internal/metrics` | Deployment flag, active streams and build identity | Bearer `METRICS_SECRET` |
 | GET | `/api/health` | Liveness and database check | None |
 
 Every authenticated response carries `Cache-Control: private, no-store` and `Vary: Cookie`. Request bodies are limited to 64 KB (`PAYLOAD_TOO_LARGE`). GET routes share a per-user limit of 600 requests per 10 minutes and a per-IP limit of 3,000 requests per 10 minutes.
@@ -1327,6 +1329,7 @@ Stream rules:
 | `PROVIDER_RATE_LIMITED` | OpenRouter or the search provider rate limit was hit | 429 |
 | `BRAVE_PLAN_MISSING_SEARCH` | Brave key is not attached to a Search plan | 400 |
 | `PROVIDER_UNAVAILABLE` | Provider outage, timeout or `5xx` | 502 |
+| `SERVICE_BUSY` | Operator killswitch stopped new streams | 503 |
 | `SEARCH_FAILED` | The search provider failed for every query | 502 |
 | `CONTEXT_TOO_LARGE` | Query or context exceeds model limits | 400 |
 | `GENERATION_IN_PROGRESS` | A generation is already active in this conversation | 409 |
@@ -1708,8 +1711,8 @@ Rules:
 |---|---|---|
 | Mascot unit | Node test runner | 6 geometry/expression tests |
 | Web unit | Node test runner | 46 tests: credential encryption and rotation, model allowlist, citation parsing, Brave/Tavily/Exa/OpenRouter error mapping, retries, URL filtering, ranking, language detection, prompt injection boundaries, client IP, production configuration, analytics allowlist/identity/delivery/deletion/erasure retries, body limits, log redaction |
-| Web integration | Node test runner + PostgreSQL | 28 tests: account persistence and content encryption, Quick/Deep/Deeper, the Deeper AI SDK tool loop, planner repair, partial search, missing keys, selected-provider persistence/cost, no fallback, one-stream-per-conversation, global cap, lock contention, stop flag, delete mid-answer, timeout, NUL handling, retry replacement, stale answer repair, pagination, session cleanup, atomic rate limits, per-key search spacing, credential replacement, unverified keys, atomic analytics erasure queuing |
-| End-to-end | Playwright | 29 tests: 10 API checks, 14 UI flows and 5 public-route axe/CSP checks; Quick-answer coverage includes search trace, reasoning and tables, provider selection checks Tavily and marks a keyless provider, unverified-key validation is covered, and Deeper coverage checks the third mode |
+| Web integration | Node test runner + PostgreSQL | 29 tests: account persistence and content encryption, Quick/Deep/Deeper, the Deeper AI SDK tool loop, planner repair, partial search, missing keys, selected-provider persistence/cost, no fallback, one-stream-per-conversation, global cap, lock contention, stop flag, delete mid-answer, timeout, NUL handling, retry replacement, stale answer repair, pagination, session cleanup, atomic rate limits, per-key search spacing, credential replacement, unverified keys, atomic analytics erasure queuing, the new-stream flag |
+| End-to-end | Playwright | 30 tests: 11 API checks, 14 UI flows and 5 public-route axe/CSP checks; Quick-answer coverage includes search trace, reasoning and tables, provider selection checks Tavily and marks a keyless provider, unverified-key validation is covered, the killswitch blocks new streams, and Deeper coverage checks the third mode |
 
 Commands:
 
@@ -1747,7 +1750,7 @@ Evaluation methodology: each golden question has a reference answer and expected
 
 ## 21. Deployment and Operations
 
-**Current checkout:** `pnpm local:up` runs the production image behind Caddy with Dex OIDC, LocalStack KMS and TLS PostgreSQL; migrations are a separate release step; `/api/health` is the health check; `SIGTERM` stores partial answers before exit. `fly.toml` and a gated CI deploy job are committed, but no Fly app or Neon database is live yet. Sentry, Better Stack and the killswitch remain public-launch targets.
+**Current checkout:** `pnpm local:up` runs the production image behind Caddy with Dex OIDC, LocalStack KMS and TLS PostgreSQL; migrations are a separate release step; `/api/health` is the health check; `SIGTERM` stores partial answers before exit. `fly.toml` and a gated CI deploy job are committed, but no Fly app or Neon database is live yet. Sentry, Better Stack, the automated watchdog and external alerting remain public-launch targets.
 
 ### 21.1 Public launch stack (target)
 
@@ -1811,6 +1814,7 @@ Evaluation methodology: each golden question has a reference answer and expected
 - Store `system_flags.accepting_new_streams` in Postgres so every Fly machine sees the same state.
 - `/api/chat` checks the flag before starting a stream. If disabled, return `503` with `Retry-After` and a friendly "Beamling is briefly at capacity" message. Existing streams finish; do not kill them.
 - Protect `POST /api/internal/kill` and `GET /api/internal/metrics` with `KILL_SWITCH_SECRET` and `METRICS_SECRET`. Do not expose them in the UI.
+- **Current checkout:** the database flag, `/api/chat` gate, `POST /api/internal/kill` and `GET /api/internal/metrics` are implemented; the watchdog and external alerting remain target work.
 - A GitHub Actions watchdog runs every 5 minutes, reads aggregate metrics, and disables new streams when thresholds are breached: 5xx rate above 10% over 5 minutes, active streams at the cap for two checks, provider failure rate above 25%, Neon CU at its cap for 10 minutes, or a login-failure spike.
 - Do not auto-re-enable. A human reviews the cause and re-enables the flag. Do not scale machines to zero as a killswitch: users get network errors and no explanation.
 - Test the killswitch in staging before launch: flag flips, `/api/chat` returns 503, existing streams finish, and the alert fires.
@@ -1853,7 +1857,7 @@ Evaluation methodology: each golden question has a reference answer and expected
 | M0 — Spec | This document, brand assets brief, domain purchases | Review complete | Spec exists; domain purchase unconfirmed |
 | M1 — Alpha 1 | Google-only accounts, OpenRouter credentials and streaming, Brave/Tavily/Exa search adapters, Brave plan/expiry/budget metadata, Quick, Deep, Deeper, citations, search animation, history, PostHog usage analytics, production-parity local stack | Quick and Deep cited answers render end to end; Google login works; animation follows real stages; local stack runs the production image with KMS-backed crypto | Implemented in code and tests, including PostHog events, kill switch and deletion hook; live PostHog project, dashboards and alerts remain operator setup |
 | M2 — Private alpha | Onboarding, settings, usage/cost, error states, account deletion, 100-question eval, Fly + Neon deploy | 10–25 invited users complete real Quick, Deep and Deeper questions without key leakage | Partial: onboarding, settings, costs, errors and deletion are implemented; Fly config and deploy job are committed; the live deploy and 100-question eval remain |
-| M3 — Public launch | All launch adapters, welcome page, public docs and GitHub feedback repo, legal pages, open-source license page, CMP if needed, rate limits, status page | Public Google sign-in open, SLOs met for one week | Target |
+| M3 — Public launch | All launch adapters, welcome page, public docs and GitHub feedback repo, legal pages, open-source license page, CMP if needed, rate limits, status page | Public Google sign-in open, SLOs met for one week | Partial: killswitch endpoints and internal metrics are implemented; legal surface, licensing, status and watchdog remain |
 | M3.1 — Support (optional, post-public) | `/support`, outbound Tipeee/PayPal link, opt-in `/supporters`, footer link | Donation link works with no payment script; consent and removal process documented | Target |
 | M4 — v1 | PDF upload, share links, exports, optional public API, KMS-backed keys | Quality and security gates passed for both modes | Target |
 

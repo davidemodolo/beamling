@@ -2,8 +2,8 @@ import { z } from "zod";
 import { watchChat } from "@/lib/server/active-chats";
 import { analytics } from "@/lib/server/analytics";
 import { prepareChat, publicError, runChat, TIMEOUT_MS, type ChatEmit } from "@/lib/server/chat";
-import { cleanText, clientIpKey, parseBody } from "@/lib/server/http";
-import { consumeRateLimit } from "@/lib/server/repo";
+import { cleanText, clientIpKey, json, parseBody } from "@/lib/server/http";
+import { acceptingNewStreams, consumeRateLimit } from "@/lib/server/repo";
 import { apiRoute } from "@/lib/server/route";
 
 export const runtime = "nodejs";
@@ -47,6 +47,13 @@ function event(name: string, data: unknown): Uint8Array {
 }
 
 export const POST = apiRoute(async ({ request, user }) => {
+  const gate = await acceptingNewStreams();
+  if (!gate.enabled) {
+    return json(
+      { error: { code: "SERVICE_BUSY", message: "Beamling is briefly at capacity. Try again shortly." } },
+      { status: 503, headers: { "Retry-After": "60" } },
+    );
+  }
   const input = await parseBody(request, schema);
   await consumeRateLimit(`chat:${user.id}`, CHATS_PER_USER_PER_HOUR, 3600);
   await consumeRateLimit(`chat-ip:${clientIpKey(request.headers)}`, CHATS_PER_IP_PER_HOUR, 3600);

@@ -226,6 +226,14 @@ export const rateLimits = pgTable(
   (table) => [index("rate_limits_expires_idx").on(table.expiresAt)],
 );
 
+/** Deployment-wide switches. A missing row means the safe default for that flag. */
+export const systemFlags = pgTable("system_flags", {
+  key: text("key").primaryKey(),
+  enabled: boolean("enabled").notNull(),
+  reason: text("reason"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 /**
  * Next free request slot per provider key (hashed), shared by every instance. Spaces requests
  * for plans with a per-second limit.

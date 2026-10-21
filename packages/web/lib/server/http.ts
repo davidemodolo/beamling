@@ -22,8 +22,10 @@ export const INTERNAL_ERROR_MESSAGE = "Something went wrong.";
 /** Authenticated responses must never be stored by browsers or intermediaries. */
 export const PRIVATE_HEADERS = { "Cache-Control": "private, no-store", Vary: "Cookie" } as const;
 
-export function json(data: unknown, init?: { status?: number }): NextResponse {
-  return NextResponse.json(data, { status: init?.status, headers: PRIVATE_HEADERS });
+export function json(data: unknown, init?: { status?: number; headers?: HeadersInit }): NextResponse {
+  const headers = new Headers(PRIVATE_HEADERS);
+  for (const [name, value] of new Headers(init?.headers)) headers.set(name, value);
+  return NextResponse.json(data, { status: init?.status, headers });
 }
 
 /** Redirects that carry or affect a session must not be cached by browsers or intermediaries. */

@@ -599,6 +599,8 @@ test("production refuses unsafe configuration", async (t) => {
     OIDC_ISSUER: "https://accounts.google.com",
     KMS_PROVIDER: "gcp",
     KMS_KEY_NAME: "projects/p/locations/l/keyRings/r/cryptoKeys/k",
+    KILL_SWITCH_SECRET: "k".repeat(32),
+    METRICS_SECRET: "m".repeat(32),
   };
   withEnv(t, base);
   assert.deepEqual(productionConfigErrors(), []);

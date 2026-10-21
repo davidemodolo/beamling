@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { defineConfig, devices } from "@playwright/test";
+import { KILL_SWITCH_SECRET, METRICS_SECRET } from "./e2e/helpers";
 
 // End-to-end tests run a production build (`pnpm build` first) with fixture providers against a
 // migrated, disposable database.
@@ -39,6 +40,8 @@ export default defineConfig({
       // Slow enough to stop, switch away from, or reload during an answer.
       BEAMLING_FAKE_DELAY_MS: "80",
       BRAVE_MIN_INTERVAL_MS: "0",
+      KILL_SWITCH_SECRET,
+      METRICS_SECRET,
     },
   },
 });
