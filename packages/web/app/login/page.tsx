@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { LegalFooter } from "@/components/legal-footer";
 import { Wordmark } from "@/components/wordmark";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/server/session";
@@ -40,6 +41,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           </p>
         </section>
       </main>
+      <LegalFooter />
     </div>
   );
 }

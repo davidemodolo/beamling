@@ -1,0 +1,1648 @@
+{
+  "policy": {
+    "allowed": [
+      "0BSD",
+      "Apache-2.0",
+      "BSD-2-Clause",
+      "BSD-3-Clause",
+      "ISC",
+      "MIT",
+      "OFL-1.1"
+    ],
+    "exceptions": [
+      {
+        "license": "CC-BY-4.0",
+        "packages": [
+          "caniuse-lite"
+        ],
+        "reason": "Browser support data used at build time. Attribution is included on this page; the data is not part of Beamling's application source."
+      }
+    ]
+  },
+  "packages": [
+    {
+      "name": "@ai-sdk/gateway",
+      "versions": [
+        "4.0.121"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://ai-sdk.dev/docs",
+      "notice": "Copyright 2023 Vercel, Inc."
+    },
+    {
+      "name": "@ai-sdk/provider",
+      "versions": [
+        "4.0.31"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://ai-sdk.dev/docs",
+      "notice": "Copyright 2023 Vercel, Inc."
+    },
+    {
+      "name": "@ai-sdk/provider-utils",
+      "versions": [
+        "5.0.65"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://ai-sdk.dev/docs",
+      "notice": ""
+    },
+    {
+      "name": "@aws-sdk/client-kms",
+      "versions": [
+        "3.1154.0"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/aws/aws-sdk-js-v3/tree/main/clients/client-kms",
+      "notice": "Copyright 2018-2020 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "name": "@aws-sdk/core",
+      "versions": [
+        "3.978.4"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/aws/aws-sdk-js-v3/tree/main/packages-internal/core",
+      "notice": "Copyright 2018 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "name": "@aws-sdk/credential-provider-env",
+      "versions": [
+        "3.972.75"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/aws/aws-sdk-js-v3/tree/main/packages-internal/credential-provider-env",
+      "notice": "Copyright 2018-2020 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "name": "@aws-sdk/credential-provider-http",
+      "versions": [
+        "3.972.77"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/aws/aws-sdk-js-v3/tree/main/packages-internal/credential-provider-http",
+      "notice": "AWS SDK for JavaScript Team"
+    },
+    {
+      "name": "@aws-sdk/credential-provider-ini",
+      "versions": [
+        "3.973.20"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/aws/aws-sdk-js-v3/tree/main/packages-internal/credential-provider-ini",
+      "notice": "Copyright 2018-2020 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "name": "@aws-sdk/credential-provider-login",
+      "versions": [
+        "3.972.82"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/aws/aws-sdk-js-v3/tree/main/packages-internal/credential-provider-login",
+      "notice": "AWS SDK for JavaScript Team"
+    },
+    {
+      "name": "@aws-sdk/credential-provider-node",
+      "versions": [
+        "3.972.87"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/aws/aws-sdk-js-v3/tree/main/packages-internal/credential-provider-node",
+      "notice": "Copyright 2018-2020 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "name": "@aws-sdk/credential-provider-process",
+      "versions": [
+        "3.972.75"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/aws/aws-sdk-js-v3/tree/main/packages-internal/credential-provider-process",
+      "notice": "Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "name": "@aws-sdk/credential-provider-sso",
+      "versions": [
+        "3.973.19"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/aws/aws-sdk-js-v3/tree/main/packages-internal/credential-provider-sso",
+      "notice": "Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "name": "@aws-sdk/credential-provider-web-identity",
+      "versions": [
+        "3.972.81"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/aws/aws-sdk-js-v3/tree/main/packages-internal/credential-provider-web-identity",
+      "notice": "Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "name": "@aws-sdk/nested-clients",
+      "versions": [
+        "3.997.49"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/aws/aws-sdk-js-v3/tree/main/packages/nested-clients",
+      "notice": "AWS SDK for JavaScript Team"
+    },
+    {
+      "name": "@aws-sdk/signature-v4-multi-region",
+      "versions": [
+        "3.996.48"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/aws/aws-sdk-js-v3/tree/main/packages/signature-v4-multi-region",
+      "notice": "Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "name": "@aws-sdk/token-providers",
+      "versions": [
+        "3.1153.0"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/aws/aws-sdk-js-v3/tree/main/packages/token-providers",
+      "notice": "Copyright 2018-2020 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "name": "@aws-sdk/types",
+      "versions": [
+        "3.974.6"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/aws/aws-sdk-js-v3/tree/main/packages-internal/types",
+      "notice": "Copyright 2018-2020 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "name": "@aws-sdk/xml-builder",
+      "versions": [
+        "3.972.41"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/aws/aws-sdk-js-v3/tree/main/packages-internal/xml-builder",
+      "notice": "Copyright 2018-2020 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "name": "@aws/lambda-invoke-store",
+      "versions": [
+        "0.3.0"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/awslabs/aws-lambda-invoke-store",
+      "notice": "Amazon Web Services"
+    },
+    {
+      "name": "@babel/code-frame",
+      "versions": [
+        "7.29.7"
+      ],
+      "license": "MIT",
+      "homepage": "https://babel.dev/docs/en/next/babel-code-frame",
+      "notice": "Copyright (c) 2014-present Sebastian McKenzie and other contributors"
+    },
+    {
+      "name": "@babel/compat-data",
+      "versions": [
+        "7.29.7"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/babel/babel#readme",
+      "notice": "Copyright (c) 2014-present Sebastian McKenzie and other contributors"
+    },
+    {
+      "name": "@babel/core",
+      "versions": [
+        "7.29.7"
+      ],
+      "license": "MIT",
+      "homepage": "https://babel.dev/docs/en/next/babel-core",
+      "notice": "Copyright (c) 2014-present Sebastian McKenzie and other contributors"
+    },
+    {
+      "name": "@babel/generator",
+      "versions": [
+        "7.29.8"
+      ],
+      "license": "MIT",
+      "homepage": "https://babel.dev/docs/en/next/babel-generator",
+      "notice": "Copyright (c) 2014-present Sebastian McKenzie and other contributors"
+    },
+    {
+      "name": "@babel/helper-compilation-targets",
+      "versions": [
+        "7.29.7"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/babel/babel#readme",
+      "notice": "Copyright (c) 2014-present Sebastian McKenzie and other contributors"
+    },
+    {
+      "name": "@babel/helper-globals",
+      "versions": [
+        "7.29.7"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/babel/babel#readme",
+      "notice": "Copyright (c) 2014-present Sebastian McKenzie and other contributors"
+    },
+    {
+      "name": "@babel/helper-module-imports",
+      "versions": [
+        "7.29.7"
+      ],
+      "license": "MIT",
+      "homepage": "https://babel.dev/docs/en/next/babel-helper-module-imports",
+      "notice": "Copyright (c) 2014-present Sebastian McKenzie and other contributors"
+    },
+    {
+      "name": "@babel/helper-module-transforms",
+      "versions": [
+        "7.29.7"
+      ],
+      "license": "MIT",
+      "homepage": "https://babel.dev/docs/en/next/babel-helper-module-transforms",
+      "notice": "Copyright (c) 2014-present Sebastian McKenzie and other contributors"
+    },
+    {
+      "name": "@babel/helper-string-parser",
+      "versions": [
+        "7.29.7"
+      ],
+      "license": "MIT",
+      "homepage": "https://babel.dev/docs/en/next/babel-helper-string-parser",
+      "notice": "Copyright (c) 2014-present Sebastian McKenzie and other contributors"
+    },
+    {
+      "name": "@babel/helper-validator-identifier",
+      "versions": [
+        "7.29.7"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/babel/babel#readme",
+      "notice": "Copyright (c) 2014-present Sebastian McKenzie and other contributors"
+    },
+    {
+      "name": "@babel/helper-validator-option",
+      "versions": [
+        "7.29.7"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/babel/babel#readme",
+      "notice": "Copyright (c) 2014-present Sebastian McKenzie and other contributors"
+    },
+    {
+      "name": "@babel/helpers",
+      "versions": [
+        "7.29.10"
+      ],
+      "license": "MIT",
+      "homepage": "https://babel.dev/docs/en/next/babel-helpers",
+      "notice": "Copyright (c) 2014-present Sebastian McKenzie and other contributors\nCopyright (c) 2014-present, Facebook, Inc. (ONLY ./src/helpers/regenerator* files)"
+    },
+    {
+      "name": "@babel/parser",
+      "versions": [
+        "7.29.9"
+      ],
+      "license": "MIT",
+      "homepage": "https://babel.dev/docs/en/next/babel-parser",
+      "notice": "Copyright (C) 2012-2014 by various contributors (see AUTHORS)"
+    },
+    {
+      "name": "@babel/template",
+      "versions": [
+        "7.29.7"
+      ],
+      "license": "MIT",
+      "homepage": "https://babel.dev/docs/en/next/babel-template",
+      "notice": "Copyright (c) 2014-present Sebastian McKenzie and other contributors"
+    },
+    {
+      "name": "@babel/traverse",
+      "versions": [
+        "7.29.10"
+      ],
+      "license": "MIT",
+      "homepage": "https://babel.dev/docs/en/next/babel-traverse",
+      "notice": "Copyright (c) 2014-present Sebastian McKenzie and other contributors"
+    },
+    {
+      "name": "@babel/types",
+      "versions": [
+        "7.29.8"
+      ],
+      "license": "MIT",
+      "homepage": "https://babel.dev/docs/en/next/babel-types",
+      "notice": "Copyright (c) 2014-present Sebastian McKenzie and other contributors"
+    },
+    {
+      "name": "@google-cloud/kms",
+      "versions": [
+        "6.3.0"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/googleapis/google-cloud-node/tree/main/packages/google-cloud-kms",
+      "notice": "Google LLC"
+    },
+    {
+      "name": "@grpc/grpc-js",
+      "versions": [
+        "1.14.6"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://grpc.io/",
+      "notice": "Google Inc."
+    },
+    {
+      "name": "@grpc/proto-loader",
+      "versions": [
+        "0.8.1"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://grpc.io/",
+      "notice": "Google Inc."
+    },
+    {
+      "name": "@jridgewell/gen-mapping",
+      "versions": [
+        "0.3.13"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/jridgewell/sourcemaps/tree/main/packages/gen-mapping",
+      "notice": "Copyright 2024 Justin Ridgewell <justin@ridgewell.name>"
+    },
+    {
+      "name": "@jridgewell/remapping",
+      "versions": [
+        "2.3.5"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/jridgewell/sourcemaps/tree/main/packages/remapping",
+      "notice": "Copyright 2024 Justin Ridgewell <justin@ridgewell.name>"
+    },
+    {
+      "name": "@jridgewell/resolve-uri",
+      "versions": [
+        "3.1.2"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/jridgewell/resolve-uri#readme",
+      "notice": "Copyright 2019 Justin Ridgewell <jridgewell@google.com>"
+    },
+    {
+      "name": "@jridgewell/sourcemap-codec",
+      "versions": [
+        "1.6.0"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/jridgewell/sourcemaps/tree/main/packages/sourcemap-codec",
+      "notice": "Copyright 2024 Justin Ridgewell <justin@ridgewell.name>"
+    },
+    {
+      "name": "@jridgewell/trace-mapping",
+      "versions": [
+        "0.3.31"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/jridgewell/sourcemaps/tree/main/packages/trace-mapping",
+      "notice": "Copyright 2024 Justin Ridgewell <justin@ridgewell.name>"
+    },
+    {
+      "name": "@js-sdsl/ordered-map",
+      "versions": [
+        "4.4.2"
+      ],
+      "license": "MIT",
+      "homepage": "https://js-sdsl.org/",
+      "notice": "Copyright (c) 2021 Zilong Yao"
+    },
+    {
+      "name": "@next/env",
+      "versions": [
+        "16.4.2"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/vercel/next.js#readme",
+      "notice": "Next.js Team"
+    },
+    {
+      "name": "@next/swc-linux-x64-gnu",
+      "versions": [
+        "16.4.2"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/vercel/next.js#readme",
+      "notice": ""
+    },
+    {
+      "name": "@openrouter/ai-sdk-provider",
+      "versions": [
+        "3.1.0"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/OpenRouterTeam/ai-sdk-provider",
+      "notice": "Copyright 2025 OpenRouter Inc,"
+    },
+    {
+      "name": "@opentelemetry/api",
+      "versions": [
+        "1.10.0"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/open-telemetry/opentelemetry-js/tree/main/api",
+      "notice": "OpenTelemetry Authors"
+    },
+    {
+      "name": "@playwright/test",
+      "versions": [
+        "1.64.1"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://playwright.dev/",
+      "notice": "Portions Copyright (c) Microsoft Corporation.\nPortions Copyright 2017 Google Inc.\nPlaywright\nCopyright (c) Microsoft Corporation\n\nThis software contains code derived from the Puppeteer project (https://github.com/puppeteer/puppeteer),\navailable under the Apache 2.0 license (https://github.com/puppeteer/puppeteer/blob/master/LICENSE)."
+    },
+    {
+      "name": "@protobufjs/aspromise",
+      "versions": [
+        "1.1.2"
+      ],
+      "license": "BSD-3-Clause",
+      "homepage": "https://github.com/dcodeIO/protobuf.js#readme",
+      "notice": "Copyright (c) 2016, Daniel Wirtz  All rights reserved."
+    },
+    {
+      "name": "@protobufjs/base64",
+      "versions": [
+        "1.1.2"
+      ],
+      "license": "BSD-3-Clause",
+      "homepage": "https://github.com/dcodeIO/protobuf.js#readme",
+      "notice": "Copyright (c) 2016, Daniel Wirtz  All rights reserved."
+    },
+    {
+      "name": "@protobufjs/codegen",
+      "versions": [
+        "2.0.5"
+      ],
+      "license": "BSD-3-Clause",
+      "homepage": "https://github.com/dcodeIO/protobuf.js#readme",
+      "notice": "Copyright (c) 2016, Daniel Wirtz  All rights reserved."
+    },
+    {
+      "name": "@protobufjs/eventemitter",
+      "versions": [
+        "1.1.1"
+      ],
+      "license": "BSD-3-Clause",
+      "homepage": "https://github.com/dcodeIO/protobuf.js#readme",
+      "notice": "Copyright (c) 2016, Daniel Wirtz  All rights reserved."
+    },
+    {
+      "name": "@protobufjs/fetch",
+      "versions": [
+        "1.1.1"
+      ],
+      "license": "BSD-3-Clause",
+      "homepage": "https://github.com/dcodeIO/protobuf.js#readme",
+      "notice": "Copyright (c) 2016, Daniel Wirtz  All rights reserved."
+    },
+    {
+      "name": "@protobufjs/float",
+      "versions": [
+        "1.0.2"
+      ],
+      "license": "BSD-3-Clause",
+      "homepage": "https://github.com/dcodeIO/protobuf.js#readme",
+      "notice": "Copyright (c) 2016, Daniel Wirtz  All rights reserved."
+    },
+    {
+      "name": "@protobufjs/path",
+      "versions": [
+        "1.1.2"
+      ],
+      "license": "BSD-3-Clause",
+      "homepage": "https://github.com/dcodeIO/protobuf.js#readme",
+      "notice": "Copyright (c) 2016, Daniel Wirtz  All rights reserved."
+    },
+    {
+      "name": "@protobufjs/pool",
+      "versions": [
+        "1.1.0"
+      ],
+      "license": "BSD-3-Clause",
+      "homepage": "https://github.com/dcodeIO/protobuf.js#readme",
+      "notice": "Copyright (c) 2016, Daniel Wirtz  All rights reserved."
+    },
+    {
+      "name": "@protobufjs/utf8",
+      "versions": [
+        "1.1.2"
+      ],
+      "license": "BSD-3-Clause",
+      "homepage": "https://github.com/protobufjs/protobuf.js#readme",
+      "notice": "Copyright (c) 2016, Daniel Wirtz  All rights reserved."
+    },
+    {
+      "name": "@smithy/core",
+      "versions": [
+        "3.36.1"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/smithy-lang/smithy-typescript/tree/main/packages/core",
+      "notice": "Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "name": "@smithy/credential-provider-imds",
+      "versions": [
+        "4.5.2"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/smithy-lang/smithy-typescript/tree/main/packages/credential-provider-imds",
+      "notice": "Copyright 2018-2020 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "name": "@smithy/fetch-http-handler",
+      "versions": [
+        "5.8.0"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/smithy-lang/smithy-typescript/tree/main/packages/fetch-http-handler",
+      "notice": "Copyright 2018-2020 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "name": "@smithy/node-http-handler",
+      "versions": [
+        "4.12.1"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/smithy-lang/smithy-typescript/tree/main/packages/node-http-handler",
+      "notice": "Copyright 2018-2020 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "name": "@smithy/signature-v4",
+      "versions": [
+        "5.7.4"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/smithy-lang/smithy-typescript/tree/main/packages/signature-v4",
+      "notice": "Copyright 2018-2020 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "name": "@smithy/types",
+      "versions": [
+        "4.19.0"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/smithy-lang/smithy-typescript/tree/main/packages/types",
+      "notice": "Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved."
+    },
+    {
+      "name": "@standard-schema/spec",
+      "versions": [
+        "1.1.0"
+      ],
+      "license": "MIT",
+      "homepage": "https://standardschema.dev/",
+      "notice": "Copyright (c) 2024 Colin McDonnell"
+    },
+    {
+      "name": "@swc/helpers",
+      "versions": [
+        "0.5.23"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://swc.rs/",
+      "notice": "Copyright 2024 SWC contributors."
+    },
+    {
+      "name": "@types/node",
+      "versions": [
+        "26.6.5"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/node",
+      "notice": "Copyright (c) Microsoft Corporation."
+    },
+    {
+      "name": "@types/pg",
+      "versions": [
+        "8.23.1"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/pg",
+      "notice": "Copyright (c) Microsoft Corporation."
+    },
+    {
+      "name": "@vercel/oidc",
+      "versions": [
+        "3.2.0"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://vercel.com/",
+      "notice": "Copyright 2017 Vercel, Inc."
+    },
+    {
+      "name": "@workflow/serde",
+      "versions": [
+        "4.1.0"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/vercel/workflow#readme",
+      "notice": ""
+    },
+    {
+      "name": "agent-base",
+      "versions": [
+        "7.1.4"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/TooTallNate/proxy-agents#readme",
+      "notice": "Copyright (c) 2013 Nathan Rajlich <nathan@tootallnate.net>"
+    },
+    {
+      "name": "ai",
+      "versions": [
+        "7.0.148"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://ai-sdk.dev/docs",
+      "notice": "Copyright 2023 Vercel, Inc."
+    },
+    {
+      "name": "ansi-regex",
+      "versions": [
+        "5.0.1"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/chalk/ansi-regex#readme",
+      "notice": "Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)"
+    },
+    {
+      "name": "ansi-styles",
+      "versions": [
+        "4.3.0"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/chalk/ansi-styles#readme",
+      "notice": "Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)"
+    },
+    {
+      "name": "base64-js",
+      "versions": [
+        "1.5.1"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/beatgammit/base64-js",
+      "notice": "Copyright (c) 2014 Jameson Little"
+    },
+    {
+      "name": "baseline-browser-mapping",
+      "versions": [
+        "2.11.30"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/web-platform-dx/baseline-browser-mapping#readme",
+      "notice": ""
+    },
+    {
+      "name": "bignumber.js",
+      "versions": [
+        "9.3.1"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/MikeMcl/bignumber.js#readme",
+      "notice": "Copyright © `<2025>` `Michael Mclaughlin`"
+    },
+    {
+      "name": "bowser",
+      "versions": [
+        "2.14.1"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/bowser-js/bowser",
+      "notice": "Copyright 2015, Dustin Diaz (the \"Original Author\")"
+    },
+    {
+      "name": "browserslist",
+      "versions": [
+        "4.29.4"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/browserslist/browserslist#readme",
+      "notice": "Copyright 2014 Andrey Sitnik <andrey@sitnik.es> and other contributors"
+    },
+    {
+      "name": "buffer-equal-constant-time",
+      "versions": [
+        "1.0.1"
+      ],
+      "license": "BSD-3-Clause",
+      "homepage": "https://github.com/goinstant/buffer-equal-constant-time#readme",
+      "notice": "Copyright (c) 2013, GoInstant Inc., a salesforce.com company"
+    },
+    {
+      "name": "caniuse-lite",
+      "versions": [
+        "1.0.30001817"
+      ],
+      "license": "CC-BY-4.0",
+      "homepage": "https://github.com/browserslist/caniuse-lite#readme",
+      "notice": "caniuse-lite data is maintained by the Can I Use project and licensed under CC BY 4.0 (https://caniuse.com)."
+    },
+    {
+      "name": "client-only",
+      "versions": [
+        "0.0.1"
+      ],
+      "license": "MIT",
+      "homepage": "https://reactjs.org/",
+      "notice": ""
+    },
+    {
+      "name": "cliui",
+      "versions": [
+        "8.0.1"
+      ],
+      "license": "ISC",
+      "homepage": "https://github.com/yargs/cliui#readme",
+      "notice": "Copyright (c) 2015, Contributors"
+    },
+    {
+      "name": "color-convert",
+      "versions": [
+        "2.0.1"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/Qix-/color-convert#readme",
+      "notice": "Copyright (c) 2011-2016 Heather Arthur <fayearthur@gmail.com>"
+    },
+    {
+      "name": "color-name",
+      "versions": [
+        "1.1.4"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/colorjs/color-name",
+      "notice": "Copyright (c) 2015 Dmitry Ivanov"
+    },
+    {
+      "name": "convert-source-map",
+      "versions": [
+        "2.0.0"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/thlorenz/convert-source-map",
+      "notice": "Copyright 2013 Thorsten Lorenz."
+    },
+    {
+      "name": "data-uri-to-buffer",
+      "versions": [
+        "4.0.1"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/TooTallNate/node-data-uri-to-buffer",
+      "notice": "Nathan Rajlich"
+    },
+    {
+      "name": "debug",
+      "versions": [
+        "4.4.3"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/debug-js/debug#readme",
+      "notice": "Copyright (c) 2014-2017 TJ Holowaychuk <tj@vision-media.ca>\nCopyright (c) 2018-2021 Josh Junon"
+    },
+    {
+      "name": "drizzle-orm",
+      "versions": [
+        "0.45.4"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://orm.drizzle.team/",
+      "notice": "Drizzle Team"
+    },
+    {
+      "name": "duplexify",
+      "versions": [
+        "4.1.3"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/mafintosh/duplexify",
+      "notice": "Copyright (c) 2014 Mathias Buus"
+    },
+    {
+      "name": "ecdsa-sig-formatter",
+      "versions": [
+        "1.0.11"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/Brightspace/node-ecdsa-sig-formatter#readme",
+      "notice": "Copyright 2015 D2L Corporation"
+    },
+    {
+      "name": "electron-to-chromium",
+      "versions": [
+        "1.5.461"
+      ],
+      "license": "ISC",
+      "homepage": "https://github.com/Kilian/electron-to-chromium#readme",
+      "notice": "Copyright 2018 Kilian Valkhof"
+    },
+    {
+      "name": "emoji-regex",
+      "versions": [
+        "8.0.0"
+      ],
+      "license": "MIT",
+      "homepage": "https://mths.be/emoji-regex",
+      "notice": "Mathias Bynens"
+    },
+    {
+      "name": "end-of-stream",
+      "versions": [
+        "1.4.5"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/mafintosh/end-of-stream",
+      "notice": "Copyright (c) 2014 Mathias Buus"
+    },
+    {
+      "name": "escalade",
+      "versions": [
+        "3.2.0"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/lukeed/escalade#readme",
+      "notice": "Copyright (c) Luke Edwards <luke.edwards05@gmail.com> (lukeed.com)"
+    },
+    {
+      "name": "eventsource-parser",
+      "versions": [
+        "3.1.1",
+        "4.1.2"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/rexxars/eventsource-parser#readme",
+      "notice": "Copyright (c) 2026 Espen Hovlandsdal <espen@hovlandsdal.com>"
+    },
+    {
+      "name": "extend",
+      "versions": [
+        "3.0.2"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/justmoon/node-extend#readme",
+      "notice": "Copyright (c) 2014 Stefan Thomas"
+    },
+    {
+      "name": "fetch-blob",
+      "versions": [
+        "3.2.0"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/node-fetch/fetch-blob#readme",
+      "notice": "Copyright (c) 2019 David Frank"
+    },
+    {
+      "name": "formdata-polyfill",
+      "versions": [
+        "4.0.10"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/jimmywarting/FormData#readme",
+      "notice": "Copyright (c) 2016 Jimmy Karl Roland Wärting"
+    },
+    {
+      "name": "gaxios",
+      "versions": [
+        "8.3.1"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/googleapis/google-cloud-node/tree/main/core/packages/gaxios",
+      "notice": "Google, LLC"
+    },
+    {
+      "name": "gcp-metadata",
+      "versions": [
+        "9.2.2"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/googleapis/google-cloud-node/tree/main/core/packages/gcp-metadata",
+      "notice": "Google LLC"
+    },
+    {
+      "name": "gensync",
+      "versions": [
+        "1.0.0-beta.2"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/loganfsmyth/gensync",
+      "notice": "Copyright 2018 Logan Smyth <loganfsmyth@gmail.com>"
+    },
+    {
+      "name": "get-caller-file",
+      "versions": [
+        "2.0.5"
+      ],
+      "license": "ISC",
+      "homepage": "https://github.com/stefanpenner/get-caller-file#readme",
+      "notice": "Copyright 2018 Stefan Penner"
+    },
+    {
+      "name": "google-auth-library",
+      "versions": [
+        "11.3.1"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/googleapis/google-cloud-node/tree/main/core/packages/google-auth-library-nodejs",
+      "notice": "Google Inc."
+    },
+    {
+      "name": "google-gax",
+      "versions": [
+        "6.13.0"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/googleapis/google-cloud-node/tree/main/core/packages/gax",
+      "notice": "Google API Authors"
+    },
+    {
+      "name": "google-logging-utils",
+      "versions": [
+        "2.1.0"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/googleapis/google-cloud-node/tree/main/core/packages/logging-utils",
+      "notice": "Google API Authors"
+    },
+    {
+      "name": "https-proxy-agent",
+      "versions": [
+        "7.0.6"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/TooTallNate/proxy-agents#readme",
+      "notice": "Copyright (c) 2013 Nathan Rajlich <nathan@tootallnate.net>"
+    },
+    {
+      "name": "inherits",
+      "versions": [
+        "2.0.4"
+      ],
+      "license": "ISC",
+      "homepage": "https://github.com/isaacs/inherits#readme",
+      "notice": "Copyright (c) Isaac Z. Schlueter"
+    },
+    {
+      "name": "is-fullwidth-code-point",
+      "versions": [
+        "3.0.0"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/sindresorhus/is-fullwidth-code-point#readme",
+      "notice": "Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)"
+    },
+    {
+      "name": "jose",
+      "versions": [
+        "6.2.13"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/panva/jose",
+      "notice": "Copyright (c) 2018 Filip Skokan"
+    },
+    {
+      "name": "js-tokens",
+      "versions": [
+        "4.0.0"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/lydell/js-tokens#readme",
+      "notice": "Copyright (c) 2014, 2015, 2016, 2017, 2018 Simon Lydell"
+    },
+    {
+      "name": "jsesc",
+      "versions": [
+        "3.1.0"
+      ],
+      "license": "MIT",
+      "homepage": "https://mths.be/jsesc",
+      "notice": "Mathias Bynens"
+    },
+    {
+      "name": "json-bigint",
+      "versions": [
+        "1.0.0"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/sidorares/json-bigint#readme",
+      "notice": "Copyright (c) 2013 Andrey Sidorov"
+    },
+    {
+      "name": "json-schema",
+      "versions": [
+        "0.4.0"
+      ],
+      "license": "(AFL-2.1 OR BSD-3-Clause)",
+      "homepage": "https://github.com/kriszyp/json-schema#readme",
+      "notice": "Copyright (c) 2005-2015, The Dojo Foundation\nThis license is Copyright (C) 2003-2004 Lawrence E. Rosen. All rights reserved."
+    },
+    {
+      "name": "json5",
+      "versions": [
+        "2.2.3"
+      ],
+      "license": "MIT",
+      "homepage": "http://json5.org/",
+      "notice": "Copyright (c) 2012-2018 Aseem Kishore, and [others]."
+    },
+    {
+      "name": "jwa",
+      "versions": [
+        "2.0.1"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/brianloveswords/node-jwa#readme",
+      "notice": "Copyright (c) 2013 Brian J. Brennan"
+    },
+    {
+      "name": "jws",
+      "versions": [
+        "4.0.1"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/brianloveswords/node-jws#readme",
+      "notice": "Copyright (c) 2013 Brian J. Brennan"
+    },
+    {
+      "name": "lodash.camelcase",
+      "versions": [
+        "4.3.0"
+      ],
+      "license": "MIT",
+      "homepage": "https://lodash.com/",
+      "notice": "John-David Dalton"
+    },
+    {
+      "name": "long",
+      "versions": [
+        "5.3.2"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/dcodeIO/long.js#readme",
+      "notice": "Daniel Wirtz"
+    },
+    {
+      "name": "lru-cache",
+      "versions": [
+        "5.1.1"
+      ],
+      "license": "ISC",
+      "homepage": "https://github.com/isaacs/node-lru-cache#readme",
+      "notice": "Copyright (c) Isaac Z. Schlueter and Contributors"
+    },
+    {
+      "name": "ms",
+      "versions": [
+        "2.1.3"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/vercel/ms#readme",
+      "notice": "Copyright (c) 2020 Vercel, Inc."
+    },
+    {
+      "name": "nanoid",
+      "versions": [
+        "3.3.20"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/ai/nanoid#readme",
+      "notice": "Copyright 2017 Andrey Sitnik <andrey@sitnik.ru>"
+    },
+    {
+      "name": "next",
+      "versions": [
+        "16.4.2"
+      ],
+      "license": "MIT",
+      "homepage": "https://nextjs.org/",
+      "notice": "Copyright (c) 2025 Vercel, Inc."
+    },
+    {
+      "name": "node-domexception",
+      "versions": [
+        "1.0.0"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/jimmywarting/node-domexception#readme",
+      "notice": "Copyright (c) 2021 Jimmy Wärting"
+    },
+    {
+      "name": "node-fetch",
+      "versions": [
+        "3.3.2"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/node-fetch/node-fetch",
+      "notice": "Copyright (c) 2016 - 2020 Node Fetch Team"
+    },
+    {
+      "name": "node-releases",
+      "versions": [
+        "2.0.59"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/chicoxyzzy/node-releases#readme",
+      "notice": "Copyright (c) 2017 Sergey Rubanov (https://github.com/chicoxyzzy)"
+    },
+    {
+      "name": "oauth4webapi",
+      "versions": [
+        "3.8.8"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/panva/oauth4webapi",
+      "notice": "Copyright (c) 2022 Filip Skokan"
+    },
+    {
+      "name": "object-hash",
+      "versions": [
+        "3.0.0"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/puleos/object-hash",
+      "notice": "Copyright (c) 2014 object-hash contributors"
+    },
+    {
+      "name": "once",
+      "versions": [
+        "1.4.0"
+      ],
+      "license": "ISC",
+      "homepage": "https://github.com/isaacs/once#readme",
+      "notice": "Copyright (c) Isaac Z. Schlueter and Contributors"
+    },
+    {
+      "name": "openid-client",
+      "versions": [
+        "6.8.8"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/panva/openid-client",
+      "notice": "Copyright (c) 2016 Filip Skokan"
+    },
+    {
+      "name": "pg",
+      "versions": [
+        "8.23.1"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/brianc/node-postgres",
+      "notice": "Copyright (c) 2010 - 2021 Brian Carlson"
+    },
+    {
+      "name": "pg-cloudflare",
+      "versions": [
+        "1.4.1"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/brianc/node-postgres#readme",
+      "notice": "Copyright (c) 2010 - 2021 Brian Carlson"
+    },
+    {
+      "name": "pg-connection-string",
+      "versions": [
+        "2.14.1"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/brianc/node-postgres/tree/master/packages/pg-connection-string",
+      "notice": "Copyright (c) 2014 Iced Development"
+    },
+    {
+      "name": "pg-int8",
+      "versions": [
+        "1.0.1"
+      ],
+      "license": "ISC",
+      "homepage": "https://github.com/charmander/pg-int8#readme",
+      "notice": "Copyright © 2017, Charmander <~@charmander.me>"
+    },
+    {
+      "name": "pg-pool",
+      "versions": [
+        "3.14.0"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/brianc/node-postgres/tree/master/packages/pg-pool#readme",
+      "notice": "Copyright (c) 2017 Brian M. Carlson"
+    },
+    {
+      "name": "pg-protocol",
+      "versions": [
+        "1.16.1"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/brianc/node-postgres#readme",
+      "notice": "Copyright (c) 2010 - 2021 Brian Carlson"
+    },
+    {
+      "name": "pg-types",
+      "versions": [
+        "2.2.0"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/brianc/node-pg-types",
+      "notice": "Brian M. Carlson"
+    },
+    {
+      "name": "pgpass",
+      "versions": [
+        "1.0.5"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/hoegaarden/pgpass#readme",
+      "notice": "Hannes Hörl"
+    },
+    {
+      "name": "picocolors",
+      "versions": [
+        "1.1.1"
+      ],
+      "license": "ISC",
+      "homepage": "https://github.com/alexeyraspopov/picocolors#readme",
+      "notice": "Copyright (c) 2021-2024 Oleksii Raspopov, Kostiantyn Denysov, Anton Verinov"
+    },
+    {
+      "name": "playwright",
+      "versions": [
+        "1.64.1"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://playwright.dev/",
+      "notice": "Portions Copyright (c) Microsoft Corporation.\nPortions Copyright 2017 Google Inc.\nPlaywright\nCopyright (c) Microsoft Corporation\n\nThis software contains code derived from the Puppeteer project (https://github.com/puppeteer/puppeteer),\navailable under the Apache 2.0 license (https://github.com/puppeteer/puppeteer/blob/master/LICENSE)."
+    },
+    {
+      "name": "playwright-core",
+      "versions": [
+        "1.64.1"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://playwright.dev/",
+      "notice": "Portions Copyright (c) Microsoft Corporation.\nPortions Copyright 2017 Google Inc.\nPlaywright\nCopyright (c) Microsoft Corporation\n\nThis software contains code derived from the Puppeteer project (https://github.com/puppeteer/puppeteer),\navailable under the Apache 2.0 license (https://github.com/puppeteer/puppeteer/blob/master/LICENSE)."
+    },
+    {
+      "name": "postcss",
+      "versions": [
+        "8.5.23"
+      ],
+      "license": "MIT",
+      "homepage": "https://postcss.org/",
+      "notice": "Copyright 2013 Andrey Sitnik <andrey@sitnik.es>"
+    },
+    {
+      "name": "postgres-array",
+      "versions": [
+        "2.0.0"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/bendrucker/postgres-array#readme",
+      "notice": "Copyright (c) Ben Drucker <bvdrucker@gmail.com> (bendrucker.me)"
+    },
+    {
+      "name": "postgres-bytea",
+      "versions": [
+        "1.0.1"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/bendrucker/postgres-bytea#readme",
+      "notice": "Copyright (c) Ben Drucker <bvdrucker@gmail.com> (bendrucker.me)"
+    },
+    {
+      "name": "postgres-date",
+      "versions": [
+        "1.0.7"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/bendrucker/postgres-date#readme",
+      "notice": "Copyright (c) Ben Drucker <bvdrucker@gmail.com> (bendrucker.me)"
+    },
+    {
+      "name": "postgres-interval",
+      "versions": [
+        "1.2.0"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/bendrucker/postgres-interval#readme",
+      "notice": "Copyright (c) Ben Drucker <bvdrucker@gmail.com> (bendrucker.me)"
+    },
+    {
+      "name": "proto3-json-serializer",
+      "versions": [
+        "4.1.0"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/googleapis/google-cloud-node/tree/main/core/packages/proto3-json-serializer-nodejs",
+      "notice": ""
+    },
+    {
+      "name": "protobufjs",
+      "versions": [
+        "7.6.6"
+      ],
+      "license": "BSD-3-Clause",
+      "homepage": "https://protobufjs.github.io/protobuf.js/",
+      "notice": "Copyright (c) 2016, Daniel Wirtz  All rights reserved."
+    },
+    {
+      "name": "react",
+      "versions": [
+        "19.3.1"
+      ],
+      "license": "MIT",
+      "homepage": "https://react.dev/",
+      "notice": "Copyright (c) Meta Platforms, Inc. and affiliates."
+    },
+    {
+      "name": "react-dom",
+      "versions": [
+        "19.3.1"
+      ],
+      "license": "MIT",
+      "homepage": "https://react.dev/",
+      "notice": "Copyright (c) Meta Platforms, Inc. and affiliates."
+    },
+    {
+      "name": "readable-stream",
+      "versions": [
+        "3.6.2"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/nodejs/readable-stream#readme",
+      "notice": ""
+    },
+    {
+      "name": "require-directory",
+      "versions": [
+        "2.1.1"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/troygoode/node-require-directory/",
+      "notice": "Copyright (c) 2011 Troy Goode <troygoode@gmail.com>"
+    },
+    {
+      "name": "retry-request",
+      "versions": [
+        "9.1.0"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/googleapis/google-cloud-node/tree/main/core/packages/retry-request",
+      "notice": "Copyright (c) 2015 Stephen Sawchuk"
+    },
+    {
+      "name": "safe-buffer",
+      "versions": [
+        "5.2.1"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/feross/safe-buffer",
+      "notice": "Copyright (c) Feross Aboukhadijeh"
+    },
+    {
+      "name": "scheduler",
+      "versions": [
+        "0.28.0"
+      ],
+      "license": "MIT",
+      "homepage": "https://react.dev/",
+      "notice": "Copyright (c) Meta Platforms, Inc. and affiliates."
+    },
+    {
+      "name": "semver",
+      "versions": [
+        "6.3.1"
+      ],
+      "license": "ISC",
+      "homepage": "https://github.com/npm/node-semver#readme",
+      "notice": "Copyright (c) Isaac Z. Schlueter and Contributors"
+    },
+    {
+      "name": "source-map-js",
+      "versions": [
+        "1.2.2"
+      ],
+      "license": "BSD-3-Clause",
+      "homepage": "https://github.com/7rulnik/source-map-js",
+      "notice": "Copyright (c) 2009-2011, Mozilla Foundation and contributors"
+    },
+    {
+      "name": "split2",
+      "versions": [
+        "4.2.0"
+      ],
+      "license": "ISC",
+      "homepage": "https://github.com/mcollina/split2#readme",
+      "notice": "Copyright (c) 2014-2018, Matteo Collina <hello@matteocollina.com>"
+    },
+    {
+      "name": "stream-shift",
+      "versions": [
+        "1.0.3"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/mafintosh/stream-shift",
+      "notice": "Copyright (c) 2016 Mathias Buus"
+    },
+    {
+      "name": "string_decoder",
+      "versions": [
+        "1.3.0"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/nodejs/string_decoder",
+      "notice": ""
+    },
+    {
+      "name": "string-width",
+      "versions": [
+        "4.2.3"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/sindresorhus/string-width#readme",
+      "notice": "Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)"
+    },
+    {
+      "name": "strip-ansi",
+      "versions": [
+        "6.0.1"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/chalk/strip-ansi#readme",
+      "notice": "Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)"
+    },
+    {
+      "name": "styled-jsx",
+      "versions": [
+        "5.1.6"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/vercel/styled-jsx#readme",
+      "notice": "Copyright (c) 2016-present Vercel, Inc."
+    },
+    {
+      "name": "tslib",
+      "versions": [
+        "2.8.1"
+      ],
+      "license": "0BSD",
+      "homepage": "https://www.typescriptlang.org/",
+      "notice": "Copyright (c) Microsoft Corporation."
+    },
+    {
+      "name": "undici",
+      "versions": [
+        "7.30.1"
+      ],
+      "license": "MIT",
+      "homepage": "https://undici.nodejs.org/",
+      "notice": "Copyright (c) Matteo Collina and Undici contributors"
+    },
+    {
+      "name": "undici-types",
+      "versions": [
+        "8.9.0"
+      ],
+      "license": "MIT",
+      "homepage": "https://undici.nodejs.org/",
+      "notice": "Copyright (c) Matteo Collina and Undici contributors"
+    },
+    {
+      "name": "update-browserslist-db",
+      "versions": [
+        "1.3.4"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/browserslist/update-db#readme",
+      "notice": "Copyright 2022 Andrey Sitnik <andrey@sitnik.es> and other contributors"
+    },
+    {
+      "name": "util-deprecate",
+      "versions": [
+        "1.0.2"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/TooTallNate/util-deprecate",
+      "notice": "Copyright (c) 2014 Nathan Rajlich <nathan@tootallnate.net>"
+    },
+    {
+      "name": "web-streams-polyfill",
+      "versions": [
+        "3.3.3"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/MattiasBuelens/web-streams-polyfill#readme",
+      "notice": "Copyright (c) 2024 Mattias Buelens\nCopyright (c) 2016 Diwank Singh Tomer"
+    },
+    {
+      "name": "wrap-ansi",
+      "versions": [
+        "7.0.0"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/chalk/wrap-ansi#readme",
+      "notice": "Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)"
+    },
+    {
+      "name": "wrappy",
+      "versions": [
+        "1.0.2"
+      ],
+      "license": "ISC",
+      "homepage": "https://github.com/npm/wrappy",
+      "notice": "Copyright (c) Isaac Z. Schlueter and Contributors"
+    },
+    {
+      "name": "xtend",
+      "versions": [
+        "4.0.2"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/Raynos/xtend",
+      "notice": "Copyright (c) 2012-2014 Raynos."
+    },
+    {
+      "name": "y18n",
+      "versions": [
+        "5.0.8"
+      ],
+      "license": "ISC",
+      "homepage": "https://github.com/yargs/y18n",
+      "notice": "Copyright (c) 2015, Contributors"
+    },
+    {
+      "name": "yallist",
+      "versions": [
+        "3.1.1"
+      ],
+      "license": "ISC",
+      "homepage": "https://github.com/isaacs/yallist#readme",
+      "notice": "Copyright (c) Isaac Z. Schlueter and Contributors"
+    },
+    {
+      "name": "yargs",
+      "versions": [
+        "17.7.3"
+      ],
+      "license": "MIT",
+      "homepage": "https://yargs.js.org/",
+      "notice": "Copyright 2010 James Halliday (mail@substack.net); Modified work Copyright 2014 Contributors (ben@npmjs.com)"
+    },
+    {
+      "name": "yargs-parser",
+      "versions": [
+        "21.1.1"
+      ],
+      "license": "ISC",
+      "homepage": "https://github.com/yargs/yargs-parser#readme",
+      "notice": "Copyright (c) 2016, Contributors"
+    },
+    {
+      "name": "zod",
+      "versions": [
+        "4.6.7"
+      ],
+      "license": "MIT",
+      "homepage": "https://zod.dev/",
+      "notice": "Copyright (c) 2025 Colin McDonnell"
+    }
+  ],
+  "licenseTexts": [
+    {
+      "license": "(AFL-2.1 OR BSD-3-Clause)",
+      "text": "Dojo is available under *either* the terms of the BSD 3-Clause \"New\" License *or* the\r\nAcademic Free License version 2.1. As a recipient of Dojo, you may choose which\r\nlicense to receive this code under (except as noted in per-module LICENSE\r\nfiles). Some modules may not be the copyright of the Dojo Foundation. These\r\nmodules contain explicit declarations of copyright in both the LICENSE files in\r\nthe directories in which they reside and in the code itself. No external\r\ncontributions are allowed under licenses which are fundamentally incompatible\r\nwith the AFL-2.1 OR and BSD-3-Clause licenses that Dojo is distributed under.\r\n\r\nThe text of the AFL-2.1 and BSD-3-Clause licenses is reproduced below. \r\n\r\n-------------------------------------------------------------------------------\r\nBSD 3-Clause \"New\" License:\r\n**********************\r\n\r\nCopyright (c) 2005-2015, The Dojo Foundation\r\nAll rights reserved.\r\n\r\nRedistribution and use in source and binary forms, with or without\r\nmodification, are permitted provided that the following conditions are met:\r\n\r\n  * Redistributions of source code must retain the above copyright notice, this\r\n    list of conditions and the following disclaimer.\r\n  * Redistributions in binary form must reproduce the above copyright notice,\r\n    this list of conditions and the following disclaimer in the documentation\r\n    and/or other materials provided with the distribution.\r\n  * Neither the name of the Dojo Foundation nor the names of its contributors\r\n    may be used to endorse or promote products derived from this software\r\n    without specific prior written permission.\r\n\r\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\" AND\r\nANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED\r\nWARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE\r\nDISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE\r\nFOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL\r\nDAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR\r\nSERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER\r\nCAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,\r\nOR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE\r\nOF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\r\n\r\n-------------------------------------------------------------------------------\r\nThe Academic Free License, v. 2.1:\r\n**********************************\r\n\r\nThis Academic Free License (the \"License\") applies to any original work of\r\nauthorship (the \"Original Work\") whose owner (the \"Licensor\") has placed the\r\nfollowing notice immediately following the copyright notice for the Original\r\nWork:\r\n\r\nLicensed under the Academic Free License version 2.1\r\n\r\n1) Grant of Copyright License. Licensor hereby grants You a world-wide,\r\nroyalty-free, non-exclusive, perpetual, sublicenseable license to do the\r\nfollowing:\r\n\r\na) to reproduce the Original Work in copies;\r\n\r\nb) to prepare derivative works (\"Derivative Works\") based upon the Original\r\nWork;\r\n\r\nc) to distribute copies of the Original Work and Derivative Works to the\r\npublic;\r\n\r\nd) to perform the Original Work publicly; and\r\n\r\ne) to display the Original Work publicly.\r\n\r\n2) Grant of Patent License. Licensor hereby grants You a world-wide,\r\nroyalty-free, non-exclusive, perpetual, sublicenseable license, under patent\r\nclaims owned or controlled by the Licensor that are embodied in the Original\r\nWork as furnished by the Licensor, to make, use, sell and offer for sale the\r\nOriginal Work and Derivative Works.\r\n\r\n3) Grant of Source Code License. The term \"Source Code\" means the preferred\r\nform of the Original Work for making modifications to it and all available\r\ndocumentation describing how to modify the Original Work. Licensor hereby\r\nagrees to provide a machine-readable copy of the Source Code of the Original\r\nWork along with each copy of the Original Work that Licensor distributes.\r\nLicensor reserves the right to satisfy this obligation by placing a\r\nmachine-readable copy of the Source Code in an information repository\r\nreasonably calculated to permit inexpensive and convenient access by You for as\r\nlong as Licensor continues to distribute the Original Work, and by publishing\r\nthe address of that information repository in a notice immediately following\r\nthe copyright notice that applies to the Original Work.\r\n\r\n4) Exclusions From License Grant. Neither the names of Licensor, nor the names\r\nof any contributors to the Original Work, nor any of their trademarks or\r\nservice marks, may be used to endorse or promote products derived from this\r\nOriginal Work without express prior written permission of the Licensor. Nothing\r\nin this License shall be deemed to grant any rights to trademarks, copyrights,\r\npatents, trade secrets or any other intellectual property of Licensor except as\r\nexpressly stated herein. No patent license is granted to make, use, sell or\r\noffer to sell embodiments of any patent claims other than the licensed claims\r\ndefined in Section 2. No right is granted to the trademarks of Licensor even if\r\nsuch marks are included in the Original Work. Nothing in this License shall be\r\ninterpreted to prohibit Licensor from licensing under different terms from this\r\nLicense any Original Work that Licensor otherwise would have a right to\r\nlicense.\r\n\r\n5) This section intentionally omitted.\r\n\r\n6) Attribution Rights. You must retain, in the Source Code of any Derivative\r\nWorks that You create, all copyright, patent or trademark notices from the\r\nSource Code of the Original Work, as well as any notices of licensing and any\r\ndescriptive text identified therein as an \"Attribution Notice.\" You must cause\r\nthe Source Code for any Derivative Works that You create to carry a prominent\r\nAttribution Notice reasonably calculated to inform recipients that You have\r\nmodified the Original Work.\r\n\r\n7) Warranty of Provenance and Disclaimer of Warranty. Licensor warrants that\r\nthe copyright in and to the Original Work and the patent rights granted herein\r\nby Licensor are owned by the Licensor or are sublicensed to You under the terms\r\nof this License with the permission of the contributor(s) of those copyrights\r\nand patent rights. Except as expressly stated in the immediately proceeding\r\nsentence, the Original Work is provided under this License on an \"AS IS\" BASIS\r\nand WITHOUT WARRANTY, either express or implied, including, without limitation,\r\nthe warranties of NON-INFRINGEMENT, MERCHANTABILITY or FITNESS FOR A PARTICULAR\r\nPURPOSE. THE ENTIRE RISK AS TO THE QUALITY OF THE ORIGINAL WORK IS WITH YOU.\r\nThis DISCLAIMER OF WARRANTY constitutes an essential part of this License. No\r\nlicense to Original Work is granted hereunder except under this disclaimer.\r\n\r\n8) Limitation of Liability. Under no circumstances and under no legal theory,\r\nwhether in tort (including negligence), contract, or otherwise, shall the\r\nLicensor be liable to any person for any direct, indirect, special, incidental,\r\nor consequential damages of any character arising as a result of this License\r\nor the use of the Original Work including, without limitation, damages for loss\r\nof goodwill, work stoppage, computer failure or malfunction, or any and all\r\nother commercial damages or losses. This limitation of liability shall not\r\napply to liability for death or personal injury resulting from Licensor's\r\nnegligence to the extent applicable law prohibits such limitation. Some\r\njurisdictions do not allow the exclusion or limitation of incidental or\r\nconsequential damages, so this exclusion and limitation may not apply to You.\r\n\r\n9) Acceptance and Termination. If You distribute copies of the Original Work or\r\na Derivative Work, You must make a reasonable effort under the circumstances to\r\nobtain the express assent of recipients to the terms of this License. Nothing\r\nelse but this License (or another written agreement between Licensor and You)\r\ngrants You permission to create Derivative Works based upon the Original Work\r\nor to exercise any of the rights granted in Section 1 herein, and any attempt\r\nto do so except under the terms of this License (or another written agreement\r\nbetween Licensor and You) is expressly prohibited by U.S. copyright law, the\r\nequivalent laws of other countries, and by international treaty. Therefore, by\r\nexercising any of the rights granted to You in Section 1 herein, You indicate\r\nYour acceptance of this License and all of its terms and conditions.\r\n\r\n10) Termination for Patent Action. This License shall terminate automatically\r\nand You may no longer exercise any of the rights granted to You by this License\r\nas of the date You commence an action, including a cross-claim or counterclaim,\r\nagainst Licensor or any licensee alleging that the Original Work infringes a\r\npatent. This termination provision shall not apply for an action alleging\r\npatent infringement by combinations of the Original Work with other software or\r\nhardware.\r\n\r\n11) Jurisdiction, Venue and Governing Law. Any action or suit relating to this\r\nLicense may be brought only in the courts of a jurisdiction wherein the\r\nLicensor resides or in which Licensor conducts its primary business, and under\r\nthe laws of that jurisdiction excluding its conflict-of-law provisions. The\r\napplication of the United Nations Convention on Contracts for the International\r\nSale of Goods is expressly excluded. Any use of the Original Work outside the\r\nscope of this License or after its termination shall be subject to the\r\nrequirements and penalties of the U.S. Copyright Act, 17 U.S.C. Â§ 101 et\r\nseq., the equivalent laws of other countries, and international treaty. This\r\nsection shall survive the termination of this License.\r\n\r\n12) Attorneys Fees. In any action to enforce the terms of this License or\r\nseeking damages relating thereto, the prevailing party shall be entitled to\r\nrecover its costs and expenses, including, without limitation, reasonable\r\nattorneys' fees and costs incurred in connection with such action, including\r\nany appeal of such action. This section shall survive the termination of this\r\nLicense.\r\n\r\n13) Miscellaneous. This License represents the complete agreement concerning\r\nthe subject matter hereof. If any provision of this License is held to be\r\nunenforceable, such provision shall be reformed only to the extent necessary to\r\nmake it enforceable.\r\n\r\n14) Definition of \"You\" in This License. \"You\" throughout this License, whether\r\nin upper or lower case, means an individual or a legal entity exercising rights\r\nunder, and complying with all of the terms of, this License. For legal\r\nentities, \"You\" includes any entity that controls, is controlled by, or is\r\nunder common control with you. For purposes of this definition, \"control\" means\r\n(i) the power, direct or indirect, to cause the direction or management of such\r\nentity, whether by contract or otherwise, or (ii) ownership of fifty percent\r\n(50%) or more of the outstanding shares, or (iii) beneficial ownership of such\r\nentity.\r\n\r\n15) Right to Use. You may use the Original Work in all ways not otherwise\r\nrestricted or conditioned by this License or by law, and Licensor promises not\r\nto interfere with or be responsible for such uses by You.\r\n\r\nThis license is Copyright (C) 2003-2004 Lawrence E. Rosen. All rights reserved.\r\nPermission is hereby granted to copy and distribute this license without\r\nmodification. This license may not be modified without the express written\r\npermission of its copyright owner."
+    },
+    {
+      "license": "0BSD",
+      "text": "Copyright (c) Microsoft Corporation.\r\n\r\nPermission to use, copy, modify, and/or distribute this software for any\r\npurpose with or without fee is hereby granted.\r\n\r\nTHE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH\r\nREGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY\r\nAND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,\r\nINDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM\r\nLOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR\r\nOTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR\r\nPERFORMANCE OF THIS SOFTWARE."
+    },
+    {
+      "license": "Apache-2.0",
+      "text": "Apache License\r\n                           Version 2.0, January 2004\r\n                        http://www.apache.org/licenses/\r\n\r\n   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION\r\n\r\n   1. Definitions.\r\n\r\n      \"License\" shall mean the terms and conditions for use, reproduction,\r\n      and distribution as defined by Sections 1 through 9 of this document.\r\n\r\n      \"Licensor\" shall mean the copyright owner or entity authorized by\r\n      the copyright owner that is granting the License.\r\n\r\n      \"Legal Entity\" shall mean the union of the acting entity and all\r\n      other entities that control, are controlled by, or are under common\r\n      control with that entity. For the purposes of this definition,\r\n      \"control\" means (i) the power, direct or indirect, to cause the\r\n      direction or management of such entity, whether by contract or\r\n      otherwise, or (ii) ownership of fifty percent (50%) or more of the\r\n      outstanding shares, or (iii) beneficial ownership of such entity.\r\n\r\n      \"You\" (or \"Your\") shall mean an individual or Legal Entity\r\n      exercising permissions granted by this License.\r\n\r\n      \"Source\" form shall mean the preferred form for making modifications,\r\n      including but not limited to software source code, documentation\r\n      source, and configuration files.\r\n\r\n      \"Object\" form shall mean any form resulting from mechanical\r\n      transformation or translation of a Source form, including but\r\n      not limited to compiled object code, generated documentation,\r\n      and conversions to other media types.\r\n\r\n      \"Work\" shall mean the work of authorship, whether in Source or\r\n      Object form, made available under the License, as indicated by a\r\n      copyright notice that is included in or attached to the work\r\n      (an example is provided in the Appendix below).\r\n\r\n      \"Derivative Works\" shall mean any work, whether in Source or Object\r\n      form, that is based on (or derived from) the Work and for which the\r\n      editorial revisions, annotations, elaborations, or other modifications\r\n      represent, as a whole, an original work of authorship. For the purposes\r\n      of this License, Derivative Works shall not include works that remain\r\n      separable from, or merely link (or bind by name) to the interfaces of,\r\n      the Work and Derivative Works thereof.\r\n\r\n      \"Contribution\" shall mean any work of authorship, including\r\n      the original version of the Work and any modifications or additions\r\n      to that Work or Derivative Works thereof, that is intentionally\r\n      submitted to Licensor for inclusion in the Work by the copyright owner\r\n      or by an individual or Legal Entity authorized to submit on behalf of\r\n      the copyright owner. For the purposes of this definition, \"submitted\"\r\n      means any form of electronic, verbal, or written communication sent\r\n      to the Licensor or its representatives, including but not limited to\r\n      communication on electronic mailing lists, source code control systems,\r\n      and issue tracking systems that are managed by, or on behalf of, the\r\n      Licensor for the purpose of discussing and improving the Work, but\r\n      excluding communication that is conspicuously marked or otherwise\r\n      designated in writing by the copyright owner as \"Not a Contribution.\"\r\n\r\n      \"Contributor\" shall mean Licensor and any individual or Legal Entity\r\n      on behalf of whom a Contribution has been received by Licensor and\r\n      subsequently incorporated within the Work.\r\n\r\n   2. Grant of Copyright License. Subject to the terms and conditions of\r\n      this License, each Contributor hereby grants to You a perpetual,\r\n      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\r\n      copyright license to reproduce, prepare Derivative Works of,\r\n      publicly display, publicly perform, sublicense, and distribute the\r\n      Work and such Derivative Works in Source or Object form.\r\n\r\n   3. Grant of Patent License. Subject to the terms and conditions of\r\n      this License, each Contributor hereby grants to You a perpetual,\r\n      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\r\n      (except as stated in this section) patent license to make, have made,\r\n      use, offer to sell, sell, import, and otherwise transfer the Work,\r\n      where such license applies only to those patent claims licensable\r\n      by such Contributor that are necessarily infringed by their\r\n      Contribution(s) alone or by combination of their Contribution(s)\r\n      with the Work to which such Contribution(s) was submitted. If You\r\n      institute patent litigation against any entity (including a\r\n      cross-claim or counterclaim in a lawsuit) alleging that the Work\r\n      or a Contribution incorporated within the Work constitutes direct\r\n      or contributory patent infringement, then any patent licenses\r\n      granted to You under this License for that Work shall terminate\r\n      as of the date such litigation is filed.\r\n\r\n   4. Redistribution. You may reproduce and distribute copies of the\r\n      Work or Derivative Works thereof in any medium, with or without\r\n      modifications, and in Source or Object form, provided that You\r\n      meet the following conditions:\r\n\r\n      (a) You must give any other recipients of the Work or\r\n          Derivative Works a copy of this License; and\r\n\r\n      (b) You must cause any modified files to carry prominent notices\r\n          stating that You changed the files; and\r\n\r\n      (c) You must retain, in the Source form of any Derivative Works\r\n          that You distribute, all copyright, patent, trademark, and\r\n          attribution notices from the Source form of the Work,\r\n          excluding those notices that do not pertain to any part of\r\n          the Derivative Works; and\r\n\r\n      (d) If the Work includes a \"NOTICE\" text file as part of its\r\n          distribution, then any Derivative Works that You distribute must\r\n          include a readable copy of the attribution notices contained\r\n          within such NOTICE file, excluding those notices that do not\r\n          pertain to any part of the Derivative Works, in at least one\r\n          of the following places: within a NOTICE text file distributed\r\n          as part of the Derivative Works; within the Source form or\r\n          documentation, if provided along with the Derivative Works; or,\r\n          within a display generated by the Derivative Works, if and\r\n          wherever such third-party notices normally appear. The contents\r\n          of the NOTICE file are for informational purposes only and\r\n          do not modify the License. You may add Your own attribution\r\n          notices within Derivative Works that You distribute, alongside\r\n          or as an addendum to the NOTICE text from the Work, provided\r\n          that such additional attribution notices cannot be construed\r\n          as modifying the License.\r\n\r\n      You may add Your own copyright statement to Your modifications and\r\n      may provide additional or different license terms and conditions\r\n      for use, reproduction, or distribution of Your modifications, or\r\n      for any such Derivative Works as a whole, provided Your use,\r\n      reproduction, and distribution of the Work otherwise complies with\r\n      the conditions stated in this License.\r\n\r\n   5. Submission of Contributions. Unless You explicitly state otherwise,\r\n      any Contribution intentionally submitted for inclusion in the Work\r\n      by You to the Licensor shall be under the terms and conditions of\r\n      this License, without any additional terms or conditions.\r\n      Notwithstanding the above, nothing herein shall supersede or modify\r\n      the terms of any separate license agreement you may have executed\r\n      with Licensor regarding such Contributions.\r\n\r\n   6. Trademarks. This License does not grant permission to use the trade\r\n      names, trademarks, service marks, or product names of the Licensor,\r\n      except as required for reasonable and customary use in describing the\r\n      origin of the Work and reproducing the content of the NOTICE file.\r\n\r\n   7. Disclaimer of Warranty. Unless required by applicable law or\r\n      agreed to in writing, Licensor provides the Work (and each\r\n      Contributor provides its Contributions) on an \"AS IS\" BASIS,\r\n      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or\r\n      implied, including, without limitation, any warranties or conditions\r\n      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A\r\n      PARTICULAR PURPOSE. You are solely responsible for determining the\r\n      appropriateness of using or redistributing the Work and assume any\r\n      risks associated with Your exercise of permissions under this License.\r\n\r\n   8. Limitation of Liability. In no event and under no legal theory,\r\n      whether in tort (including negligence), contract, or otherwise,\r\n      unless required by applicable law (such as deliberate and grossly\r\n      negligent acts) or agreed to in writing, shall any Contributor be\r\n      liable to You for damages, including any direct, indirect, special,\r\n      incidental, or consequential damages of any character arising as a\r\n      result of this License or out of the use or inability to use the\r\n      Work (including but not limited to damages for loss of goodwill,\r\n      work stoppage, computer failure or malfunction, or any and all\r\n      other commercial damages or losses), even if such Contributor\r\n      has been advised of the possibility of such damages.\r\n\r\n   9. Accepting Warranty or Additional Liability. While redistributing\r\n      the Work or Derivative Works thereof, You may choose to offer,\r\n      and charge a fee for, acceptance of support, warranty, indemnity,\r\n      or other liability obligations and/or rights consistent with this\r\n      License. However, in accepting such obligations, You may act only\r\n      on Your own behalf and on Your sole responsibility, not on behalf\r\n      of any other Contributor, and only if You agree to indemnify,\r\n      defend, and hold each Contributor harmless for any liability\r\n      incurred by, or claims asserted against, such Contributor by reason\r\n      of your accepting any such warranty or additional liability.\r\n\r\n   END OF TERMS AND CONDITIONS\r\n\r\n   APPENDIX: How to apply the Apache License to your work.\r\n\r\n      To apply the Apache License to your work, attach the following\r\n      boilerplate notice, with the fields enclosed by brackets \"[]\"\r\n      replaced with your own identifying information. (Don't include\r\n      the brackets!)  The text should be enclosed in the appropriate\r\n      comment syntax for the file format. We also recommend that a\r\n      file or class name and description of purpose be included on the\r\n      same \"printed page\" as the copyright notice for easier\r\n      identification within third-party archives.\r\n\r\n   Portions Copyright (c) Microsoft Corporation.\r\n   Portions Copyright 2017 Google Inc.\r\n\r\n   Licensed under the Apache License, Version 2.0 (the \"License\");\r\n   you may not use this file except in compliance with the License.\r\n   You may obtain a copy of the License at\r\n\r\n       http://www.apache.org/licenses/LICENSE-2.0\r\n\r\n   Unless required by applicable law or agreed to in writing, software\r\n   distributed under the License is distributed on an \"AS IS\" BASIS,\r\n   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\r\n   See the License for the specific language governing permissions and\r\n   limitations under the License."
+    },
+    {
+      "license": "BSD-3-Clause",
+      "text": "This license applies to all parts of protobuf.js except those files\neither explicitly including or referencing a different license or\nlocated in a directory containing a different LICENSE file.\n\n---\n\nCopyright (c) 2016, Daniel Wirtz  All rights reserved.\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are\nmet:\n\n* Redistributions of source code must retain the above copyright\n  notice, this list of conditions and the following disclaimer.\n* Redistributions in binary form must reproduce the above copyright\n  notice, this list of conditions and the following disclaimer in the\n  documentation and/or other materials provided with the distribution.\n* Neither the name of its author, nor the names of its contributors\n  may be used to endorse or promote products derived from this software\n  without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS\n\"AS IS\" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT\nLIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR\nA PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT\nOWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,\nSPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT\nLIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,\nDATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY\nTHEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT\n(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE\nOF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n\n---\n\nCode generated by the command line utilities is owned by the owner\nof the input file used when generating it. This code is not\nstandalone and requires a support library to be linked with it. This\nsupport library is itself covered by the above license."
+    },
+    {
+      "license": "CC-BY-4.0",
+      "text": "Attribution 4.0 International\n\n=======================================================================\n\nCreative Commons Corporation (\"Creative Commons\") is not a law firm and\ndoes not provide legal services or legal advice. Distribution of\nCreative Commons public licenses does not create a lawyer-client or\nother relationship. Creative Commons makes its licenses and related\ninformation available on an \"as-is\" basis. Creative Commons gives no\nwarranties regarding its licenses, any material licensed under their\nterms and conditions, or any related information. Creative Commons\ndisclaims all liability for damages resulting from their use to the\nfullest extent possible.\n\nUsing Creative Commons Public Licenses\n\nCreative Commons public licenses provide a standard set of terms and\nconditions that creators and other rights holders may use to share\noriginal works of authorship and other material subject to copyright\nand certain other rights specified in the public license below. The\nfollowing considerations are for informational purposes only, are not\nexhaustive, and do not form part of our licenses.\n\n     Considerations for licensors: Our public licenses are\n     intended for use by those authorized to give the public\n     permission to use material in ways otherwise restricted by\n     copyright and certain other rights. Our licenses are\n     irrevocable. Licensors should read and understand the terms\n     and conditions of the license they choose before applying it.\n     Licensors should also secure all rights necessary before\n     applying our licenses so that the public can reuse the\n     material as expected. Licensors should clearly mark any\n     material not subject to the license. This includes other CC-\n     licensed material, or material used under an exception or\n     limitation to copyright. More considerations for licensors:\n\twiki.creativecommons.org/Considerations_for_licensors\n\n     Considerations for the public: By using one of our public\n     licenses, a licensor grants the public permission to use the\n     licensed material under specified terms and conditions. If\n     the licensor's permission is not necessary for any reason--for\n     example, because of any applicable exception or limitation to\n     copyright--then that use is not regulated by the license. Our\n     licenses grant only permissions under copyright and certain\n     other rights that a licensor has authority to grant. Use of\n     the licensed material may still be restricted for other\n     reasons, including because others have copyright or other\n     rights in the material. A licensor may make special requests,\n     such as asking that all changes be marked or described.\n     Although not required by our licenses, you are encouraged to\n     respect those requests where reasonable. More_considerations\n     for the public: \n\twiki.creativecommons.org/Considerations_for_licensees\n\n=======================================================================\n\nCreative Commons Attribution 4.0 International Public License\n\nBy exercising the Licensed Rights (defined below), You accept and agree\nto be bound by the terms and conditions of this Creative Commons\nAttribution 4.0 International Public License (\"Public License\"). To the\nextent this Public License may be interpreted as a contract, You are\ngranted the Licensed Rights in consideration of Your acceptance of\nthese terms and conditions, and the Licensor grants You such rights in\nconsideration of benefits the Licensor receives from making the\nLicensed Material available under these terms and conditions.\n\n\nSection 1 -- Definitions.\n\n  a. Adapted Material means material subject to Copyright and Similar\n     Rights that is derived from or based upon the Licensed Material\n     and in which the Licensed Material is translated, altered,\n     arranged, transformed, or otherwise modified in a manner requiring\n     permission under the Copyright and Similar Rights held by the\n     Licensor. For purposes of this Public License, where the Licensed\n     Material is a musical work, performance, or sound recording,\n     Adapted Material is always produced where the Licensed Material is\n     synched in timed relation with a moving image.\n\n  b. Adapter's License means the license You apply to Your Copyright\n     and Similar Rights in Your contributions to Adapted Material in\n     accordance with the terms and conditions of this Public License.\n\n  c. Copyright and Similar Rights means copyright and/or similar rights\n     closely related to copyright including, without limitation,\n     performance, broadcast, sound recording, and Sui Generis Database\n     Rights, without regard to how the rights are labeled or\n     categorized. For purposes of this Public License, the rights\n     specified in Section 2(b)(1)-(2) are not Copyright and Similar\n     Rights.\n\n  d. Effective Technological Measures means those measures that, in the\n     absence of proper authority, may not be circumvented under laws\n     fulfilling obligations under Article 11 of the WIPO Copyright\n     Treaty adopted on December 20, 1996, and/or similar international\n     agreements.\n\n  e. Exceptions and Limitations means fair use, fair dealing, and/or\n     any other exception or limitation to Copyright and Similar Rights\n     that applies to Your use of the Licensed Material.\n\n  f. Licensed Material means the artistic or literary work, database,\n     or other material to which the Licensor applied this Public\n     License.\n\n  g. Licensed Rights means the rights granted to You subject to the\n     terms and conditions of this Public License, which are limited to\n     all Copyright and Similar Rights that apply to Your use of the\n     Licensed Material and that the Licensor has authority to license.\n\n  h. Licensor means the individual(s) or entity(ies) granting rights\n     under this Public License.\n\n  i. Share means to provide material to the public by any means or\n     process that requires permission under the Licensed Rights, such\n     as reproduction, public display, public performance, distribution,\n     dissemination, communication, or importation, and to make material\n     available to the public including in ways that members of the\n     public may access the material from a place and at a time\n     individually chosen by them.\n\n  j. Sui Generis Database Rights means rights other than copyright\n     resulting from Directive 96/9/EC of the European Parliament and of\n     the Council of 11 March 1996 on the legal protection of databases,\n     as amended and/or succeeded, as well as other essentially\n     equivalent rights anywhere in the world.\n\n  k. You means the individual or entity exercising the Licensed Rights\n     under this Public License. Your has a corresponding meaning.\n\n\nSection 2 -- Scope.\n\n  a. License grant.\n\n       1. Subject to the terms and conditions of this Public License,\n          the Licensor hereby grants You a worldwide, royalty-free,\n          non-sublicensable, non-exclusive, irrevocable license to\n          exercise the Licensed Rights in the Licensed Material to:\n\n            a. reproduce and Share the Licensed Material, in whole or\n               in part; and\n\n            b. produce, reproduce, and Share Adapted Material.\n\n       2. Exceptions and Limitations. For the avoidance of doubt, where\n          Exceptions and Limitations apply to Your use, this Public\n          License does not apply, and You do not need to comply with\n          its terms and conditions.\n\n       3. Term. The term of this Public License is specified in Section\n          6(a).\n\n       4. Media and formats; technical modifications allowed. The\n          Licensor authorizes You to exercise the Licensed Rights in\n          all media and formats whether now known or hereafter created,\n          and to make technical modifications necessary to do so. The\n          Licensor waives and/or agrees not to assert any right or\n          authority to forbid You from making technical modifications\n          necessary to exercise the Licensed Rights, including\n          technical modifications necessary to circumvent Effective\n          Technological Measures. For purposes of this Public License,\n          simply making modifications authorized by this Section 2(a)\n          (4) never produces Adapted Material.\n\n       5. Downstream recipients.\n\n            a. Offer from the Licensor -- Licensed Material. Every\n               recipient of the Licensed Material automatically\n               receives an offer from the Licensor to exercise the\n               Licensed Rights under the terms and conditions of this\n               Public License.\n\n            b. No downstream restrictions. You may not offer or impose\n               any additional or different terms or conditions on, or\n               apply any Effective Technological Measures to, the\n               Licensed Material if doing so restricts exercise of the\n               Licensed Rights by any recipient of the Licensed\n               Material.\n\n       6. No endorsement. Nothing in this Public License constitutes or\n          may be construed as permission to assert or imply that You\n          are, or that Your use of the Licensed Material is, connected\n          with, or sponsored, endorsed, or granted official status by,\n          the Licensor or others designated to receive attribution as\n          provided in Section 3(a)(1)(A)(i).\n\n  b. Other rights.\n\n       1. Moral rights, such as the right of integrity, are not\n          licensed under this Public License, nor are publicity,\n          privacy, and/or other similar personality rights; however, to\n          the extent possible, the Licensor waives and/or agrees not to\n          assert any such rights held by the Licensor to the limited\n          extent necessary to allow You to exercise the Licensed\n          Rights, but not otherwise.\n\n       2. Patent and trademark rights are not licensed under this\n          Public License.\n\n       3. To the extent possible, the Licensor waives any right to\n          collect royalties from You for the exercise of the Licensed\n          Rights, whether directly or through a collecting society\n          under any voluntary or waivable statutory or compulsory\n          licensing scheme. In all other cases the Licensor expressly\n          reserves any right to collect such royalties.\n\n\nSection 3 -- License Conditions.\n\nYour exercise of the Licensed Rights is expressly made subject to the\nfollowing conditions.\n\n  a. Attribution.\n\n       1. If You Share the Licensed Material (including in modified\n          form), You must:\n\n            a. retain the following if it is supplied by the Licensor\n               with the Licensed Material:\n\n                 i. identification of the creator(s) of the Licensed\n                    Material and any others designated to receive\n                    attribution, in any reasonable manner requested by\n                    the Licensor (including by pseudonym if\n                    designated);\n\n                ii. a copyright notice;\n\n               iii. a notice that refers to this Public License;\n\n                iv. a notice that refers to the disclaimer of\n                    warranties;\n\n                 v. a URI or hyperlink to the Licensed Material to the\n                    extent reasonably practicable;\n\n            b. indicate if You modified the Licensed Material and\n               retain an indication of any previous modifications; and\n\n            c. indicate the Licensed Material is licensed under this\n               Public License, and include the text of, or the URI or\n               hyperlink to, this Public License.\n\n       2. You may satisfy the conditions in Section 3(a)(1) in any\n          reasonable manner based on the medium, means, and context in\n          which You Share the Licensed Material. For example, it may be\n          reasonable to satisfy the conditions by providing a URI or\n          hyperlink to a resource that includes the required\n          information.\n\n       3. If requested by the Licensor, You must remove any of the\n          information required by Section 3(a)(1)(A) to the extent\n          reasonably practicable.\n\n       4. If You Share Adapted Material You produce, the Adapter's\n          License You apply must not prevent recipients of the Adapted\n          Material from complying with this Public License.\n\n\nSection 4 -- Sui Generis Database Rights.\n\nWhere the Licensed Rights include Sui Generis Database Rights that\napply to Your use of the Licensed Material:\n\n  a. for the avoidance of doubt, Section 2(a)(1) grants You the right\n     to extract, reuse, reproduce, and Share all or a substantial\n     portion of the contents of the database;\n\n  b. if You include all or a substantial portion of the database\n     contents in a database in which You have Sui Generis Database\n     Rights, then the database in which You have Sui Generis Database\n     Rights (but not its individual contents) is Adapted Material; and\n\n  c. You must comply with the conditions in Section 3(a) if You Share\n     all or a substantial portion of the contents of the database.\n\nFor the avoidance of doubt, this Section 4 supplements and does not\nreplace Your obligations under this Public License where the Licensed\nRights include other Copyright and Similar Rights.\n\n\nSection 5 -- Disclaimer of Warranties and Limitation of Liability.\n\n  a. UNLESS OTHERWISE SEPARATELY UNDERTAKEN BY THE LICENSOR, TO THE\n     EXTENT POSSIBLE, THE LICENSOR OFFERS THE LICENSED MATERIAL AS-IS\n     AND AS-AVAILABLE, AND MAKES NO REPRESENTATIONS OR WARRANTIES OF\n     ANY KIND CONCERNING THE LICENSED MATERIAL, WHETHER EXPRESS,\n     IMPLIED, STATUTORY, OR OTHER. THIS INCLUDES, WITHOUT LIMITATION,\n     WARRANTIES OF TITLE, MERCHANTABILITY, FITNESS FOR A PARTICULAR\n     PURPOSE, NON-INFRINGEMENT, ABSENCE OF LATENT OR OTHER DEFECTS,\n     ACCURACY, OR THE PRESENCE OR ABSENCE OF ERRORS, WHETHER OR NOT\n     KNOWN OR DISCOVERABLE. WHERE DISCLAIMERS OF WARRANTIES ARE NOT\n     ALLOWED IN FULL OR IN PART, THIS DISCLAIMER MAY NOT APPLY TO YOU.\n\n  b. TO THE EXTENT POSSIBLE, IN NO EVENT WILL THE LICENSOR BE LIABLE\n     TO YOU ON ANY LEGAL THEORY (INCLUDING, WITHOUT LIMITATION,\n     NEGLIGENCE) OR OTHERWISE FOR ANY DIRECT, SPECIAL, INDIRECT,\n     INCIDENTAL, CONSEQUENTIAL, PUNITIVE, EXEMPLARY, OR OTHER LOSSES,\n     COSTS, EXPENSES, OR DAMAGES ARISING OUT OF THIS PUBLIC LICENSE OR\n     USE OF THE LICENSED MATERIAL, EVEN IF THE LICENSOR HAS BEEN\n     ADVISED OF THE POSSIBILITY OF SUCH LOSSES, COSTS, EXPENSES, OR\n     DAMAGES. WHERE A LIMITATION OF LIABILITY IS NOT ALLOWED IN FULL OR\n     IN PART, THIS LIMITATION MAY NOT APPLY TO YOU.\n\n  c. The disclaimer of warranties and limitation of liability provided\n     above shall be interpreted in a manner that, to the extent\n     possible, most closely approximates an absolute disclaimer and\n     waiver of all liability.\n\n\nSection 6 -- Term and Termination.\n\n  a. This Public License applies for the term of the Copyright and\n     Similar Rights licensed here. However, if You fail to comply with\n     this Public License, then Your rights under this Public License\n     terminate automatically.\n\n  b. Where Your right to use the Licensed Material has terminated under\n     Section 6(a), it reinstates:\n\n       1. automatically as of the date the violation is cured, provided\n          it is cured within 30 days of Your discovery of the\n          violation; or\n\n       2. upon express reinstatement by the Licensor.\n\n     For the avoidance of doubt, this Section 6(b) does not affect any\n     right the Licensor may have to seek remedies for Your violations\n     of this Public License.\n\n  c. For the avoidance of doubt, the Licensor may also offer the\n     Licensed Material under separate terms or conditions or stop\n     distributing the Licensed Material at any time; however, doing so\n     will not terminate this Public License.\n\n  d. Sections 1, 5, 6, 7, and 8 survive termination of this Public\n     License.\n\n\nSection 7 -- Other Terms and Conditions.\n\n  a. The Licensor shall not be bound by any additional or different\n     terms or conditions communicated by You unless expressly agreed.\n\n  b. Any arrangements, understandings, or agreements regarding the\n     Licensed Material not stated herein are separate from and\n     independent of the terms and conditions of this Public License.\n\n\nSection 8 -- Interpretation.\n\n  a. For the avoidance of doubt, this Public License does not, and\n     shall not be interpreted to, reduce, limit, restrict, or impose\n     conditions on any use of the Licensed Material that could lawfully\n     be made without permission under this Public License.\n\n  b. To the extent possible, if any provision of this Public License is\n     deemed unenforceable, it shall be automatically reformed to the\n     minimum extent necessary to make it enforceable. If the provision\n     cannot be reformed, it shall be severed from this Public License\n     without affecting the enforceability of the remaining terms and\n     conditions.\n\n  c. No term or condition of this Public License will be waived and no\n     failure to comply consented to unless expressly agreed to by the\n     Licensor.\n\n  d. Nothing in this Public License constitutes or may be interpreted\n     as a limitation upon, or waiver of, any privileges and immunities\n     that apply to the Licensor or You, including from the legal\n     processes of any jurisdiction or authority.\n\n\n=======================================================================\n\nCreative Commons is not a party to its public\nlicenses. Notwithstanding, Creative Commons may elect to apply one of\nits public licenses to material it publishes and in those instances\nwill be considered the “Licensor.” The text of the Creative Commons\npublic licenses is dedicated to the public domain under the CC0 Public\nDomain Dedication. Except for the limited purpose of indicating that\nmaterial is shared under a Creative Commons public license or as\notherwise permitted by the Creative Commons policies published at\ncreativecommons.org/policies, Creative Commons does not authorize the\nuse of the trademark \"Creative Commons\" or any other trademark or logo\nof Creative Commons without its prior written consent including,\nwithout limitation, in connection with any unauthorized modifications\nto any of its public licenses or any other arrangements,\nunderstandings, or agreements concerning use of licensed material. For\nthe avoidance of doubt, this paragraph does not form part of the\npublic licenses.\n\nCreative Commons may be contacted at creativecommons.org."
+    },
+    {
+      "license": "ISC",
+      "text": "ISC License\n\nCopyright (c) 2021-2024 Oleksii Raspopov, Kostiantyn Denysov, Anton Verinov\n\nPermission to use, copy, modify, and/or distribute this software for any\npurpose with or without fee is hereby granted, provided that the above\ncopyright notice and this permission notice appear in all copies.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHOR DISCLAIMS ALL WARRANTIES\nWITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF\nMERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR\nANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES\nWHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN\nACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF\nOR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE."
+    },
+    {
+      "license": "MIT",
+      "text": "Node.js is licensed for use as follows:\n\n\"\"\"\nCopyright Node.js contributors. All rights reserved.\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to\ndeal in the Software without restriction, including without limitation the\nrights to use, copy, modify, merge, publish, distribute, sublicense, and/or\nsell copies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING\nFROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS\nIN THE SOFTWARE.\n\"\"\"\n\nThis license applies to parts of Node.js originating from the\nhttps://github.com/joyent/node repository:\n\n\"\"\"\nCopyright Joyent, Inc. and other Node contributors. All rights reserved.\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to\ndeal in the Software without restriction, including without limitation the\nrights to use, copy, modify, merge, publish, distribute, sublicense, and/or\nsell copies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING\nFROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS\nIN THE SOFTWARE.\n\"\"\""
+    }
+  ]
+}

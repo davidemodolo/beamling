@@ -43,6 +43,8 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: License allowlist
+        run: pnpm licenses:check
       - name: Dependency audit (production)
         run: pnpm audit --prod --audit-level high
       - name: Secret scan

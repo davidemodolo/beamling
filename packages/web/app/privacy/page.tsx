@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { LegalFooter } from "@/components/legal-footer";
 import { Wordmark } from "@/components/wordmark";
 
 export const metadata: Metadata = { title: "Privacy" };
@@ -84,6 +85,7 @@ export default function PrivacyPage() {
           deployment&apos;s sign-in page.
         </p>
       </main>
+      <LegalFooter />
     </div>
   );
 }

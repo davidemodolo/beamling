@@ -61,6 +61,7 @@ export function SiteFooter() {
           <h3>Trust</h3>
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>
+          <Link href="/licenses">Licenses</Link>
           <span>Keys encrypted at rest</span>
           <span>No training by Beamling</span>
         </div>

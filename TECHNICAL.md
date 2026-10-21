@@ -1150,13 +1150,14 @@ A `429` is retried once with the same short-wait policy as Brave.
 
 | Route | Current behavior |
 |---|---|
-| `/` | Public cinematic landing page with a scripted demo, feature cards, provider list, CTA to `/onboarding` or `/chat`, and a footer with Privacy and Terms |
+| `/` | Public cinematic landing page with a scripted demo, feature cards, provider list, CTA to `/onboarding` or `/chat`, and a footer with Privacy, Terms and Licenses |
 | `/login` | Google-only sign-in page; redirects to `/onboarding` or `/chat` after the callback |
 | `/onboarding` | Account setup form: OpenRouter key, default model, search-provider picker and provider key, plus Brave plan/expiry/budget when Brave is selected; validates and saves, then routes to `/chat` |
 | `/chat` | New-question view; loads workspace state, conversation list and threads |
 | `/chat/[id]` | Conversation view; loads the newest 60 messages and supports earlier-message pagination |
-| `/privacy` | Draft privacy page |
-| `/terms` | Draft terms page |
+| `/privacy` | Draft privacy page with the shared legal footer |
+| `/terms` | Draft terms page with the shared legal footer |
+| `/licenses` | Generated open-source inventory from `packages/web/lib/generated/licenses.json`, with notices, license texts and the shared legal footer |
 | `/api/health` | Database liveness check |
 | `/robots.txt` | Allows `/`, disallows `/chat`, `/onboarding`, `/api/` |
 
@@ -1239,7 +1240,7 @@ The root page is a static marketing surface:
 - Hero and mascot.
 - A scripted, replayable demo that cycles through queued/searching/reading/writing/done; it is not a live provider call.
 - Stats, three-step explanation, three feature cards, provider pills.
-- Footer with Privacy, Terms, “Keys encrypted at rest” and “No training on your data.”
+- Footer with Privacy, Terms, Licenses, “Keys encrypted at rest” and “No training on your data.”
 - `prefers-reduced-motion` skips the demo animation.
 
 ### 12.7 Accessibility and responsive behavior
@@ -1252,7 +1253,7 @@ The root page is a static marketing surface:
 - Focus-visible outlines are defined globally.
 - Streaming animation respects reduced motion in the mascot and landing demo.
 - Touch targets and 360 px layout are handled by the responsive CSS.
-- The E2E suite runs axe-core on `/`, `/chat`, `/onboarding`, `/privacy` and `/terms` and fails on serious or critical violations.
+- The E2E suite runs axe-core on `/`, `/chat`, `/onboarding`, `/privacy`, `/terms` and `/licenses` and fails on serious or critical violations.
 
 ---
 
@@ -1479,6 +1480,15 @@ Migrations are a release step, not an app-start side effect. The local compose `
 - A missing or short secret disables its endpoint (404) and logs a production startup warning. A wrong bearer token returns 401. Neither endpoint uses a session or the public read limiter.
 - The GitHub Actions watchdog and external alerting described in the target operations section are not implemented; an operator or a later watchdog calls the endpoint.
 
+### 14.9 License inventory
+
+- `scripts/licenses.mjs` reads `pnpm licenses list --prod --json`, strips local paths, evaluates SPDX expressions and writes `packages/web/lib/generated/licenses.json`.
+- The script rejects any license outside `0BSD`, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MIT and OFL-1.1. The only exception is `caniuse-lite` under CC-BY-4.0, recorded with its attribution in the generated data.
+- Each package keeps its name, versions, license, homepage, copyright or NOTICE text. The page also renders one full license text per license expression.
+- `pnpm licenses:check` fails CI when the committed inventory is stale or a dependency adds an unreviewed license.
+- Sharp is excluded from optional dependencies and Next image optimization is disabled because the app does not use `next/image`; this keeps the LGPL libvips binary out of the production image.
+- The landing, sign-in, privacy, terms and licenses pages share a small legal footer. The full public footer and the cookie, subprocessor, security and contact pages remain target work.
+
 ## 15. Tests
 
 The repository contains four layers.
@@ -1488,7 +1498,7 @@ The repository contains four layers.
 | `packages/mascot/test/geometry.test.mjs` | 6 | Eye/beam geometry, expressions, state mapping |
 | `packages/web/tests/unit.test.ts` | 46 | KMS-backed credential encryption/rotation, model allowlist, Brave/Tavily/Exa/OpenRouter mapping, 429 retry, network vs abort, citations, ranking, freshness, language, prompt injection, client IP HMAC, same-origin anchors, production config and PostHog host rules, analytics allowlist/identity/delivery/deletion/kill-switch deletion/shared client, erasure backoff, Tavily free validation, body limits, provider-safe log redaction |
 | `packages/web/tests/integration.test.ts` | 29 | Database-backed account persistence, content encryption, Quick/Deep/Deeper, the Deeper AI SDK tool loop, planner repair/degrade, partial search, missing keys, selected-provider persistence and cost, no fallback, one stream per conversation, global concurrency, lock timeout, stop flag, mid-answer delete, timeout, NUL, retry, stale repair, pinned ordering, pagination, session cleanup, rate limits, Brave spacing, key replacement, unverified keys, the analytics erasure queue, the new-stream flag |
-| `packages/web/e2e/*.spec.ts` | 30 | 11 API checks, 14 UI flows and 5 route variants for CSP and axe; Quick checks search details, reasoning and tables, provider selection checks Tavily and marks a provider without a key, an Exa key is saved unvalidated and checked later, the killswitch rejects new streams and metrics stay secret-protected, Deeper checks the third mode, and sidebar checks pinning and title search |
+| `packages/web/e2e/*.spec.ts` | 32 | 11 API checks, 15 UI flows and 6 route variants for CSP and axe; Quick checks search details, reasoning and tables, provider selection checks Tavily and marks a provider without a key, an Exa key is saved unvalidated and checked later, the killswitch rejects new streams and metrics stay secret-protected, the license page and its footer links resolve, Deeper checks the third mode, and sidebar checks pinning and title search |
 
 Commands:
 
@@ -1497,6 +1507,7 @@ pnpm test
 DATABASE_URL=postgres://... pnpm --filter @beamling/web test
 pnpm --filter @beamling/web typecheck
 pnpm --filter @beamling/web lint
+pnpm licenses:check
 pnpm web:build
 E2E_DATABASE_URL=postgres://... pnpm --filter @beamling/web test:e2e
 ```
@@ -1515,6 +1526,7 @@ The Playwright suite checks:
 - Conversation pagination and cursor rejection, including pinned ordering across pages.
 - Account deletion clears the cookie.
 - The killswitch rejects new streams with `SERVICE_BUSY`/`Retry-After`, requires the kill secret, and keeps metrics behind their separate secret.
+- The generated license page lists production packages, and its footer links resolve.
 - Onboarding preserves saved model and mode; settings accepts a launch provider and rejects an unknown one.
 - Quick answers stream citations, costs and sources.
 - A Tavily answer can be selected per question and keeps its provider badge after reload.

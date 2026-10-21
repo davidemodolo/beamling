@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { LegalFooter } from "@/components/legal-footer";
 import { Wordmark } from "@/components/wordmark";
 
 export const metadata: Metadata = { title: "Terms" };
@@ -55,6 +56,7 @@ export default function TermsPage() {
           means you accept the updated terms.
         </p>
       </main>
+      <LegalFooter />
     </div>
   );
 }

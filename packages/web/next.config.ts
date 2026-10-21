@@ -37,6 +37,7 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_BUILD_TIME: buildTime,
   },
   reactStrictMode: true,
+  images: { unoptimized: true },
   poweredByHeader: false,
   output: "standalone",
   outputFileTracingRoot: path.join(process.cwd(), "../.."),

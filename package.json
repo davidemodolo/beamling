@@ -16,6 +16,8 @@
     "db:migrate": "pnpm --filter @beamling/web db:migrate",
     "local:up": "docker compose up --build",
     "local:down": "docker compose down",
-    "local:logs": "docker compose logs -f app"
+    "local:logs": "docker compose logs -f app",
+    "licenses:generate": "node scripts/licenses.mjs generate",
+    "licenses:check": "node scripts/licenses.mjs check"
   }
 }

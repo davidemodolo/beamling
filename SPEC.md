@@ -43,10 +43,10 @@ This file is the **target contract** for Alpha 1 and public launch. It is not an
 | Settings | Curated model, default search provider and default mode; per-answer provider picker in the composer | Add optional cost ceiling |
 | Credentials | KMS-backed AES-256-GCM envelope encryption; OpenRouter, Brave, Tavily and Exa keys; free Tavily key check; optional unverified save for Brave/Exa; Brave plan, expiry and budget metadata; usage warnings | Same; GCP KMS in production |
 | Content at rest | Conversation titles, messages, sources and stored errors are encrypted with per-account workspace keys | Same; GCP KMS in production |
-| Public pages | `/`, `/login`, `/onboarding`, `/chat`, `/chat/[id]`, `/privacy`, `/terms` | Add `/welcome` if needed, full legal/footer surface, docs, status, licenses, support and supporters |
+| Public pages | `/`, `/login`, `/onboarding`, `/chat`, `/chat/[id]`, `/privacy`, `/terms`, `/licenses` | Add `/welcome` if needed, remaining legal routes and full footer, docs, status, support and supporters |
 | Analytics | Server-side PostHog events with an allowlist, HMAC distinct IDs, opt-in kill switch and account-deletion hook; no browser SDK | PostHog Cloud EU, server-side metadata-only events and operator dashboards |
 | Operations | Production-parity Docker Compose with Caddy TLS, Dex OIDC, LocalStack KMS, TLS Postgres and the production image; release migrations, versioned health, tagged releases, graceful shutdown; Fly configuration and gated deploy job, not yet deployed; database killswitch and internal metrics | Fly + Neon, GCP KMS, monitoring, backups, killswitch |
-| Tests | 46 web unit tests, 29 database integration tests, 30 Playwright E2E tests, 6 mascot tests | Add parity-stack smoke, analytics, legal, killswitch, dump-encryption, load and eval gates |
+| Tests | 46 web unit tests, 29 database integration tests, 32 Playwright E2E tests, 6 mascot tests | Add parity-stack smoke, analytics, remaining legal, dump-encryption, load and eval gates |
 | Donations | None | Optional post-public `/support` and `/supporters` |
 
 ---
@@ -528,6 +528,8 @@ Each requirement has a priority (P0 = Alpha 1 target, P1 = private alpha/v1, P2 
   - Acceptance: the link opens the provider-hosted page in a new tab; no payment script loads on Beamling; no donation prompt blocks chat.
 - **FR-59 (P2):** `/supporters` lists only donors who explicitly consented to publication, with no amounts, emails, legal names or scraped data.
   - Acceptance: every entry has a recorded consent reference; removal requests are honored; the page has no payment SDK.
+
+**Current checkout:** `/licenses` is generated from the production dependency graph, every installed license is checked against the allowlist in CI, and `/`, `/login`, `/privacy`, `/terms` and `/licenses` link to each other. The full global footer, the remaining legal routes, public docs, status and support pages are still target work.
 
 ---
 
@@ -1376,6 +1378,7 @@ Warnings are not error codes:
 | `/chat/[id]` | Conversation view with pagination |
 | `/login` | Google-only sign-in page; redirects to `/onboarding` or `/chat` after callback |
 | `/privacy`, `/terms` | Draft legal pages; not a full legal surface |
+| `/licenses` | Generated open-source license inventory with package notices and license texts |
 
 **Public-launch target**
 
@@ -1384,9 +1387,9 @@ Warnings are not error codes:
 | `/welcome` | Public welcome page if the root is later reserved for the app |
 | `/support` | Optional donation page with outbound Tipeee/PayPal links |
 | `/supporters` | Opt-in public list of donors |
-| `/cookies`, `/licenses`, `/subprocessors`, `/security`, `/contact` | Cookie, license, subprocessor, security and contact pages |
+| `/cookies`, `/subprocessors`, `/security`, `/contact` | Cookie, subprocessor, security and contact pages |
 
-The current landing page and chat do not include the complete global footer described below. The footer work is part of the public-launch target.
+The landing page, sign-in page and legal pages contain a partial shared footer. The full global footer described below, including the remaining legal routes, docs, status and support links, is still target work.
 
 ### 16.2 Layout
 
@@ -1517,6 +1520,8 @@ Content order:
 - The page says: "Beamling uses open-source software. The Beamling application source is proprietary." Never imply that the app itself is open source.
 - Link to the public docs/feedback repository and issue tracker. Public docs do not grant a license to the application code.
 
+**Current checkout:** `pnpm licenses:check` reads the production dependency graph, applies the allowlist and fails CI on an unreviewed license. The committed inventory contains 177 packages, package notices and one full text per license. `caniuse-lite` has a reviewed CC-BY-4.0 exception for build-time browser data. Sharp is deliberately excluded as an unused optional dependency, so the LGPL libvips binary is not shipped. The public docs/feedback repository does not exist yet.
+
 **Consent and the popup**
 
 - The session cookie is essential and exempt from consent. PostHog is server-side and cookie-free, so do not load a client-side analytics SDK.
@@ -1579,7 +1584,7 @@ Alpha 1 does not fetch pages: the selected search provider returns snippets. The
 - OpenRouter routing: disclose that OpenRouter selects and may fail over to upstream model providers, and that the user's key and prompt are sent to OpenRouter and the selected upstream provider. Display the resolved model and any upstream provider returned by OpenRouter.
 - Search providers: disclose that queries go to the selected provider (Brave, Tavily or Exa); link to each provider's current terms and privacy policy. Do not repeat a training claim without linking to the current policy.
 - Subprocessors: Google Identity (OIDC), hosting, database, OpenRouter, the selected search providers (Brave, Tavily, Exa), master key provider, PostHog Cloud EU, the CMP (Iubenda or Cookiebot) when enabled, optional error tracking. Publish a subprocessor list and DPAs. Tipeee/PayPal are outbound donation links, not subprocessors, because Beamling sends them no payment data; add them to the list only if an embedded widget is ever introduced. No payment processor or Beamling-operated email subprocessor at launch.
-- Legal and licenses: publish the pages in §16.7, generate `/licenses` from the production dependency graph, and keep the dependency-license allowlist enforced in CI. The public docs repository is not a license for the application source. Current checkout: draft `/privacy` and `/terms` only.
+- Legal and licenses: publish the pages in §16.7, keep `/licenses` generated from the production dependency graph, and keep the dependency-license allowlist enforced in CI. The public docs repository is not a license for the application source. Current checkout: draft `/privacy` and `/terms`, plus the generated `/licenses` page; the remaining legal routes are still target work.
 - Cookies: only the essential session cookie and, when a CMP is enabled, its consent-state cookie before consent. Product analytics is server-side and cookie-free. Donation links are outbound and set no Beamling cookie. If a browser SDK, session replay, marketing or other non-essential script is added, load it only through the CMP after consent; see §16.7. Document the legal basis.
 - Age policy: 16+.
 - Content policy: no illegal content, no targeted harassment, no medical or legal advice presented as professional advice. Abuse reports go to a monitored address.
@@ -1712,7 +1717,7 @@ Rules:
 | Mascot unit | Node test runner | 6 geometry/expression tests |
 | Web unit | Node test runner | 46 tests: credential encryption and rotation, model allowlist, citation parsing, Brave/Tavily/Exa/OpenRouter error mapping, retries, URL filtering, ranking, language detection, prompt injection boundaries, client IP, production configuration, analytics allowlist/identity/delivery/deletion/erasure retries, body limits, log redaction |
 | Web integration | Node test runner + PostgreSQL | 29 tests: account persistence and content encryption, Quick/Deep/Deeper, the Deeper AI SDK tool loop, planner repair, partial search, missing keys, selected-provider persistence/cost, no fallback, one-stream-per-conversation, global cap, lock contention, stop flag, delete mid-answer, timeout, NUL handling, retry replacement, stale answer repair, pagination, session cleanup, atomic rate limits, per-key search spacing, credential replacement, unverified keys, atomic analytics erasure queuing, the new-stream flag |
-| End-to-end | Playwright | 30 tests: 11 API checks, 14 UI flows and 5 public-route axe/CSP checks; Quick-answer coverage includes search trace, reasoning and tables, provider selection checks Tavily and marks a keyless provider, unverified-key validation is covered, the killswitch blocks new streams, and Deeper coverage checks the third mode |
+| End-to-end | Playwright | 32 tests: 11 API checks, 15 UI flows and 6 public-route axe/CSP checks; Quick-answer coverage includes search trace, reasoning and tables, provider selection checks Tavily and marks a keyless provider, unverified-key validation is covered, the killswitch blocks new streams, the generated license page and its footer links resolve, and Deeper coverage checks the third mode |
 
 Commands:
 
@@ -1750,7 +1755,7 @@ Evaluation methodology: each golden question has a reference answer and expected
 
 ## 21. Deployment and Operations
 
-**Current checkout:** `pnpm local:up` runs the production image behind Caddy with Dex OIDC, LocalStack KMS and TLS PostgreSQL; migrations are a separate release step; `/api/health` is the health check; `SIGTERM` stores partial answers before exit. `fly.toml` and a gated CI deploy job are committed, but no Fly app or Neon database is live yet. Sentry, Better Stack, the automated watchdog and external alerting remain public-launch targets.
+**Current checkout:** `pnpm local:up` runs the production image behind Caddy with Dex OIDC, LocalStack KMS and TLS PostgreSQL; migrations are a separate release step; `/api/health` is the health check; `SIGTERM` stores partial answers before exit. `fly.toml` and a gated CI deploy job are committed, but no Fly app or Neon database is live yet. `/licenses` is generated from the production dependency graph and checked in CI. Sentry, Better Stack, the automated watchdog and external alerting remain public-launch targets.
 
 ### 21.1 Public launch stack (target)
 
@@ -1857,7 +1862,7 @@ Evaluation methodology: each golden question has a reference answer and expected
 | M0 — Spec | This document, brand assets brief, domain purchases | Review complete | Spec exists; domain purchase unconfirmed |
 | M1 — Alpha 1 | Google-only accounts, OpenRouter credentials and streaming, Brave/Tavily/Exa search adapters, Brave plan/expiry/budget metadata, Quick, Deep, Deeper, citations, search animation, history, PostHog usage analytics, production-parity local stack | Quick and Deep cited answers render end to end; Google login works; animation follows real stages; local stack runs the production image with KMS-backed crypto | Implemented in code and tests, including PostHog events, kill switch and deletion hook; live PostHog project, dashboards and alerts remain operator setup |
 | M2 — Private alpha | Onboarding, settings, usage/cost, error states, account deletion, 100-question eval, Fly + Neon deploy | 10–25 invited users complete real Quick, Deep and Deeper questions without key leakage | Partial: onboarding, settings, costs, errors and deletion are implemented; Fly config and deploy job are committed; the live deploy and 100-question eval remain |
-| M3 — Public launch | All launch adapters, welcome page, public docs and GitHub feedback repo, legal pages, open-source license page, CMP if needed, rate limits, status page | Public Google sign-in open, SLOs met for one week | Partial: killswitch endpoints and internal metrics are implemented; legal surface, licensing, status and watchdog remain |
+| M3 — Public launch | All launch adapters, welcome page, public docs and GitHub feedback repo, legal pages, open-source license page, CMP if needed, rate limits, status page | Public Google sign-in open, SLOs met for one week | Partial: killswitch, internal metrics and the generated license page are implemented; the remaining legal surface, status and watchdog remain |
 | M3.1 — Support (optional, post-public) | `/support`, outbound Tipeee/PayPal link, opt-in `/supporters`, footer link | Donation link works with no payment script; consent and removal process documented | Target |
 | M4 — v1 | PDF upload, share links, exports, optional public API, KMS-backed keys | Quality and security gates passed for both modes | Target |
 

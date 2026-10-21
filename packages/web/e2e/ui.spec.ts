@@ -261,7 +261,28 @@ test("older conversations load on demand", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Show older conversations" })).toHaveCount(0);
 });
 
-for (const path of ["/", "/chat", "/onboarding", "/privacy", "/terms"]) {
+test("the generated license page and public legal footer resolve", async ({ page }) => {
+  await page.goto("/licenses");
+  await expect(page.getByRole("heading", { name: "Open-source licenses" })).toBeVisible();
+  await expect(page.getByText("The Beamling application source is proprietary")).toBeVisible();
+  await expect(page.locator(".license-item")).not.toHaveCount(0);
+  expect(await page.locator(".license-item").count()).toBeGreaterThan(100);
+  await expect(page.getByText("caniuse-lite", { exact: true })).toBeVisible();
+
+  const hrefs = await page.locator(".legal-foot a").evaluateAll((links) =>
+    links.map((link) => (link as HTMLAnchorElement).getAttribute("href")).filter(Boolean),
+  );
+  expect([...new Set(hrefs)].sort()).toEqual(["/licenses", "/privacy", "/terms"]);
+  for (const href of hrefs) {
+    const response = await page.request.get(href!);
+    expect(response.ok(), href!).toBe(true);
+  }
+
+  await page.goto("/");
+  await expect(page.locator("footer").getByRole("link", { name: "Licenses" })).toHaveAttribute("href", "/licenses");
+});
+
+for (const path of ["/", "/chat", "/onboarding", "/privacy", "/terms", "/licenses"]) {
   test(`${path} has no CSP violations or serious accessibility issues`, async ({ page }) => {
     const problems = watchConsole(page);
     await page.goto(path);
