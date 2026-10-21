@@ -90,6 +90,14 @@ test("the conversation list is paginated", async ({ request }) => {
   expect((await request.get("/api/conversations?cursor=garbage")).status()).toBe(400);
 });
 
+test("signing out everywhere ends the session and clears the cookie", async ({ request }) => {
+  await signIn(request);
+  const response = await request.post("/api/auth/logout?scope=all");
+  expect(response.ok()).toBe(true);
+  expect(response.headers()["set-cookie"]).toMatch(/Max-Age=0/i);
+  expect((await request.get("/api/state")).status()).toBe(401);
+});
+
 test("deleting the account clears the session", async ({ request }) => {
   await connectKeys(request);
   const deleted = await request.delete("/api/account");

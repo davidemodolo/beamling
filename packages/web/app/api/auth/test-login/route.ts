@@ -1,6 +1,6 @@
 import { db } from "@/lib/server/db";
 import { appUrl, isFakeProviders } from "@/lib/server/env";
-import { ApiError, json } from "@/lib/server/http";
+import { ApiError, errorResponse, json } from "@/lib/server/http";
 import { ensureSettings } from "@/lib/server/repo";
 import { users } from "@/lib/server/schema";
 import { createSession, getCurrentUser } from "@/lib/server/session";
@@ -11,6 +11,14 @@ export const dynamic = "force-dynamic";
 
 /** Test-only sign-in. Disabled unless explicitly enabled on a localhost app URL. */
 export async function POST() {
+  try {
+    return await testLogin();
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
+
+async function testLogin() {
   const local = new URL(appUrl()).hostname === "localhost";
   if (process.env.BEAMLING_TEST_AUTH !== "1" || !local || !isFakeProviders()) {
     throw new ApiError("NOT_FOUND", "Not found.", 404);

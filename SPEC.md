@@ -1200,7 +1200,7 @@ Deleting an account removes its wrapped data key, so content retained in backups
 |---|---|---|---|
 | GET | `/api/auth/login` | Start Google OIDC; sets the short-lived transaction cookie and redirects | None |
 | GET | `/api/auth/callback/google` | Verify OIDC response, create/resume the account and session, redirect | Transaction cookie |
-| POST | `/api/auth/logout` | Revoke the current session and clear the cookie | Session |
+| POST | `/api/auth/logout` | Revoke the current session and clear the cookie; `?scope=all` revokes every session of the account | Session |
 | GET | `/api/state` | Current account, settings, masked credentials, the conversation count and the first page of conversation summaries (no messages) | Session |
 | POST | `/api/chat` | Ask a question (or retry the latest failed or stopped answer), returns SSE | Session |
 | POST | `/api/chat/stop` | Stop an in-flight answer by message ID | Session |

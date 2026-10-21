@@ -21,7 +21,7 @@ async function shutdown(signal: string): Promise<void> {
   log.info("Shutting down", { signal });
   try {
     const messageIds = await abortAllChats(SHUTDOWN_GRACE_MS);
-    // Anything that could not store its outcome in time is marked now, not after the 3-minute reaper.
+    // Anything that could not store its outcome in time is marked now, not after the stale-answer reaper.
     if (messageIds.length) await interruptStaleAnswers(messageIds);
   } catch (error) {
     log.error("Shutdown cleanup failed", error);

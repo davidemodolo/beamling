@@ -1,4 +1,4 @@
-export { cleanupExpired, deleteAccount, getState } from "./account";
+export { cleanupExpired, deleteAccount, deleteSessions, getState } from "./account";
 export {
   conversationExists,
   countConversations,

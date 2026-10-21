@@ -1,3 +1,4 @@
+import { hkdfSync } from "node:crypto";
 import { readFileSync } from "node:fs";
 const DEV_DATABASE_URL = "postgres://beamling:beamling@127.0.0.1:5432/beamling";
 const DEV_APP_URL = "http://localhost:3000";
@@ -158,6 +159,27 @@ export function authSecret(): Buffer {
   const decoded = Buffer.from(raw, "base64");
   if (decoded.length !== 32) throw new Error("AUTH_SECRET must be exactly 32 bytes, base64 encoded.");
   return decoded;
+}
+
+// Keyed by purpose and secret, so a changed AUTH_SECRET never reuses a key derived from the old one.
+const subkeys = new Map<string, Buffer>();
+
+/**
+ * A separate 32-byte key per use of AUTH_SECRET (HKDF-SHA256), so the OIDC transaction cookie and
+ * the IP hashes never share a key.
+ */
+export function authSubkey(purpose: "oidc-transaction" | "ip-hash"): Buffer {
+  const cacheKey = `${purpose}:${process.env.AUTH_SECRET}`;
+  let key = subkeys.get(cacheKey);
+  if (!key) {
+    key = Buffer.from(hkdfSync("sha256", authSecret(), Buffer.alloc(0), `beamling:auth-secret:v1:${purpose}`, 32));
+    subkeys.set(cacheKey, key);
+  }
+  return key;
+}
+
+export function newAccountsPerHour(): number {
+  return positiveInt("NEW_ACCOUNTS_PER_HOUR", 200);
 }
 
 export function oidcTransactionCookieName(): string {

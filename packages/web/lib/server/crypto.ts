@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
-import { authSecret } from "./env";
+import { authSubkey } from "./env";
 import { unwrapKey, wrapKey } from "./kms";
 
 const ALGORITHM = "aes-256-gcm";
@@ -103,7 +103,7 @@ export function hmacToken(value: string): string {
   // Production startup requires AUTH_SECRET. A keyless development hash keeps `web:dev` usable
   // before the first secret is configured; it is never accepted in production.
   if (!process.env.AUTH_SECRET) return hashToken(value).slice(0, 32);
-  return createHmac("sha256", authSecret()).update(value).digest("hex").slice(0, 32);
+  return createHmac("sha256", authSubkey("ip-hash")).update(value).digest("hex").slice(0, 32);
 }
 
 export function newSessionToken(): string {

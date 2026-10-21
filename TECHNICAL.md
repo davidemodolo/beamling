@@ -120,7 +120,7 @@ Configuration is read from environment variables at request/startup time. There 
 |---|---|
 | `DATABASE_URL` | PostgreSQL connection string. Required when `NODE_ENV=production`. Falls back to `postgres://beamling:beamling@127.0.0.1:5432/beamling` outside production. |
 | `APP_URL` | Public origin. Required in production and must be an origin only (no credentials, path, query or fragment); `https://` outside localhost. Development falls back to `OPENROUTER_APP_URL`, then `NEXT_PUBLIC_APP_URL`, then `http://localhost:3000`. Also sent to OpenRouter as `HTTP-Referer`. |
-| `AUTH_SECRET` | Exactly 32 bytes, base64 encoded. Encrypts the short-lived OIDC transaction cookie. |
+| `AUTH_SECRET` | Exactly 32 bytes, base64 encoded. Root secret for two HKDF-SHA256 subkeys: one encrypts the short-lived OIDC transaction cookie, the other keys the IP hashes. |
 | `OIDC_CLIENT_ID` | Google OAuth client id. |
 | `OIDC_CLIENT_SECRET` | Google OAuth client secret. |
 | `KMS_PROVIDER` | `gcp` in production, `aws` in the local parity stack, `env` only on localhost/tests. |
@@ -158,6 +158,7 @@ Production startup refuses to boot when any of these checks fails:
 | `COOKIE_SECURE` | Forces Secure cookies on/off. Default: on in production unless `APP_URL` is localhost; on in development only for an HTTPS `APP_URL`. |
 | `MAX_CONCURRENT_CHATS` | `50` active streams across the database. |
 | `LOGINS_PER_IP_PER_HOUR` | `60` OIDC sign-in starts per hashed client IP per fixed hour. |
+| `NEW_ACCOUNTS_PER_HOUR` | `200` new accounts across the deployment per fixed hour. Returning users are not counted. |
 | `BRAVE_MIN_INTERVAL_MS` | `1,100` ms between Free-plan Brave requests for the same key across all instances. `0` disables spacing. |
 | `BRAVE_PAID_MIN_INTERVAL_MS` | `0`; optional spacing for Paid-plan Brave keys. |
 | `BEAMLING_FAKE_PROVIDERS` | `1` uses fixture providers. Honored only when not production, or when production `APP_URL` is localhost. |
@@ -210,7 +211,8 @@ Details:
 
 - Users are keyed by the OIDC subject (`google_sub`), with verified email, optional name and avatar URL.
 - There is no password, magic link, email OTP, other identity provider or account recovery inside Beamling. Recovery is Google's.
-- The transaction cookie is a JWE (`dir` + `A256GCM`) encrypted with `AUTH_SECRET`; it expires after 10 minutes.
+- The transaction cookie is a JWE (`dir` + `A256GCM`) encrypted with the `oidc-transaction` HKDF subkey of `AUTH_SECRET`; it expires after 10 minutes.
+- A first sign-in counts against `NEW_ACCOUNTS_PER_HOUR` before the user row is created. Over the cap, the callback logs a warning and redirects to `/login?error=signups_paused`; other callback failures redirect to `/login?error=auth_failed`.
 - Session token: 32 random bytes, base64url encoded.
 - Stored value: SHA-256 hex of the token. The plaintext token never enters the database.
 - Cookie: `HttpOnly`, `SameSite=Lax`, `Path=/`, 30-day `Max-Age`.
@@ -218,14 +220,14 @@ Details:
 - The session expiry slides forward while the account is used. `getCurrentUser` extends it when the new expiry is more than one day beyond the stored expiry, then resets the cookie.
 - Missing or expired session on a protected route returns `UNAUTHENTICATED` with HTTP 401.
 - `/chat` and `/onboarding` are server-guarded and redirect to `/login` when signed out.
-- `POST /api/auth/logout` revokes the current session and clears the cookie.
+- `POST /api/auth/logout` revokes the current session and clears the cookie. `POST /api/auth/logout?scope=all` revokes every session of the account (Settings → Account → Sign out everywhere).
 - `DELETE /api/account` deletes the account, all rows and the wrapped workspace key, clears the cookie, and returns `{ "ok": true }`.
 - Cleanup removes expired sessions and counters; it does not delete inactive accounts because Google sign-in can return to them.
-- `POST /api/auth/test-login` exists only when `BEAMLING_TEST_AUTH=1`, `BEAMLING_FAKE_PROVIDERS=1` and `APP_URL` is localhost. It creates a unique test account for each new request context and is used by Playwright.
+- `POST /api/auth/test-login` exists only when `BEAMLING_TEST_AUTH=1`, `BEAMLING_FAKE_PROVIDERS=1` and `APP_URL` is localhost. It creates a unique test account for each new request context and is used by Playwright. Otherwise it returns `NOT_FOUND` (404).
 
 IP handling:
 
-- `clientIpKey()` selects the IP from `X-Forwarded-For` using `TRUSTED_PROXY_HOPS` and keyed-HMACs it with `AUTH_SECRET`, so stored rate-limit keys are not enumerable from a database dump.
+- `clientIpKey()` selects the IP from `X-Forwarded-For` using `TRUSTED_PROXY_HOPS` and keyed-HMACs it with the `ip-hash` HKDF subkey of `AUTH_SECRET`, so stored rate-limit keys are not enumerable from a database dump.
 - With one trusted proxy, it reads the last entry; earlier entries are treated as client-controlled.
 - A request with fewer forwarded entries than trusted hops is treated as `unknown`.
 - The hash is truncated to 32 characters and used in `rate_limits`.
@@ -827,7 +829,7 @@ Error envelope:
 |---|---|---|---|---|
 | `GET` | `/api/auth/login` | None | `?next=` | 307 to the OIDC provider |
 | `GET` | `/api/auth/callback/google` | OIDC transaction cookie | `code`, `state` | 307 to `/onboarding` or `/chat` |
-| `POST` | `/api/auth/logout` | Optional | — | `{ ok: true }` and cleared cookie |
+| `POST` | `/api/auth/logout` | Optional | `?scope=all` signs out every session | `{ ok: true }` and cleared cookie |
 | `GET` | `/api/state` | Required | — | `{ user, conversations, nextCursor, conversationCount, credentials, settings }` |
 | `POST` | `/api/chat` | Required | `{ conversationId?, question?, retryOf?, mode }` | SSE stream |
 | `POST` | `/api/chat/stop` | Required | `{ messageId }` | `{ stopped: boolean }` |
@@ -853,6 +855,7 @@ Error envelope:
 | `POST /api/credentials` and credential validation | 20 per user/hour |
 | All authenticated `GET` routes | 600 per user/10 min; 3,000 per hashed IP/10 min |
 | Login start | 60 per hashed IP/hour |
+| New accounts | `NEW_ACCOUNTS_PER_HOUR` across the deployment, default 200/hour |
 | Request body | 64 KB |
 | Question | 4,000 characters after control-character cleanup |
 | Global active streams | `MAX_CONCURRENT_CHATS`, default 50 |
@@ -942,6 +945,7 @@ Errors are stable strings; the UI maps them to copy and actions.
 | `SERVER_BUSY` | Global stream cap or lock timeout | 503 |
 | `RETRY_NOT_ALLOWED` | Retrying a non-latest or non-failed answer | 409 |
 | `RATE_LIMITED` | Beamling rate limit | 429 |
+| `SIGNUPS_PAUSED` | Hourly new-account cap reached (callback redirects to `/login?error=signups_paused`) | 429 |
 | `NOT_FOUND` / `CONVERSATION_NOT_FOUND` / `MESSAGE_NOT_FOUND` | Missing or not owned | 404 |
 | `INTERNAL` | Unhandled error | 500 |
 | `INTERRUPTED` | Stored when a stream is abandoned | — |
@@ -1145,7 +1149,7 @@ Settings is a modal with three keyboard-navigable tabs:
 |---|---|
 | Keys | Add/replace/validate/delete OpenRouter and Brave credentials; masked last four, status, Brave plan, declared expiry/budget, estimated spend and warnings; edit limits |
 | Defaults | Default mode (Quick/Deep/Deeper), OpenRouter model select, fixed Brave Search display |
-| Account | Google name/email, conversation and credential counts, session explanation, sign out, delete account with typed `DELETE` |
+| Account | Google name/email, conversation and credential counts, session explanation, sign out, sign out everywhere, delete account with typed `DELETE` |
 
 Deleting the account hard-deletes server data and the wrapped workspace key, clears the client store and session cookie, and routes to `/`.
 
@@ -1229,7 +1233,7 @@ frame-ancestors 'none'
 
 - Fixed-window counters in `rate_limits` use one atomic insert-or-update.
 - Login starts, chat, conversation creation, credentials and reads have separate keys and limits.
-- IP keys are keyed-HMACed with `AUTH_SECRET`; raw addresses are not stored and a database dump cannot enumerate them.
+- IP keys are keyed-HMACed with a subkey derived from `AUTH_SECRET`; raw addresses are not stored and a database dump cannot enumerate them.
 - The global stream cap is enforced inside a transaction-scoped advisory lock and counts committed streaming rows across all instances.
 - A second stream in one conversation is blocked by a partial unique index, not by process memory.
 - Brave request spacing uses a per-key database slot, so multiple instances cannot exceed the configured interval.
@@ -1276,7 +1280,7 @@ frame-ancestors 'none'
 | `dex` | Dex OIDC issuer at `http://auth.localhost:5556`, seeded `test@beamling.local` / `beamling` |
 | `migrate` | One-shot production image invocation of `node scripts/migrate.mjs`; waits for the database |
 | `app` | Production standalone image, `NODE_ENV=production`, secure `__Host-` cookie, KMS-backed crypto |
-| `caddy` | HTTPS on `https://localhost`, internal CA, reverse proxy to `app:3000` |
+| `caddy` | HTTPS on `https://localhost`, internal CA, reverse proxy to `app:3000`; ports 80/443 bound to loopback only |
 
 The stack runs the same OIDC callback, session, KMS, encryption, migration and SSE code as production. Dex replaces Google and LocalStack replaces GCP Cloud KMS; the protocols and application code paths are the same. The default stack does not use fixture providers.
 

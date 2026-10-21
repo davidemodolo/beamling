@@ -532,6 +532,23 @@ test("conversations and messages are paginated", { skip }, async (t) => {
   assert.equal(await getEarlierMessages(OTHER_USER_ID, conversationId, conversation?.messages[0].id as string), null);
 });
 
+test("signing out everywhere revokes only that account's sessions", { skip }, async (t) => {
+  const { eq } = await import("drizzle-orm");
+  const { db } = await import("../lib/server/db");
+  const { authSessions } = await import("../lib/server/schema");
+  const { deleteSessions } = await import("../lib/server/repo");
+  const [userId, otherId] = [await createAccount(t, { keys: false }), await createAccount(t, { keys: false })];
+  const expiresAt = new Date(Date.now() + 86_400_000);
+  for (const owner of [userId, userId, otherId]) {
+    await db.insert(authSessions).values({ userId: owner, tokenHash: randomBytes(16).toString("hex"), expiresAt });
+  }
+  await deleteSessions(userId);
+  const count = async (owner: string) =>
+    (await db.select({ id: authSessions.id }).from(authSessions).where(eq(authSessions.userId, owner))).length;
+  assert.equal(await count(userId), 0);
+  assert.equal(await count(otherId), 1);
+});
+
 test("cleanup removes expired sessions but keeps accounts", { skip }, async (t) => {
   const { db } = await import("../lib/server/db");
   const { authSessions, users } = await import("../lib/server/schema");
@@ -544,6 +561,22 @@ test("cleanup removes expired sessions but keeps accounts", { skip }, async (t) 
   await cleanupExpired();
   const [remaining] = await db.select({ id: users.id }).from(users).where(inArray(users.id, [account.id]));
   assert.equal(remaining.id, account.id);
+});
+
+test("new accounts stop at the hourly sign-up cap", { skip }, async (t) => {
+  const { eq } = await import("drizzle-orm");
+  const { db } = await import("../lib/server/db");
+  const { rateLimits } = await import("../lib/server/schema");
+  const { admitNewAccount } = await import("../lib/server/auth");
+  const reset = () => db.delete(rateLimits).where(eq(rateLimits.key, "signups:all"));
+  await reset();
+  t.after(reset);
+  withEnv(t, { NEW_ACCOUNTS_PER_HOUR: "2" });
+  await admitNewAccount();
+  await admitNewAccount();
+  await assert.rejects(admitNewAccount(), (error: { code?: string; status?: number }) => {
+    return error.code === "SIGNUPS_PAUSED" && error.status === 429;
+  });
 });
 
 test("concurrent requests cannot exceed the rate limit", { skip }, async () => {

@@ -4,6 +4,7 @@ import { db } from "./db";
 import { hashToken, newSessionToken } from "./crypto";
 import { SESSION_TTL_DAYS, secureCookies, sessionCookieName } from "./env";
 import { ApiError } from "./http";
+import { deleteSessions } from "./repo";
 import { authSessions, users } from "./schema";
 
 export interface SessionUser {
@@ -102,5 +103,11 @@ export async function revokeCurrentSession(): Promise<void> {
   if (token) {
     await db.delete(authSessions).where(eq(authSessions.tokenHash, hashToken(token)));
   }
+  await clearSessionCookie();
+}
+
+/** Signs the account out on every browser and device. */
+export async function revokeAllSessions(userId: string): Promise<void> {
+  await deleteSessions(userId);
   await clearSessionCookie();
 }

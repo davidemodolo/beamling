@@ -37,6 +37,11 @@ export async function getState(user: {
   };
 }
 
+/** Revokes every session of one account. */
+export async function deleteSessions(userId: string): Promise<void> {
+  await db.delete(authSessions).where(eq(authSessions.userId, userId));
+}
+
 export async function deleteAccount(userId: string): Promise<void> {
   await db.transaction(async (tx) => {
     await tx.delete(authSessions).where(eq(authSessions.userId, userId));

@@ -1,6 +1,6 @@
 import { completeLogin } from "@/lib/server/auth";
 import { appUrl } from "@/lib/server/env";
-import { privateRedirect } from "@/lib/server/http";
+import { ApiError, privateRedirect } from "@/lib/server/http";
 import { log, summarizeError } from "@/lib/server/log";
 
 export const runtime = "nodejs";
@@ -15,6 +15,7 @@ export async function GET(request: Request) {
       error: summarizeError(error),
       code: error instanceof Error && "code" in error ? String(error.code) : undefined,
     });
-    return privateRedirect(`${appUrl()}/login?error=auth_failed`);
+    const reason = error instanceof ApiError && error.code === "SIGNUPS_PAUSED" ? "signups_paused" : "auth_failed";
+    return privateRedirect(`${appUrl()}/login?error=${reason}`);
   }
 }

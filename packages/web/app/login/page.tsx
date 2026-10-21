@@ -25,7 +25,11 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             no guest workspaces.
           </p>
           {params.error ? (
-            <p className="validation-err" role="alert">Sign-in did not complete. Try again.</p>
+            <p className="validation-err" role="alert">
+              {params.error === "signups_paused"
+                ? "New sign-ups are paused for a while. Try again in an hour."
+                : "Sign-in did not complete. Try again."}
+            </p>
           ) : null}
           <a className="btn btn-primary btn-lg" href={`/api/auth/login?next=${encodeURIComponent(next)}`}>
             Continue with Google

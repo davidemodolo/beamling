@@ -76,7 +76,7 @@ interface StoreValue {
   ) => Promise<Credential>;
   removeCredential: (id: string) => Promise<void>;
   validateCredential: (id: string) => Promise<Credential | undefined>;
-  signOut: () => Promise<void>;
+  signOut: (everywhere?: boolean) => Promise<void>;
   deleteAccount: () => Promise<void>;
 }
 
@@ -455,8 +455,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const signOut = useCallback(async () => {
-    await api("/api/auth/logout", { method: "POST" });
+  const signOut = useCallback(async (everywhere = false) => {
+    await api(everywhere ? "/api/auth/logout?scope=all" : "/api/auth/logout", { method: "POST" });
     window.location.replace("/");
   }, []);
 

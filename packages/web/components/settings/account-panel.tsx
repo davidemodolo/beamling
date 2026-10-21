@@ -69,6 +69,15 @@ export function AccountPanel() {
           </div>
           <div className="setting-row">
             <div className="grow">
+              <div className="row-title">Sign out everywhere</div>
+              <div className="row-hint">Revoke every session of this account, on all browsers and devices.</div>
+            </div>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => void signOut(true)}>
+              Sign out everywhere
+            </button>
+          </div>
+          <div className="setting-row">
+            <div className="grow">
               <div className="row-title">Cookie</div>
               <div className="row-hint">
                 HttpOnly, SameSite=Lax. Expires after 30 days without use. Signing out revokes it immediately.

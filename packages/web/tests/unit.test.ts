@@ -435,6 +435,26 @@ test("the client IP comes only from the trusted proxy's X-Forwarded-For entry", 
   assert.notEqual(key("6.6.6.6, 10.0.0.1"), before, "IP hashes are keyed, not reversible by enumeration");
 });
 
+test("each use of AUTH_SECRET gets its own derived key", async (t) => {
+  const { authSecret, authSubkey } = await import("../lib/server/env");
+  const transaction = authSubkey("oidc-transaction");
+  const ipHash = authSubkey("ip-hash");
+  assert.equal(transaction.length, 32);
+  assert.notDeepEqual(transaction, ipHash);
+  assert.notDeepEqual(transaction, authSecret());
+  assert.deepEqual(authSubkey("oidc-transaction"), transaction, "derivation is stable");
+  withEnv(t, { AUTH_SECRET: randomBytes(32).toString("base64") });
+  assert.notDeepEqual(authSubkey("oidc-transaction"), transaction, "a new secret derives new keys");
+});
+
+test("the test-only sign-in answers 404 when it is disabled", async (t) => {
+  withEnv(t, { BEAMLING_TEST_AUTH: undefined, APP_URL: "https://beamling.example" });
+  const { POST } = await import("../app/api/auth/test-login/route");
+  const response = await POST();
+  assert.equal(response.status, 404);
+  assert.equal((await response.json()).error.code, "NOT_FOUND");
+});
+
 test("same-origin checks trust only APP_URL, not proxy or host headers", async (t) => {
   const { assertSameOrigin } = await import("../lib/server/http");
   withEnv(t, { APP_URL: "https://beamling.example" });

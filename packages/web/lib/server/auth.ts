@@ -6,7 +6,8 @@ import { cookies } from "next/headers";
 import { db } from "./db";
 import {
   appUrl,
-  authSecret,
+  authSubkey,
+  newAccountsPerHour,
   oidcClientId,
   oidcClientSecret,
   oidcIssuer,
@@ -17,7 +18,7 @@ import {
 } from "./env";
 import { ApiError } from "./http";
 import { log, summarizeError } from "./log";
-import { ensureSettings } from "./repo";
+import { consumeRateLimit, ensureSettings } from "./repo";
 import { users } from "./schema";
 import { createSession } from "./session";
 import { ensureWorkspaceKey } from "./workspace-key";
@@ -43,7 +44,7 @@ function oidcConfiguration(): Promise<client.Configuration> {
 }
 
 function transactionKey(): Buffer {
-  return authSecret();
+  return authSubkey("oidc-transaction");
 }
 
 export async function beginLogin(returnTo: string | null): Promise<string> {
@@ -97,6 +98,17 @@ function verifiedEmail(claims: OidcClaims): string {
   return email;
 }
 
+/** New accounts share a global hourly budget, so a flood of sign-ups cannot grow the database unbounded. */
+export async function admitNewAccount(): Promise<void> {
+  try {
+    await consumeRateLimit("signups:all", newAccountsPerHour(), 3600);
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.code !== "RATE_LIMITED") throw error;
+    log.warn("Hourly new-account cap reached", { cap: newAccountsPerHour() });
+    throw new ApiError("SIGNUPS_PAUSED", "New sign-ups are paused for a while. Try again later.", 429);
+  }
+}
+
 async function upsertUser(claims: OidcClaims): Promise<{ id: string; isNew: boolean }> {
   const sub = typeof claims.sub === "string" ? claims.sub : "";
   if (!sub) throw new ApiError("AUTH_FAILED", "Google did not return a stable account id.", 502);
@@ -105,6 +117,8 @@ async function upsertUser(claims: OidcClaims): Promise<{ id: string; isNew: bool
   const avatarUrl = typeof claims.picture === "string" ? claims.picture.trim().slice(0, 2000) : null;
   const now = new Date();
   const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.googleSub, sub)).limit(1);
+  // Returning users always get in; only new accounts count against the sign-up cap.
+  if (!existing) await admitNewAccount();
 
   const [user] = await db
     .insert(users)

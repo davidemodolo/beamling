@@ -138,9 +138,10 @@ services:
 
   caddy:
     image: caddy:2.11.7-alpine
+    # Loopback only: this stack uses a default AUTH_SECRET and a test identity provider.
     ports:
-      - "80:80"
-      - "443:443"
+      - "127.0.0.1:80:80"
+      - "127.0.0.1:443:443"
     volumes:
       - ./local/Caddyfile:/etc/caddy/Caddyfile:ro
       - beamling-caddy-data:/data
