@@ -4,7 +4,7 @@
 **Last verified against the code:** 2026-10-21.
 **Scope:** the web application, API, database schema, answer pipeline, browser UI, security controls, tests and local deployment.
 
-Beamling is a hosted, bring-your-own-key answer engine. A visitor signs in with Google, connects an OpenRouter key and a Brave Search key, and asks questions in Quick, Deep or Deeper mode. The server searches the web, builds a grounded prompt from the retrieved snippets, streams an OpenRouter answer over SSE, and persists the conversation, sources and usage data.
+Beamling is a hosted, bring-your-own-key answer engine. A visitor signs in with Google, connects an OpenRouter key and a Brave, Tavily or Exa search key, and asks questions in Quick, Deep or Deeper mode. The server searches the web, builds a grounded prompt from the retrieved snippets, streams an OpenRouter answer over SSE, and persists the conversation, sources and usage data.
 
 The application is a single Next.js service plus a small workspace package for the mascot. There is no separate backend, queue, worker or client-side orchestration.
 
@@ -29,7 +29,9 @@ Next.js 16 application (Node.js runtime)
        ├─ KMS         wrap/unwrap workspace and credential keys
        ├─ OpenRouter  GET /api/v1/key
        │              POST /api/v1/chat/completions (SSE)
-       └─ Brave       GET /res/v1/web/search
+       ├─ Brave       GET /res/v1/web/search
+       ├─ Tavily      POST /search
+       └─ Exa         POST /search
 ```
 
 Current external dependencies:
@@ -41,9 +43,11 @@ Current external dependencies:
 | KMS | Wrapping workspace keys and credential data keys; LocalStack locally, GCP Cloud KMS in production |
 | OpenRouter | Model validation and streamed chat completions |
 | Brave Search API | Web Search validation and retrieval |
+| Tavily Search API | Search validation and retrieval |
+| Exa Search API | Search validation and retrieval |
 | Browser | Session cookie, SSE consumption, UI state |
 
-The server does not fetch result pages, crawl the web, load remote media in answers, or send analytics to a third party. Provider traffic goes directly from the Next.js process to OpenRouter or Brave using the user's key.
+The server does not fetch result pages, crawl the web, load remote media in answers, or send analytics to a third party. Provider traffic goes directly from the Next.js process to OpenRouter and the selected search provider using the user's key.
 
 ---
 
@@ -56,7 +60,7 @@ The server does not fetch result pages, crawl the web, load remote media in answ
 │  ├─ components/                 React UI
 │  ├─ lib/                        Client state, API client, shared types
 │  ├─ lib/server/                 Server-only code
-│  │  ├─ providers/               OpenRouter, Brave, fixtures
+│  │  ├─ providers/               OpenRouter, Brave, Tavily, Exa, fixtures
 │  │  ├─ repo/                    Database access
 │  │  ├─ chat.ts                  Answer pipeline
 │  │  ├─ auth.ts                  Google OIDC flow and account upsert
@@ -183,7 +187,7 @@ With `BEAMLING_FAKE_PROVIDERS=1`:
 - `[fixture:partial-search]` makes one Deep search fail.
 - A question containing `no sources` returns no results.
 
-Fixtures exist for automated tests and a fast offline dev loop; no network calls are made to OpenRouter or Brave in this mode. The production-parity stack leaves them off.
+Fixtures exist for automated tests and a fast offline dev loop; no network calls are made to OpenRouter or any search provider in this mode. The production-parity stack leaves them off.
 
 ---
 
@@ -242,8 +246,10 @@ IP handling:
 |---|---|---|
 | `llm` | `openrouter` | `GET https://openrouter.ai/api/v1/key`, 15-second timeout |
 | `search` | `brave` | `GET https://api.search.brave.com/res/v1/web/search?q=Beamling%20connectivity%20test&count=1` |
+| `search` | `tavily` | `POST https://api.tavily.com/search` with one basic result |
+| `search` | `exa` | `POST https://api.exa.ai/search` with one highlight result |
 
-The API schema only accepts these two combinations. A credential kind must match its provider (`llm` ↔ `openrouter`, `search` ↔ `brave`).
+The API schema accepts OpenRouter as the only LLM provider and Brave, Tavily or Exa as search providers. A credential kind must match its provider (`llm` ↔ `openrouter`, `search` ↔ one launch search provider).
 
 ### 5.2 Envelope encryption
 
@@ -327,12 +333,12 @@ Content envelopes are `enc:v1:<base64url JSON>` with nonce, ciphertext, tag and 
 
 Every account gets a `user_data_keys` row on first sign-in. Deleting the account cascades the wrapped key and content rows. A database-only compromise still yields ciphertext, but the application process can decrypt content for the owning account; this is not end-to-end encryption.
 
-### 5.6 Brave plan, expiry and budget
+### 5.6 Search-provider limits
 
 - Brave keys require a user-declared plan: `free` or `paid`.
 - `free` uses `BRAVE_MIN_INTERVAL_MS` (default 1,100 ms) per key across instances.
 - `paid` uses `BRAVE_PAID_MIN_INTERVAL_MS` (default 0).
-- Optional `expires_on`, `budget_usd` and `budget_period` (`month` or `total`) are stored as user-declared metadata. The Brave API is not queried for them.
+- Optional `expires_on`, `budget_usd` and `budget_period` (`month` or `total`) are stored as user-declared metadata. The Brave API is not queried for them. Tavily and Exa currently store only the credential and daily request/cost usage; provider-plan metadata is Brave-only.
 - `credential_usage` stores daily requests and estimated cost. `listCredentials` sums the current month or all time and exposes `spentUsd`, `requests` and a warning: `budget_100`, `budget_80`, `expiry_1`, `expiry_7` or `expiry_14`.
 - A warning never blocks a search. Provider `402` remains authoritative.
 - The UI labels the limits as set by the user, not as provider facts.
@@ -366,7 +372,7 @@ credential_usage
   credential_id → credentials, day, requests, estimated_cost_usd
 
 settings
-  user_id → users (primary key), llm_model, default_mode, updated_at
+  user_id → users (primary key), llm_model, default_search_provider, default_mode, updated_at
 
 conversations
   id, user_id → users, title, mode, pinned, created_at, updated_at
@@ -378,7 +384,7 @@ messages
   searches (encrypted JSON trace), reasoning (encrypted),
   llm_model, resolved_model, upstream_provider,
   search_requests, search_failures,
-  tokens_in, tokens_out, cost_usd, search_cost_usd,
+  search_provider, tokens_in, tokens_out, cost_usd, search_cost_usd,
   latency_ms, error_code, error_message, stop_requested,
   created_at
 
@@ -475,7 +481,7 @@ Each step runs even if another fails; failures are logged. The process continues
 
 `POST /api/chat` validates:
 
-- `mode` is `quick` or `deep`.
+- `mode` is `quick`, `deep` or `deeper`. `searchProvider` is optional and must be `brave`, `tavily` or `exa`; it defaults to the workspace default.
 - Exactly one of `question` or `retryOf` is present.
 - A retry includes `conversationId`.
 - A question is at most 4,000 characters after control characters are removed and whitespace is trimmed.
@@ -489,8 +495,8 @@ It then applies:
 `prepareChat()`:
 
 1. Loads settings, falling back to the default model if the stored model is no longer allowlisted.
-2. Loads and decrypts the OpenRouter and Brave credentials in parallel.
-3. Returns `CREDENTIAL_MISSING` when either is absent; returns `CREDENTIAL_UNREADABLE` when a stored row cannot be decrypted.
+2. Resolves the selected search provider (`searchProvider`, else the workspace default) and loads the OpenRouter and selected search credentials in parallel.
+3. Returns `CREDENTIAL_MISSING` for the missing provider; returns `CREDENTIAL_UNREADABLE` when a stored row cannot be decrypted.
 4. Reuses the requested conversation after an ownership check, or creates a new conversation.
 5. Calls `createExchange()`.
 6. Loads the six messages immediately before the current question. These are the prompt's conversation history; the current question is not repeated in that history.
@@ -501,7 +507,7 @@ Errors before the SSE response are normal JSON responses with the stable error e
 
 ```text
 normalized question
-  → one Brave search (count 8)
+  → one search on the selected provider (count 8)
   → rank/dedupe/cap by site
   → if zero usable sources: canned insufficient-sources answer
   → otherwise prompt + OpenRouter stream
@@ -549,7 +555,7 @@ Deeper is an agentic research loop, implemented with AI SDK `ToolLoopAgent` and 
 question
   → ToolLoopAgent (same selected OpenRouter model)
       tool: search({ queries: string[1..4] })
-      → Brave with concurrency 2, 6 results per query
+      → selected provider with concurrency 2, 6 results per query
       → rank/dedupe/append, stable positions, max 60 sources
       → compact tool result (8 source summaries + counts)
       ← model decides: search again or finish
@@ -571,6 +577,8 @@ Loop controls:
 `[fixture:...]` behavior does not apply to Deeper. With `BEAMLING_FAKE_PROVIDERS=1`, Deeper uses three deterministic fixture searches and skips the AI SDK network path.
 
 ### 7.5 Retrieval and ranking
+
+The selected adapter receives the normalized query, result count, optional freshness window and caller abort signal. Brave uses its Web Search endpoint; Tavily uses `POST /search` with `search_depth=basic`; Exa uses `POST /search` with `type=auto` and `contents.highlights=true`. None fetches the result pages.
 
 Brave request:
 
@@ -739,7 +747,7 @@ A comment heartbeat (`: ping`) is written every 15 seconds.
 | `delta` | `{ text }` | Streamed answer text |
 | `reasoning` | `{ text }` | Model-provided reasoning, when the provider emits it |
 | `citation` | `{ position }` | First time a valid citation appears |
-| `usage` | `{ tokensIn, tokensOut, costUsd, searchCostUsd, latencyMs, searchRequests, resolvedModel?, upstreamProvider? }` | Successful completion (including no sources) |
+| `usage` | `{ tokensIn, tokensOut, costUsd, searchCostUsd, latencyMs, searchRequests, searchProvider?, resolvedModel?, upstreamProvider? }` | Successful completion (including no sources) |
 | `done` | `{ noSources, truncated?, degraded?, searchFailures? }` | Successful terminal event |
 | `error` | `{ code, message, provider? }` | Terminal error after the stream started |
 
@@ -831,7 +839,7 @@ Error envelope:
 | `GET` | `/api/auth/callback/google` | OIDC transaction cookie | `code`, `state` | 307 to `/onboarding` or `/chat` |
 | `POST` | `/api/auth/logout` | Optional | `?scope=all` signs out every session | `{ ok: true }` and cleared cookie |
 | `GET` | `/api/state` | Required | — | `{ user, conversations, nextCursor, conversationCount, credentials, settings }` |
-| `POST` | `/api/chat` | Required | `{ conversationId?, question?, retryOf?, mode }` | SSE stream |
+| `POST` | `/api/chat` | Required | `{ conversationId?, question?, retryOf?, mode, searchProvider? }` | SSE stream |
 | `POST` | `/api/chat/stop` | Required | `{ messageId }` | `{ stopped: boolean }` |
 | `GET` | `/api/conversations` | Required | `?cursor=` | `{ conversations, nextCursor }` |
 | `POST` | `/api/conversations` | Required | `{ mode?: "quick" \| "deep" \| "deeper" }` | `201 { conversation }` |
@@ -842,7 +850,7 @@ Error envelope:
 | `POST` | `/api/credentials/:id/validate` | Required | — | `{ credential }` |
 | `PATCH` | `/api/credentials/:id` | Required | `{ plan?, expiresOn?, budgetUsd?, budgetPeriod? }` | `{ credential }` |
 | `DELETE` | `/api/credentials/:id` | Required | — | `{ ok: true }` |
-| `PATCH` | `/api/settings` | Required | `{ llmModel?, defaultMode? }` | `{ settings }` |
+| `PATCH` | `/api/settings` | Required | `{ llmModel?, defaultSearchProvider?, defaultMode? }` | `{ settings }` |
 | `DELETE` | `/api/account` | Optional | — | `{ ok: true }` and cleared cookie |
 | `GET` | `/api/health` | None | — | `{ ok: true, database: "up", version, commit, builtAt }` or 503 `{ ok: false, database: "down", version, commit, builtAt }` |
 
@@ -895,7 +903,7 @@ A direct API call may omit `conversationId`; the server creates the conversation
 `PATCH /api/settings` accepts:
 
 ```json
-{ "llmModel": "anthropic/claude-haiku-4.5", "defaultMode": "deep" }
+{ "llmModel": "anthropic/claude-haiku-4.5", "defaultSearchProvider": "tavily", "defaultMode": "deep" }
 ```
 
 `llmModel` must be one of:
@@ -906,7 +914,7 @@ A direct API call may omit `conversationId`; the server creates the conversation
 - `openai/gpt-5.2`
 - `google/gemini-3.8-flash`
 
-An unknown model returns `MODEL_NOT_ALLOWED`. `defaultMode` is `quick` or `deep`.
+An unknown model returns `MODEL_NOT_ALLOWED`; an unknown search provider returns `INVALID_INPUT`. `defaultMode` is `quick`, `deep` or `deeper`.
 
 The selected model is used for planner, gap and answer calls in one run. It is stored on the assistant message. OpenRouter's resolved model and upstream provider are stored separately when reported.
 
@@ -930,13 +938,15 @@ Errors are stable strings; the UI maps them to copy and actions.
 | `INVALID_ORIGIN` | Cross-origin mutation | 403 |
 | `INVALID_PROVIDER` | Kind/provider mismatch | 400 |
 | `MODEL_NOT_ALLOWED` | Model outside allowlist | 400 |
-| `CREDENTIAL_MISSING` | No key for OpenRouter or Brave | 400 |
+| `CREDENTIAL_MISSING` | No key for OpenRouter or the selected search provider | 400 |
 | `CREDENTIAL_INVALID` | Provider rejected key | 400 |
 | `CREDENTIAL_UNREADABLE` | Stored key cannot be decrypted | 400 |
-| `INSUFFICIENT_CREDITS` | OpenRouter `402` | 402 |
+| `INSUFFICIENT_CREDITS` | OpenRouter or search provider `402` | 402 |
 | `MODEL_NOT_FOUND` | OpenRouter `404` | 400 |
 | `BRAVE_PLAN_MISSING_SEARCH` | Brave key has no Search plan | 400 |
-| `PROVIDER_RATE_LIMITED` | OpenRouter or Brave `429` | 429 |
+| `SEARCH_PLAN_MISSING` | Tavily key has no Search access (`432`) | 400 |
+| `QUOTA_EXCEEDED` | Tavily plan limit reached (`433`) | 402 |
+| `PROVIDER_RATE_LIMITED` | OpenRouter or the selected search provider `429` | 429 |
 | `PROVIDER_UNAVAILABLE` | Timeout, network failure or provider `5xx` | 502 |
 | `PROVIDER_ERROR` | Other provider rejection | 502 |
 | `SEARCH_FAILED` | Every search failed | 502 |
@@ -1061,7 +1071,49 @@ Error mapping:
 | `408`, `5xx` | `PROVIDER_UNAVAILABLE` |
 | Other `4xx` | `PROVIDER_ERROR` |
 
-### 11.3 Fixtures
+### 11.3 Tavily
+
+Validation and retrieval use `POST https://api.tavily.com/search` with `Authorization: Bearer <key>`. The adapter never requests raw page content, images or a generated answer.
+
+- Validation sends a short probe query with `max_results=1`, `search_depth=basic`, `include_answer=false`, `include_raw_content=false`, `include_images=false` and `include_usage=true`.
+- Retrieval uses `search_depth=basic`, `max_results=1–20`, `include_published_date=true`, `safe_search=true`, and `topic=news` only for a recent-information question.
+- A freshness window maps to `time_range`: `day`, `week`, `month` or `year`.
+- Results map `title`, `url`, `content` and `published_date`; `content` is tag-stripped and capped at 1,800 characters. Results without a usable snippet are dropped.
+- Every successful request records one request and the `$0.008` list-price estimate in `credential_usage`.
+
+| Status | Beamling code |
+|---|---|
+| `401`, `403` | `CREDENTIAL_INVALID` |
+| `432` | `SEARCH_PLAN_MISSING` |
+| `433` | `QUOTA_EXCEEDED` |
+| `402` | `INSUFFICIENT_CREDITS` |
+| `429` | `PROVIDER_RATE_LIMITED` |
+| `408`, `5xx` | `PROVIDER_UNAVAILABLE` |
+| Other `4xx` | `PROVIDER_ERROR` |
+
+A `429` is retried once with the same short-wait policy as Brave.
+
+### 11.4 Exa
+
+Validation and retrieval use `POST https://api.exa.ai/search` with `x-api-key: <key>`.
+
+- Validation sends a short probe with `numResults=1`, `type="auto"` and `contents={"highlights":true}`.
+- Retrieval uses `type="auto"`, `numResults=1–100`, `moderation=true` and `contents.highlights=true`.
+- A freshness window maps to `startPublishedDate`; the adapter never requests full page text or a summary.
+- Results map `title`, `url`, `publishedDate` and the joined `highlights` array. Highlights are tag-stripped and capped at 1,800 characters. Results without a usable highlight are dropped.
+- Every successful request records one request and the `$0.005` list-price estimate in `credential_usage`.
+
+| Status | Beamling code |
+|---|---|
+| `401`, `403` | `CREDENTIAL_INVALID` |
+| `402` | `INSUFFICIENT_CREDITS` |
+| `429` | `PROVIDER_RATE_LIMITED` |
+| `408`, `5xx` | `PROVIDER_UNAVAILABLE` |
+| Other `4xx` | `PROVIDER_ERROR` |
+
+A `429` is retried once with the same short-wait policy as Brave.
+
+### 11.5 Fixtures
 
 `lib/server/providers/fake.ts` mirrors the `chat`, `search` and validation interfaces. It is selected by `isFakeProviders()` and is used by local tests and Playwright. Fixture content is deterministic, with marker-based failure modes for planner repair, plan failure, partial search and no-source behavior.
 
@@ -1075,7 +1127,7 @@ Error mapping:
 |---|---|
 | `/` | Public cinematic landing page with a scripted demo, feature cards, provider list, CTA to `/onboarding` or `/chat`, and a footer with Privacy and Terms |
 | `/login` | Google-only sign-in page; redirects to `/onboarding` or `/chat` after the callback |
-| `/onboarding` | Account setup form: OpenRouter key, default model, Brave key, Brave plan, optional expiry and budget; validates and saves, then routes to `/chat` |
+| `/onboarding` | Account setup form: OpenRouter key, default model, search-provider picker and provider key, plus Brave plan/expiry/budget when Brave is selected; validates and saves, then routes to `/chat` |
 | `/chat` | New-question view; loads workspace state, conversation list and threads |
 | `/chat/[id]` | Conversation view; loads the newest 60 messages and supports earlier-message pagination |
 | `/privacy` | Draft privacy page |
@@ -1110,25 +1162,26 @@ The Next.js metadata base is `https://beamling.ai`; the landing demo also prints
 ### 12.3 Onboarding
 
 - Requires an OpenRouter key if none is stored.
-- Requires a Brave key if none is stored.
+- Requires a key for the selected search provider if none is stored.
+- The user can switch the selected provider before adding its key.
 - Brave requires a plan (`Free · 1 request/second` or `Paid / provider plan`) and accepts optional expiry and monthly budget. All three are user-declared.
 - “Get a key” links open the provider dashboards in a new tab.
 - Keys are masked inputs with show/hide toggles.
 - Saving validates each key through the server; a failure keeps the form open with provider copy.
 - The user can choose one of the five allowlisted models; the selection is saved only if it differs from the current default.
 - If a key is already connected, the field can replace it.
-- Once both keys exist, “Start asking” routes to `/chat`; the default model is preserved.
+- Once both keys exist, “Start asking” routes to `/chat`; the default model and search provider are preserved.
 
 ### 12.4 Chat view
 
-- Header: conversation title, mode, selected model name, Brave label, source-count button, account avatar.
+- Header: conversation title, mode, selected model name, selected search-provider label, source-count button, account avatar.
 - Answer cards show **Searches** (query, status, result count) and **Model reasoning** as `<details>` panels, collapsed by default. The same panels appear live while the answer streams.
 - Sidebar: title search over loaded pages, a Pinned section, Today/Yesterday/Previous groups in UTC, exact-title links, per-conversation pin/unpin and delete confirmation, “Show older conversations” pagination, Settings entry, signed-in email and sign-out.
 - Thread: user bubbles, answer cards, a working answer card, earlier-message button, empty state, not-found state, load-error state.
-- Composer: auto-growing textarea up to 190 px, Enter sends, Shift+Enter inserts a newline, Quick/Deep/Deeper segmented control, model badge, Stop button while busy.
-- Source panel: desktop right-hand pane; mobile bottom sheet with focus trap; source count, Brave badge, title/domain/date/snippet/link.
+- Composer: auto-growing textarea up to 190 px, Enter sends, Shift+Enter inserts a newline, Quick/Deep/Deeper segmented control, model badge, search-provider selector and Stop button while busy.
+- Source panel: desktop right-hand pane; mobile bottom sheet with focus trap; source count, provider badge, title/domain/date/snippet/link. The badge comes from the answer’s stored provider.
 - Tables render with a header, alignment and horizontal scrolling; the parser also handles headings, lists, quotes, code fences, links and citations.
-- Answer card: streamed markdown, citation buttons, model/resolved-provider badges, usage line, copy button, sources button, stopped/error/uncited/no-sources/truncated/degraded/partial-search notices, retry button for the latest failed or stopped answer.
+- Answer card: streamed markdown, citation buttons, model/search-provider/resolved-provider badges, usage line, copy button, sources button, stopped/error/uncited/no-sources/truncated/degraded/partial-search notices, retry button for the latest failed or stopped answer.
 - Working answer: mascot, stage label, real detail string, skeleton or streaming body, Stop button.
 - Stop: the composer switches to a stop control; the client asks the server to stop, waits for confirmation, and keeps the partial answer.
 
@@ -1147,8 +1200,8 @@ Settings is a modal with three keyboard-navigable tabs:
 
 | Tab | Behavior |
 |---|---|
-| Keys | Add/replace/validate/delete OpenRouter and Brave credentials; masked last four, status, Brave plan, declared expiry/budget, estimated spend and warnings; edit limits |
-| Defaults | Default mode (Quick/Deep/Deeper), OpenRouter model select, fixed Brave Search display |
+| Keys | Add/replace/validate/delete OpenRouter, Brave, Tavily and Exa credentials; masked last four, status, Brave plan, declared expiry/budget, estimated spend and warnings; edit Brave limits |
+| Defaults | Default mode (Quick/Deep/Deeper), OpenRouter model select, default search provider (Brave/Tavily/Exa) |
 | Account | Google name/email, conversation and credential counts, session explanation, sign out, sign out everywhere, delete account with typed `DELETE` |
 
 Deleting the account hard-deletes server data and the wrapped workspace key, clears the client store and session cookie, and routes to `/`.
@@ -1216,7 +1269,7 @@ frame-ancestors 'none'
 - Zod validates every JSON body.
 - Markdown output is a custom React renderer; raw HTML is never parsed.
 - Link schemes are restricted to `http:` and `https:`, and URLs with embedded credentials are rejected.
-- Source URLs from Brave are checked before display and before prompt assembly.
+- Source URLs from the selected search provider are checked before display and before prompt assembly.
 - Source snippets are stripped of fake closing `<source>` tags and escaped when placed in attributes.
 - Planner output is parsed as data and cannot change model, provider or system prompts.
 
@@ -1289,7 +1342,7 @@ Run:
 ```sh
 pnpm local:up
 # Browse https://localhost (accept the local CA), sign in with
-# test@beamling.local / beamling, then add real OpenRouter and Brave keys.
+# test@beamling.local / beamling, then add real OpenRouter and Brave/Tavily/Exa keys.
 pnpm local:down
 ```
 
@@ -1323,7 +1376,7 @@ The image applies Alpine security updates, removes npm/corepack from the runtime
 
 `scripts/migrate.mjs`:
 
-- There is one starting migration, `0000_init.sql`, containing the complete current schema; the pre-launch incremental migrations were squashed into it.
+- `0000_init.sql` contains the pre-launch complete schema; `0001_search_providers.sql` adds `settings.default_search_provider` and `messages.search_provider` with `brave` defaults for existing rows.
 - Requires `DATABASE_URL`.
 - Takes a PostgreSQL advisory lock (`7314002917`) so concurrent deploys serialize.
 - Creates `beamling_migrations` if absent.
@@ -1371,9 +1424,9 @@ The repository contains four layers.
 | Suite | Count | Coverage |
 |---|---|---|
 | `packages/mascot/test/geometry.test.mjs` | 6 | Eye/beam geometry, expressions, state mapping |
-| `packages/web/tests/unit.test.ts` | 28 | KMS-backed credential encryption/rotation, allowlist, Brave and OpenRouter mapping, 429 retry, network vs abort, citations, ranking, freshness, language, prompt injection, client IP HMAC, same-origin anchors, production config, body limits, provider-safe log redaction |
-| `packages/web/tests/integration.test.ts` | 22 | Database-backed account persistence, content encryption, Quick/Deep/Deeper, the Deeper AI SDK tool loop, planner repair/degrade, partial search, missing keys, one stream per conversation, global concurrency, lock timeout, stop flag, mid-answer delete, timeout, NUL, retry, stale repair, pinned ordering, pagination, session cleanup, rate limits, Brave spacing, key replacement |
-| `packages/web/e2e/*.spec.ts` | 24 | 8 API checks, 11 UI flows and 5 route variants for CSP and axe; Quick checks search details, reasoning and tables, Deeper checks the third mode, and sidebar checks pinning and title search |
+| `packages/web/tests/unit.test.ts` | 34 | KMS-backed credential encryption/rotation, allowlist, Brave/Tavily/Exa/OpenRouter mapping, 429 retry, network vs abort, citations, ranking, freshness, language, prompt injection, client IP HMAC, same-origin anchors, production config, body limits, provider-safe log redaction |
+| `packages/web/tests/integration.test.ts` | 26 | Database-backed account persistence, content encryption, Quick/Deep/Deeper, the Deeper AI SDK tool loop, planner repair/degrade, partial search, missing keys, selected-provider persistence and cost, no fallback, one stream per conversation, global concurrency, lock timeout, stop flag, mid-answer delete, timeout, NUL, retry, stale repair, pinned ordering, pagination, session cleanup, rate limits, Brave spacing, key replacement |
+| `packages/web/e2e/*.spec.ts` | 27 | 9 API checks, 13 UI flows and 5 route variants for CSP and axe; Quick checks search details, reasoning and tables, provider selection checks Tavily, Deeper checks the third mode, and sidebar checks pinning and title search |
 
 Commands:
 
@@ -1399,8 +1452,9 @@ The Playwright suite checks:
 - Pages carry a nonce-based CSP and all script tags use the nonce.
 - Conversation pagination and cursor rejection, including pinned ordering across pages.
 - Account deletion clears the cookie.
-- Onboarding preserves saved model and mode.
+- Onboarding preserves saved model and mode; settings accepts a launch provider and rejects an unknown one.
 - Quick answers stream citations, costs and sources.
+- A Tavily answer can be selected per question and keeps its provider badge after reload.
 - Answers stay isolated per conversation when switching.
 - Client-side navigation keeps a stream alive.
 - Stop keeps partial text; “Ask again” replaces the answer without repeating the question.
@@ -1418,13 +1472,13 @@ The Playwright suite checks:
 |---|---|
 | Accounts | Google-only OIDC, one account per Google subject |
 | Session management | Opaque token, SHA-256 at rest, 30-day sliding expiry, renewal, sign-out |
-| Provider credentials | OpenRouter + Brave, validated, KMS-encrypted, replaceable, deletable, revalidatable |
+| Provider credentials | OpenRouter + Brave/Tavily/Exa, validated, KMS-encrypted, replaceable, deletable, revalidatable |
 | Credential limits | Brave Free/Paid plan, declared expiry and budget, estimated spend and warnings |
 | Key rotation | KMS key rotation; env adapter supports previous-key list + re-wrap script |
-| Quick answers | One Brave search, cited streamed answer |
+| Quick answers | One search on the selected provider, cited streamed answer |
 | Deep answers | Planner, 3–5 sub-queries, bounded concurrent search, optional gap pass, cited report |
-| Deeper answers | AI SDK `ToolLoopAgent`, Brave search tool, adaptive rounds, 60-search/60-source cap, long cited report |
-| Retrieval | Brave Web Search snippets, freshness filter, per-key spacing, 429 retry |
+| Deeper answers | AI SDK `ToolLoopAgent`, selected-provider search tool, adaptive rounds, 60-search/60-source cap, long cited report |
+| Retrieval | Brave, Tavily or Exa snippets selected per answer, freshness filter, Brave per-key spacing, 429 retry |
 | Source quality | URL validation, snippet requirement, canonical dedupe, site diversity, stable numbering |
 | Citations | Streamed `[n]` parsing, sanitization, click-to-source, uncited warning |
 | Conversation history | Create, open, title, paginate, delete |
@@ -1432,11 +1486,11 @@ The Playwright suite checks:
 | Streaming | SSE stages, progress, sources, deltas, citations, usage, done/error; heartbeat |
 | Cancellation | Local and cross-instance stop, partial text kept, timeout and shutdown handling |
 | Models | Five allowlisted OpenRouter models, default DeepSeek V4.1 Flash |
-| Costs | OpenRouter actual generation cost, Brave list-price estimate, tokens, latency, search count |
+| Costs | OpenRouter actual generation cost, selected-provider list-price estimate, tokens, latency, search count |
 | Search transparency | Persisted per-answer search trace, collapsed by default |
 | Reasoning transparency | Provider-supplied reasoning, persisted encrypted and collapsed by default |
 | Markdown | Tables in addition to headings, lists, quotes, code and citations |
-| Settings | Default model, default mode, keys and limits, account |
+| Settings | Default model, default search provider, default mode, keys and limits, account |
 | Account deletion | Immediate hard delete of the account, workspace key, content and credentials |
 | Rate limits | Login, chat, conversations, credentials, reads; per-account and per-IP |
 | Encryption | KMS-wrapped workspace keys, AES-256-GCM content and credential encryption |

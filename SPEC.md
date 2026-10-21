@@ -35,18 +35,18 @@ This file is the **target contract** for Alpha 1 and public launch. It is not an
 | Runtime | Next.js 16.4.2, React 19.3.1, TypeScript 6.0.3, Node 24, one web app plus the mascot workspace package | Same, deployed on Fly.io |
 | Auth | Google-only OIDC accounts, opaque session cookie, 30-day sliding expiry, hashed token at rest | Same; no guest workspaces |
 | LLM | OpenRouter only; five allowlisted models; DeepSeek V4.1 Flash default | Same |
-| Search | Brave Web Search only; fixed 1,100 ms per-key spacing; no user-declared limits | Brave, Tavily and Exa selected per answer; Brave free/paid profile; user-declared expiry and budget warnings |
+| Search | Brave, Tavily and Exa selected per answer; Brave free/paid spacing and key metadata; Tavily and Exa use their basic search contracts | Same, plus provider-specific plan metadata and cost ceilings |
 | Modes | Quick, Deep and Deeper. Deeper uses an AI SDK `ToolLoopAgent` with a Brave search tool and a 60-search budget. | Same |
 | Streaming | SSE with meta/stage/plan/search/progress/sources/delta/reasoning/citation/usage/done/error, stop and retry | Same contract, extra provider metadata |
 | Sources | Ranked/deduplicated Brave results, right panel or mobile sheet, inline citations | Same with provider-specific costs |
 | History | Keyset pagination, 50 conversations per page, 60 messages per page, pinned chats, title search over loaded pages, per-conversation delete | Same, plus full-history search |
-| Settings | Curated model and default mode; Brave shown as the fixed search provider | Add default search provider and optional cost ceiling |
-| Credentials | KMS-backed AES-256-GCM envelope encryption; Brave plan, expiry and budget metadata; usage warnings | Same; GCP KMS in production |
+| Settings | Curated model, default search provider and default mode; per-answer provider picker in the composer | Add optional cost ceiling |
+| Credentials | KMS-backed AES-256-GCM envelope encryption; OpenRouter, Brave, Tavily and Exa keys; Brave plan, expiry and budget metadata; usage warnings | Same; GCP KMS in production |
 | Content at rest | Conversation titles, messages, sources and stored errors are encrypted with per-account workspace keys | Same; GCP KMS in production |
 | Public pages | `/`, `/login`, `/onboarding`, `/chat`, `/chat/[id]`, `/privacy`, `/terms` | Add `/welcome` if needed, full legal/footer surface, docs, status, licenses, support and supporters |
 | Analytics | Structured JSON logs and a database health check | PostHog Cloud EU, server-side metadata-only events |
 | Operations | Production-parity Docker Compose with Caddy TLS, Dex OIDC, LocalStack KMS, TLS Postgres and the production image; release migrations, versioned health, tagged releases, graceful shutdown | Fly + Neon, GCP KMS, monitoring, backups, killswitch |
-| Tests | 28 web unit tests, 22 database integration tests, 24 Playwright E2E tests, 6 mascot tests | Add parity-stack smoke, analytics, legal, killswitch, dump-encryption, load and eval gates |
+| Tests | 34 web unit tests, 26 database integration tests, 27 Playwright E2E tests, 6 mascot tests | Add parity-stack smoke, analytics, legal, killswitch, dump-encryption, load and eval gates |
 | Donations | None | Optional post-public `/support` and `/supporters` |
 
 ---
@@ -232,17 +232,17 @@ Alpha 1 is the first end-to-end, BYOK product slice. It is deliberately narrow: 
 | Area | Feature | Priority | State |
 |---|---|---|---|
 | Auth | Google-only OIDC sign-in, database-backed session cookie, no guest workspaces. | P0 | Implemented |
-| Onboarding | Add OpenRouter key, choose a search provider and add its key, declare Brave plan and optional key limits, validate both on one screen | P0 | Partial: OpenRouter + Brave and key metadata; no provider picker |
+| Onboarding | Add OpenRouter key, choose a search provider and add its key, declare Brave plan and optional key limits, validate both on one screen | P0 | Implemented: provider picker plus Brave key metadata |
 | Models | Five curated OpenRouter models; DeepSeek V4.1 Flash is the default | P0 | Implemented |
 | Chat | Ask a question, stream the answer, render inline citations | P0 | Implemented |
-| Retrieval | Brave, Tavily or Exa; titles, URLs and snippets; one selected provider per answer | P0 | Partial: Brave only |
+| Retrieval | Brave, Tavily or Exa; titles, URLs and snippets; one selected provider per answer | P0 | Implemented |
 | Sources | Right-hand source panel with title, domain, date, snippet, link | P0 | Implemented |
 | Animation | Beamling working state for queued, searching, reading, writing, done and errors | P0 | Implemented |
 | Deep mode | Planner, 3–5 sub-queries, optional gap pass, longer cited report | P0 | Implemented |
 | Deeper mode | Agentic research loop with a search tool, adaptive rounds and a hard 60-search budget, then a long cited report | P0 | Implemented |
 | History | List, open, delete conversations | P0 | Implemented |
-| Settings | One modal for keys, key plan/expiry/budget, default model, default search provider and default mode | P0 | Partial: model + mode; provider fixed to Brave; no key limits |
-| Costs | Per-answer token counts, generation cost and selected search-provider cost | P0 | Partial: OpenRouter actual + Brave estimate |
+| Settings | One modal for keys, key plan/expiry/budget, default model, default search provider and default mode | P0 | Partial: model, mode, provider and Brave limits; no cost ceiling |
+| Costs | Per-answer token counts, generation cost and selected search-provider cost | P0 | Implemented: OpenRouter actual + selected-provider estimate |
 | Analytics | Server-side PostHog Cloud EU events and internal usage dashboards; metadata only | P0 | Target |
 | Errors | Invalid key, insufficient credits, rate limit, provider outage, no sources | P0 | Implemented |
 | Account | Delete the account and its data; sign out | P0 | Implemented |
@@ -252,7 +252,7 @@ Alpha 1 is the first end-to-end, BYOK product slice. It is deliberately narrow: 
 
 ### 8.2 Alpha 1 provider decisions (target)
 
-**Current adapter:** OpenRouter generation plus Brave Web Search. Tavily and Exa are target adapters and do not exist in the current checkout.
+**Current adapters:** OpenRouter generation plus Brave, Tavily and Exa search. The selected provider is stored per answer; there is no fallback. Tavily and Exa use basic search with a single 429 retry; provider-specific concurrency limits and provider-reported search costs remain target work.
 
 **LLM: OpenRouter only.**
 
@@ -276,7 +276,7 @@ Alpha 1 is the first end-to-end, BYOK product slice. It is deliberately narrow: 
 - Set `max_tokens` to 8,192 for Quick synthesis and 16,384 for Deep synthesis when the model supports it. The budget covers both reasoning and answer tokens, so it must not be sized from the answer alone. Planner calls use 2,000 and gap calls 1,500 for the same reason.
 - No direct OpenAI, Anthropic, Gemini, Groq or Mistral adapters in Alpha 1.
 
-**Search target: Brave, Tavily or Exa; one active provider per answer.** The current code implements the Brave branch only.
+**Search target: Brave, Tavily or Exa; one active provider per answer.** The current code implements all three branches and a per-answer picker.
 
 The user picks a default search provider in Settings and can change it between answers. The selected provider is stored with each assistant message. If the selected provider has no saved credential, the request fails with `CREDENTIAL_MISSING` and the UI links to onboarding/settings. Beamling never falls back to another search provider.
 
@@ -356,7 +356,7 @@ A single `SearchProvider` adapter interface normalizes every provider to `{url, 
 
 ## 9. Core User Flows
 
-The current flow is OpenRouter + Brave with encrypted content. Search-provider selection and provider-specific metadata in this section are target behavior; see §0.
+The current flow is OpenRouter plus one selected search provider, with encrypted content. Provider-specific plan metadata remains Brave-only; see §0.
 
 ### 9.1 Sign-in and onboarding
 
@@ -368,7 +368,7 @@ The current flow is OpenRouter + Brave with encrypted content. Search-provider s
 6. The user is redirected to `/onboarding` (or `/chat` when keys are already connected).
 7. Onboarding step 1: the user adds an OpenRouter key. The client sends it once to the server over HTTPS.
 8. The server validates it with `GET https://openrouter.ai/api/v1/key`, then stores it encrypted. The client receives only the masked last four characters, status and validation time; provider limit/label details are not returned today.
-9. On the same screen, the user chooses a search provider and adds its key. For Brave, the user also selects **Free (1 request/second)** or **Paid / provider plan** and may declare an optional key expiry date and budget. The server validates the key with one minimal search request.
+9. On the same screen, the user chooses Brave, Tavily or Exa and adds its key. For Brave, the user also selects **Free (1 request/second)** or **Paid / provider plan** and may declare an optional key expiry date and budget. The server validates the key with one minimal search request.
 10. The user confirms the OpenRouter model (DeepSeek V4.1 Flash by default) and clicks "Start asking".
 11. The chat opens empty, ready for the first question. Onboarding is complete.
 
@@ -381,7 +381,7 @@ Target: under three minutes from first visit to first cited answer.
 1. User types a question and presses Enter. The client immediately enters `queued` and starts the Beamling working animation.
 2. The client creates a user message optimistically and calls `POST /api/chat`.
 3. The server resolves the credentials, decrypts them in memory, and starts the pipeline.
-4. The server emits `meta` (conversation, message and user-message ids) and `stage: queued`. Selected model and provider are shown from stored settings and the answer metadata; per-answer provider selection is target behavior.
+4. The server emits `meta` (conversation, message and user-message ids) and `stage: queued`. The selected model and search provider are shown from the request, stored settings and answer metadata.
 5. Query understanding runs: normalization, language detection and, for Deep, a planner call. Deeper starts an agent loop instead. Quick does not use an LLM rewrite in Alpha 1.
 6. The server emits `stage: searching` with a real detail such as "Planning 4 searches" or "Searching 2 of 4".
 7. For Quick, one search runs on the selected provider. For Deep, 3–5 sub-queries run with bounded concurrency. For Deeper, the model calls a search tool with 1–4 queries per step; each query emits `search` with `searching`, then `done`/`failed` and its result count. Each completion emits `progress`. The loop stops when the model says the evidence is sufficient, when it reaches 60 searches, or when the time limit stops the run.
@@ -435,12 +435,12 @@ Each requirement has a priority (P0 = Alpha 1 target, P1 = private alpha/v1, P2 
   - Acceptance: sign-out clears the cookie and revokes the session; deletion completes in the same request and revokes every session; the UI confirms without sending email.
 - **FR-60 (P0 — public-launch target):** Every account has its own workspace data encryption key. All user content is encrypted at rest with AES-256-GCM before it is written to PostgreSQL, so a database dump, backup, read replica, or read-only database compromise cannot reveal user content; only the minimized operational metadata listed in §13.6 remains readable.
   - Acceptance: a raw `pg_dump` of an account containing a question, answer and sources contains none of those plaintext strings; ciphertext from another account cannot be decrypted; the master key is never stored in the database; deleting the account removes its wrapped data key.
-- **FR-51 (P0 — target):** Users can choose the search provider for an answer (Brave, Tavily or Exa). The selected provider is stored with the message and is shown in the answer metadata. Current code fixes the provider to Brave and has no per-message provider column.
+- **FR-51 (P0):** Users can choose the search provider for an answer (Brave, Tavily or Exa). The selected provider is stored with the message and is shown in the answer metadata.
   - Acceptance: a missing credential for the selected provider returns `CREDENTIAL_MISSING` and links to onboarding/settings; Beamling never falls back to another provider.
 
 ### 10.2 Credentials
 
-- **FR-06 (P0):** Users can add one credential per provider per kind (LLM or search). Launch search providers are Brave, Tavily and Exa; current code accepts OpenRouter and Brave only.
+- **FR-06 (P0):** Users can add one credential per provider per kind (LLM or search). Launch search providers are Brave, Tavily and Exa; current code accepts OpenRouter, Brave, Tavily and Exa.
 - **FR-07 (P0):** The server validates a credential before saving it.
   - Acceptance: an OpenRouter key is validated with `GET /api/v1/key`; a Brave, Tavily or Exa key is validated with one minimal search request for that provider. Invalid keys are rejected and valid keys are saved with status `active`.
 - **FR-08 (P0):** Credentials are encrypted at rest with envelope encryption.
@@ -470,7 +470,7 @@ Each requirement has a priority (P0 = Alpha 1 target, P1 = private alpha/v1, P2 
 - **FR-21 (P0):** The system shows an explicit message when OpenRouter rejects the key, has insufficient credits, or rate-limits; failures from the selected search provider use the same contract.
 - **FR-22 (P0):** The system never changes the selected OpenRouter model ID. OpenRouter may route that model to a different upstream provider; the resolved model and upstream provider, when returned, are recorded and disclosed.
 - **FR-23 (P0):** Users can choose Quick, Deep or Deeper mode.
-- **FR-24 (P0):** Quick uses one search on the selected provider and a concise answer. Deep uses a planner, 3–5 sub-queries, an optional gap pass of at most two extra searches, and a longer report. Deeper gives the model a Brave search tool and lets it choose 1–4 queries per step until it judges the evidence sufficient, with a hard budget of 60 searches and 60 sources.
+- **FR-24 (P0):** Quick uses one search on the selected provider and a concise answer. Deep uses a planner, 3–5 sub-queries, an optional gap pass of at most two extra searches, and a longer report. Deeper gives the model a search tool for the selected provider and lets it choose 1–4 queries per step until it judges the evidence sufficient, with a hard budget of 60 searches and 60 sources.
 - **FR-25 (P1):** The system generates three follow-up questions after an answer.
 - **FR-26 (P1):** The answer includes a "sources conflict" note when retrieved sources disagree on a material fact.
 - **FR-43 (P0):** Beamling shows an animated working state for `queued`, `searching`, `reading`, `writing`, `done`, `stopped`, `no-sources` and `error`.
@@ -533,7 +533,7 @@ Each requirement has a priority (P0 = Alpha 1 target, P1 = private alpha/v1, P2 
 
 ## 11. Answer Pipeline
 
-The implemented pipeline is OpenRouter + Brave. It has fixed source counts and character caps, but no token-counting/context-trimming pass. Multi-provider retrieval, dynamic token budgets and per-message provider metadata are target behavior; current mechanics are documented in `TECHNICAL.md`.
+The implemented pipeline is OpenRouter plus one selected search provider. It has fixed source counts and character caps, but no token-counting/context-trimming pass. Dynamic token budgets and provider-reported search costs are target behavior; current mechanics are documented in `TECHNICAL.md`.
 
 ### 11.1 Stages
 
@@ -1227,13 +1227,14 @@ Request:
 {
   "conversationId": "f1c2...",
   "question": "What changed in the EU AI Act in 2026?",
-  "mode": "deeper"
+  "mode": "deeper",
+  "searchProvider": "tavily"
 }
 ```
 
-`mode` is `quick`, `deep` or `deeper`. To retry the latest failed or stopped answer, send `{"conversationId":"f1c2...","retryOf":"<assistant message id>","mode":"quick"}` instead of a question. The server reuses the stored question and replaces that answer, so the question is never stored twice.
+`mode` is `quick`, `deep` or `deeper`; `searchProvider` is optional and defaults to the workspace setting. To retry the latest failed or stopped answer, send `{"conversationId":"f1c2...","retryOf":"<assistant message id>","mode":"quick"}` instead of a question. The server reuses the stored question and replaces that answer, so the question is never stored twice.
 
-Response: `text/event-stream` with these events. The current server emits this exact contract; a per-message `searchProvider` field is target work.
+Response: `text/event-stream` with these events. The per-answer provider is returned in `usage.searchProvider` and persisted on the message.
 
 ```text
 event: meta
@@ -1273,13 +1274,13 @@ event: citation
 data: {"position":1}
 
 event: usage
-data: {"tokensIn":4210,"tokensOut":612,"costUsd":0.0232,"searchCostUsd":0.005,"latencyMs":18400,"searchRequests":1,"resolvedModel":"deepseek/deepseek-v4.1-flash","upstreamProvider":"DeepInfra"}
+data: {"tokensIn":4210,"tokensOut":612,"costUsd":0.0232,"searchCostUsd":0.008,"latencyMs":18400,"searchRequests":1,"searchProvider":"tavily","resolvedModel":"deepseek/deepseek-v4.1-flash","upstreamProvider":"DeepInfra"}
 
 event: done
 data: {"noSources":false,"truncated":false,"degraded":false,"searchFailures":0}
 ```
 
-`usage.costUsd` is the generation cost reported by OpenRouter (actual); `usage.searchCostUsd` is Brave's cost at the `$0.005` per-request list price (estimated); `usage.resolvedModel` and `usage.upstreamProvider` are what OpenRouter actually used when it reports them. `done.searchFailures` greater than zero is the partial-search warning and `degraded` marks a Deep run whose planner failed twice.
+`usage.costUsd` is the generation cost reported by OpenRouter (actual); `usage.searchCostUsd` is the selected provider's cost at its configured list price (estimated); `usage.searchProvider` identifies Brave, Tavily or Exa; `usage.resolvedModel` and `usage.upstreamProvider` are what OpenRouter actually used when it reports them. `done.searchFailures` greater than zero is the partial-search warning and `degraded` marks a Deep run whose planner failed twice.
 
 Deep adds `plan` and repeated `progress` events:
 
@@ -1706,9 +1707,9 @@ Rules:
 | Layer | Tool | Current coverage |
 |---|---|---|
 | Mascot unit | Node test runner | 6 geometry/expression tests |
-| Web unit | Node test runner | 26 tests: credential encryption and rotation, model allowlist, citation parsing, Brave and OpenRouter error mapping, retries, URL filtering, ranking, language detection, prompt injection boundaries, client IP, production configuration, body limits, log redaction |
-| Web integration | Node test runner + PostgreSQL | 21 tests: account persistence and content encryption, Quick/Deep/Deeper, the Deeper AI SDK tool loop, planner repair, partial search, missing keys, one-stream-per-conversation, global cap, lock contention, stop flag, delete mid-answer, timeout, NUL handling, retry replacement, stale answer repair, pagination, session cleanup, atomic rate limits, per-key search spacing, credential replacement |
-| End-to-end | Playwright | 23 tests: 8 API checks, 10 UI flows and 5 public-route axe/CSP checks; Quick-answer coverage includes search trace, reasoning and tables, and Deeper coverage checks the third mode |
+| Web unit | Node test runner | 34 tests: credential encryption and rotation, model allowlist, citation parsing, Brave/Tavily/Exa/OpenRouter error mapping, retries, URL filtering, ranking, language detection, prompt injection boundaries, client IP, production configuration, body limits, log redaction |
+| Web integration | Node test runner + PostgreSQL | 26 tests: account persistence and content encryption, Quick/Deep/Deeper, the Deeper AI SDK tool loop, planner repair, partial search, missing keys, selected-provider persistence/cost, no fallback, one-stream-per-conversation, global cap, lock contention, stop flag, delete mid-answer, timeout, NUL handling, retry replacement, stale answer repair, pagination, session cleanup, atomic rate limits, per-key search spacing, credential replacement |
+| End-to-end | Playwright | 27 tests: 9 API checks, 13 UI flows and 5 public-route axe/CSP checks; Quick-answer coverage includes search trace, reasoning and tables, provider selection checks Tavily, and Deeper coverage checks the third mode |
 
 Commands:
 
@@ -1850,7 +1851,7 @@ Evaluation methodology: each golden question has a reference answer and expected
 | Milestone | Deliverables | Exit criteria | State |
 |---|---|---|---|
 | M0 — Spec | This document, brand assets brief, domain purchases | Review complete | Spec exists; domain purchase unconfirmed |
-| M1 — Alpha 1 | Google-only accounts, OpenRouter credentials and streaming, Brave/Tavily/Exa search adapters, Brave plan/expiry/budget metadata, Quick, Deep, Deeper, citations, search animation, history, PostHog usage analytics, production-parity local stack | Quick and Deep cited answers render end to end; Google login works; animation follows real stages; local stack runs the production image with KMS-backed crypto | Partial: Google login, OpenRouter + Brave, key metadata, Quick/Deep/Deeper, citations, animation, history, KMS-backed crypto and local parity work; Tavily, Exa and PostHog are missing |
+| M1 — Alpha 1 | Google-only accounts, OpenRouter credentials and streaming, Brave/Tavily/Exa search adapters, Brave plan/expiry/budget metadata, Quick, Deep, Deeper, citations, search animation, history, PostHog usage analytics, production-parity local stack | Quick and Deep cited answers render end to end; Google login works; animation follows real stages; local stack runs the production image with KMS-backed crypto | Partial: Google login, OpenRouter + Brave/Tavily/Exa, key metadata, Quick/Deep/Deeper, citations, animation, history, KMS-backed crypto and local parity work; PostHog is missing |
 | M2 — Private alpha | Onboarding, settings, usage/cost, error states, account deletion, 100-question eval, Fly + Neon deploy | 10–25 invited users complete real Quick, Deep and Deeper questions without key leakage | Target |
 | M3 — Public launch | All launch adapters, welcome page, public docs and GitHub feedback repo, legal pages, open-source license page, CMP if needed, rate limits, status page | Public Google sign-in open, SLOs met for one week | Target |
 | M3.1 — Support (optional, post-public) | `/support`, outbound Tipeee/PayPal link, opt-in `/supporters`, footer link | Donation link works with no payment script; consent and removal process documented | Target |
@@ -1899,12 +1900,12 @@ Open WebUI is a full self-hosted chat platform: a Python and Svelte application 
 | Google Gemini | Post-alpha | API key query or header | List models | SSE |
 | Groq | Post-alpha | Bearer token | List models | SSE |
 | Mistral | Post-alpha | Bearer token | List models | SSE |
-| Tavily | Target | `Authorization: Bearer` | `POST /search` with one result | `/search`, JSON |
-| Exa | Target | `x-api-key` or Bearer | `POST /search` with one result | `/search`, JSON |
+| Tavily | Implemented | `Authorization: Bearer` | `POST /search` with one result | `/search`, JSON |
+| Exa | Implemented | `x-api-key` or Bearer | `POST /search` with one result | `/search`, JSON |
 | Serper | Post-alpha | `X-API-KEY` | One-result search | Not streamed |
 | SearXNG | Post-alpha | None or user token | One-result search | Not streamed |
 
-Implemented today: OpenRouter and Brave. Tavily and Exa are target adapters. Verified on 2026-10-21:
+Implemented today: OpenRouter, Brave, Tavily and Exa. Verified on 2026-10-21:
 
 - OpenRouter Chat Completions is OpenAI-compatible and streams SSE. OpenRouter comment lines (`: OPENROUTER PROCESSING`) are keep-alives. Usage arrives once in the final chunk before `[DONE]`. Mid-stream errors arrive as `data:` events with a top-level `error` and `finish_reason: "error"`.
 - OpenRouter may fall back upstream on `5xx` or rate limits. The selected model ID does not change; the upstream provider may.

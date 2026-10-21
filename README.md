@@ -7,16 +7,16 @@ Your models. Your search. Your bill.
 ## Current features
 
 - Google-only accounts; no guest workspaces
-- Bring your own OpenRouter and Brave Search keys
+- Bring your own OpenRouter key and a Brave, Tavily or Exa search key
 - Keys and conversation content encrypted at rest through KMS-backed envelope encryption
-- Brave Free/Paid plan plus optional expiry and budget warnings
+- Choose the search provider per answer; Brave Free/Paid plan plus optional expiry and budget warnings
 - Quick for one search pass, Deep for planned multi-query research, Deeper for an agentic loop with up to 60 searches
 - Streamed answers with inline, numbered citations
 - Collapsed panels for the searches actually run and any model-provided reasoning
 - Markdown tables, headings, lists, quotes and code
 - Source panel with titles, domains, snippets, and publication dates
 - Conversation history with pinned chats, title search and per-conversation deletion
-- Model and default-mode settings
+- Model, default search-provider and default-mode settings
 - Account deletion and sign-out
 - Production-parity local stack with HTTPS, OIDC, KMS and TLS PostgreSQL
 
@@ -30,7 +30,7 @@ See [TECHNICAL.md](TECHNICAL.md) for the current architecture, API, answer pipel
 pnpm local:up                   # https://localhost
 ```
 
-The parity stack runs the production image behind Caddy with Dex as the local OIDC provider and LocalStack KMS. Sign in with `test@beamling.local` / `beamling`, accept the local CA, then add real OpenRouter and Brave keys. Stop it with `pnpm local:down`.
+The parity stack runs the production image behind Caddy with Dex as the local OIDC provider and LocalStack KMS. Sign in with `test@beamling.local` / `beamling`, accept the local CA, then add real OpenRouter and Brave/Tavily/Exa keys. Stop it with `pnpm local:down`.
 
 `pnpm web:dev` remains available for a fast dev loop. Set `BEAMLING_FAKE_PROVIDERS=1` to try it without provider keys (any key starting with `test-` works).
 
@@ -42,13 +42,13 @@ Tests: `pnpm test` (unit; integration tests run when `DATABASE_URL` points at a 
 The version lives in the root `package.json`. To cut a release:
 
 ```sh
-pnpm version:set 0.2.0
+pnpm version:set 0.3.0
 git add package.json packages/web/package.json packages/mascot/package.json
-git commit -m "chore(release): v0.2.0"
+git commit -m "chore(release): v0.3.0"
 git push origin main
 ```
 
-On a green `main` build, CI tags `v0.2.0`, pushes the image to GHCR as `v0.2.0` and `latest`, and creates the GitHub release. `/api/health`, the landing footer and the sidebar expose the same version and commit.
+On a green `main` build, CI tags `v0.3.0`, pushes the image to GHCR as `v0.3.0` and `latest`, and creates the GitHub release. `/api/health`, the landing footer and the sidebar expose the same version and commit.
 
 ## Deploying
 
