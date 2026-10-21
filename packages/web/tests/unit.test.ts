@@ -5,6 +5,8 @@ import { newCitations, sanitizeCitations, stripCitations } from "../lib/server/c
 import { decryptCredential, encryptCredential } from "../lib/server/crypto";
 import { ApiError } from "../lib/server/http";
 import { searchBrave, validateBraveKey } from "../lib/server/providers/brave";
+import { exaError, searchExa, validateExaKey } from "../lib/server/providers/exa";
+import { searchTavily, tavilyError, validateTavilyKey } from "../lib/server/providers/tavily";
 import { DEFAULT_LLM_MODEL, OPENROUTER_MODEL_IDS, isAllowedModel } from "../lib/providers";
 
 process.env.CREDENTIAL_MASTER_KEY = randomBytes(32).toString("base64");
@@ -137,6 +139,87 @@ test("Brave validates and searches only the base Web Search endpoint", async (t)
   assert.equal(sources.length, 1);
   assert.equal(sources[0].domain, "example.org");
   assert.equal(sources[0].snippet, "Standard search snippet.");
+});
+
+test("Tavily validates and searches with a minimal basic request", async (t) => {
+  const bodies: Record<string, unknown>[] = [];
+  const calls = mockFetch(t, (_url, init) => {
+    bodies.push(JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>);
+    return jsonResponse({
+      results: [{
+        title: "Tavily result",
+        url: "https://example.org/tavily",
+        content: "Tavily <strong>snippet</strong>.",
+        published_date: "2026-10-01",
+      }],
+    });
+  });
+  await validateTavilyKey("tvly-unique");
+  const sources = await searchTavily("tvly-unique", "test", { count: 2, freshnessDays: 7 });
+  assert.equal(calls.length, 2);
+  assert.equal(bodies[0].max_results, 1);
+  assert.equal(bodies[1].max_results, 2);
+  assert.equal(bodies[1].search_depth, "basic");
+  assert.equal(bodies[1].time_range, "week");
+  assert.equal(bodies[1].include_raw_content, false);
+  assert.equal(sources[0].snippet, "Tavily snippet.");
+  assert.equal(sources[0].publishedAt, "2026-10-01");
+});
+
+test("Exa validates and searches highlights without page text", async (t) => {
+  const bodies: Record<string, unknown>[] = [];
+  const calls = mockFetch(t, (_url, init) => {
+    bodies.push(JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>);
+    return jsonResponse({
+      results: [{
+        title: "Exa result",
+        url: "https://example.org/exa",
+        publishedDate: "2026-09-20T00:00:00.000Z",
+        highlights: ["First <b>highlight</b>.", "Second highlight."],
+      }],
+    });
+  });
+  await validateExaKey("exa-unique");
+  const sources = await searchExa("exa-unique", "test", { count: 3 });
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0], "https://api.exa.ai/search");
+  assert.equal(bodies[0].numResults, 1);
+  assert.equal(bodies[1].numResults, 3);
+  assert.equal(bodies[1].type, "auto");
+  assert.deepEqual(bodies[1].contents, { highlights: true });
+  assert.equal(sources[0].snippet, "First highlight. Second highlight.");
+  assert.equal(sources[0].publishedAt, "2026-09-20T00:00:00.000Z");
+});
+
+test("Tavily and Exa map provider statuses to stable codes", () => {
+  const cases: [number, string][] = [
+    [401, "CREDENTIAL_INVALID"],
+    [432, "SEARCH_PLAN_MISSING"],
+    [433, "QUOTA_EXCEEDED"],
+    [402, "INSUFFICIENT_CREDITS"],
+    [429, "PROVIDER_RATE_LIMITED"],
+    [503, "PROVIDER_UNAVAILABLE"],
+  ];
+  for (const [status, code] of cases) {
+    assert.equal(tavilyError(status).code, code);
+    if (status !== 432 && status !== 433) assert.equal(exaError(status).code, code);
+  }
+});
+
+test("Tavily retries a 429 once and Exa surfaces a rejected request", async (t) => {
+  let attempts = 0;
+  mockFetch(t, () => {
+    attempts += 1;
+    return attempts === 1
+      ? jsonResponse({}, 429, { "Retry-After": "0" })
+      : jsonResponse({ results: [{ title: "Ok", url: "https://example.org/ok", content: "Snippet." }] });
+  });
+  const sources = await searchTavily("tvly-retry-unique", "q", { count: 1 });
+  assert.equal(attempts, 2);
+  assert.equal(sources.length, 1);
+
+  mockFetch(t, () => jsonResponse({ error: "No credits" }, 402));
+  await assert.rejects(() => searchExa("exa-unique", "q", { count: 1 }), isApiError("INSUFFICIENT_CREDITS", "exa"));
 });
 
 test("Brave explains keys with no search capability", async (t) => {

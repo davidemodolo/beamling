@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { isAllowedModel } from "../../providers";
+import { isAllowedModel, isSearchProvider } from "../../providers";
 import type { Settings } from "../../types";
 import { db } from "../db";
 import { settings } from "../schema";
@@ -18,11 +18,16 @@ export async function updateSettings(userId: string, patch: Partial<Settings>): 
     ...current,
     ...patch,
     llmModel: patch.llmModel && isAllowedModel(patch.llmModel) ? patch.llmModel : current.llmModel,
+    defaultSearchProvider:
+      patch.defaultSearchProvider && isSearchProvider(patch.defaultSearchProvider)
+        ? patch.defaultSearchProvider
+        : current.defaultSearchProvider,
   };
   const [row] = await db
     .update(settings)
     .set({
       llmModel: next.llmModel,
+      defaultSearchProvider: next.defaultSearchProvider,
       defaultMode: next.defaultMode,
       updatedAt: new Date(),
     })

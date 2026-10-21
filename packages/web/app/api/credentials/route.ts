@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 const schema = z
   .object({
     kind: z.enum(["llm", "search"]),
-    provider: z.enum(["openrouter", "brave"]),
+    provider: z.enum(["openrouter", "brave", "tavily", "exa"]),
     key: z.string().trim().min(8).max(600),
     plan: z.enum(["free", "paid"]).optional(),
     expiresOn: z.string().date().optional().nullable(),

@@ -62,7 +62,13 @@ async function createAccount(t: TestContext, options: { keys?: boolean } = {}): 
 
 async function ask(
   userId: string,
-  input: { question?: string; retryOf?: string; conversationId?: string; mode: "quick" | "deep" | "deeper" },
+  input: {
+    question?: string;
+    retryOf?: string;
+    conversationId?: string;
+    mode: "quick" | "deep" | "deeper";
+    searchProvider?: "brave" | "tavily" | "exa";
+  },
   signal = new AbortController().signal,
 ) {
   const { prepareChat, runChat } = await import("../lib/server/chat");
@@ -111,6 +117,39 @@ test("account chat persists a cited Quick answer with its cost breakdown", { ski
   assert.equal(answer?.sources?.length, sources.length);
   assert.equal(answer?.usage?.searchCostUsd, 0.005);
   assert.equal(answer?.usage?.upstreamProvider, "fixture");
+});
+
+test("the selected search provider is stored with the answer and its cost", { skip }, async (t) => {
+  const userId = await createAccount(t);
+  const { saveCredential, updateSettings } = await import("../lib/server/repo");
+  const { encryptCredential } = await import("../lib/server/crypto");
+  await saveCredential({
+    userId,
+    kind: "search",
+    provider: "tavily",
+    encrypted: await encryptCredential(userId, "search", "tavily", "test-tavily"),
+    status: "active",
+  });
+  await updateSettings(userId, { defaultSearchProvider: "tavily" });
+
+  const { events, prepared } = await ask(userId, { question: "Use Tavily", mode: "quick" });
+  assert.equal(prepared.searchProvider, "tavily");
+  const usage = eventData<{ searchProvider: string; searchCostUsd: number }>(events, "usage");
+  assert.equal(usage.searchProvider, "tavily");
+  assert.equal(usage.searchCostUsd, 0.008);
+  const { answer } = await storedAnswer(userId, prepared.conversationId);
+  assert.equal(answer?.searchProvider, "tavily");
+  assert.equal(answer?.usage?.searchProvider, "tavily");
+  assert.equal(answer?.status, "complete");
+});
+
+test("a missing key for the selected provider never falls back", { skip }, async (t) => {
+  const { ApiError } = await import("../lib/server/http");
+  const userId = await createAccount(t);
+  await assert.rejects(
+    ask(userId, { question: "Use Exa", mode: "quick", searchProvider: "exa" }),
+    (error) => error instanceof ApiError && error.code === "CREDENTIAL_MISSING" && error.provider === "exa",
+  );
 });
 
 test("Deep mode plans sub-queries and emits progress", { skip }, async (t) => {

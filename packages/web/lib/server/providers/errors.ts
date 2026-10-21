@@ -1,9 +1,14 @@
 import type { CredentialStatus } from "../../types";
 import { ApiError } from "../http";
 
-export type ProviderName = "openrouter" | "brave";
+export type ProviderName = "openrouter" | "brave" | "tavily" | "exa";
 
-const LABEL: Record<ProviderName, string> = { openrouter: "OpenRouter", brave: "Brave Search" };
+const LABEL: Record<ProviderName, string> = {
+  openrouter: "OpenRouter",
+  brave: "Brave Search",
+  tavily: "Tavily",
+  exa: "Exa",
+};
 
 export function unavailable(provider: ProviderName, message?: string): ApiError {
   return new ApiError(
@@ -42,6 +47,6 @@ export async function providerFetch(
 export function credentialStatusFor(error: unknown): CredentialStatus | null {
   if (!(error instanceof ApiError)) return null;
   if (error.code === "PROVIDER_RATE_LIMITED") return "rate_limited";
-  if (["CREDENTIAL_INVALID", "INSUFFICIENT_CREDITS", "BRAVE_PLAN_MISSING_SEARCH"].includes(error.code)) return "invalid";
+  if (["CREDENTIAL_INVALID", "INSUFFICIENT_CREDITS", "BRAVE_PLAN_MISSING_SEARCH", "SEARCH_PLAN_MISSING", "QUOTA_EXCEEDED"].includes(error.code)) return "invalid";
   return null;
 }

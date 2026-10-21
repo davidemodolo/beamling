@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { streamAnswer, type StreamError, type StreamHandle } from "./api";
 import { useStore, withoutKey, type ThreadMessage } from "./store";
-import type { ChatStage, DoneEvent, Mode, SearchTrace, Source } from "./types";
+import type { ChatStage, DoneEvent, Mode, SearchProvider, SearchTrace, Source } from "./types";
 import { createId } from "./utils";
 
 export const STAGE_LABEL: Record<ChatStage, string> = {
@@ -29,6 +29,7 @@ export interface LiveAnswer {
   /** The failed or stopped answer this run replaces. */
   replaces?: string;
   mode: Mode;
+  searchProvider: SearchProvider;
   content: string;
   reasoning: string;
   searches: SearchTrace[];
@@ -42,6 +43,7 @@ export interface LiveAnswer {
 export interface StartAnswer {
   conversationId: string;
   mode: Mode;
+  searchProvider?: SearchProvider;
   question?: string;
   retryOf?: string;
 }
@@ -95,6 +97,7 @@ export function AnswerStreamsProvider({ children }: { children: ReactNode }) {
   const start = useCallback(
     (input: StartAnswer): boolean => {
       const { conversationId, mode } = input;
+      const searchProvider = input.searchProvider ?? latest.current.settings.defaultSearchProvider;
       if (!alive.current || handles.current.has(conversationId)) return false;
       const llmModel = latest.current.settings.llmModel;
 
@@ -121,6 +124,7 @@ export function AnswerStreamsProvider({ children }: { children: ReactNode }) {
           question: input.question,
           replaces: input.retryOf,
           mode,
+          searchProvider,
           content: "",
           reasoning: "",
           searches: [],
@@ -183,6 +187,7 @@ export function AnswerStreamsProvider({ children }: { children: ReactNode }) {
               status: "error",
               createdAt: now,
               mode,
+              searchProvider,
               sources: [],
               llmModel,
               errorCode: error.code,
@@ -214,6 +219,7 @@ export function AnswerStreamsProvider({ children }: { children: ReactNode }) {
               status,
               createdAt: now,
               mode,
+              searchProvider,
               sources,
               llmModel,
               searches,
@@ -231,7 +237,7 @@ export function AnswerStreamsProvider({ children }: { children: ReactNode }) {
       };
 
       const handle = streamAnswer(
-        { conversationId, mode, question: input.question, retryOf: input.retryOf },
+        { conversationId, mode, searchProvider, question: input.question, retryOf: input.retryOf },
         {
           onMeta: (meta) => {
             messageId = meta.messageId;

@@ -1,10 +1,16 @@
 import { isFakeProviders } from "../env";
+import type { SearchProvider } from "../../types";
 import { searchBrave, validateBraveKey } from "./brave";
+import { searchExa, validateExaKey } from "./exa";
 import { fakeChat, fakeSearch, fakeValidateKey } from "./fake";
 import { openRouterChat, validateOpenRouterKey, type ChatMessage, type ChatPurpose } from "./openrouter";
+import type { RetrievedSource, SearchOptions } from "./shared";
+import { searchTavily, validateTavilyKey } from "./tavily";
+
+export type ProviderKeyName = "openrouter" | SearchProvider;
 
 export async function validateProviderKey(
-  provider: "openrouter" | "brave",
+  provider: ProviderKeyName,
   key: string,
   plan: "free" | "paid" = "free",
 ): Promise<void> {
@@ -16,16 +22,26 @@ export async function validateProviderKey(
     await validateOpenRouterKey(key);
     return;
   }
+  if (provider === "tavily") {
+    await validateTavilyKey(key);
+    return;
+  }
+  if (provider === "exa") {
+    await validateExaKey(key);
+    return;
+  }
   await validateBraveKey(key, plan);
 }
 
 export async function search(
-  provider: "brave",
+  provider: SearchProvider,
   key: string,
   query: string,
-  options: { count: number; freshnessDays?: number; signal?: AbortSignal; plan?: "free" | "paid" },
-) {
-  if (isFakeProviders()) return fakeSearch(query, options.count, options.signal);
+  options: SearchOptions,
+): Promise<RetrievedSource[]> {
+  if (isFakeProviders()) return fakeSearch(query, options.count, options.signal, provider);
+  if (provider === "tavily") return searchTavily(key, query, options);
+  if (provider === "exa") return searchExa(key, query, options);
   return searchBrave(key, query, options);
 }
 

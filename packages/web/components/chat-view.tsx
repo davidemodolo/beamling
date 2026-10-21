@@ -11,10 +11,10 @@ import { useAnswerStreams, type LiveAnswer } from "@/lib/answer-streams";
 import { api, errorMessage } from "@/lib/api";
 import { useIsMobile } from "@/lib/hooks/use-is-mobile";
 import { useToast } from "@/lib/hooks/use-toast";
-import { llmModelName, SEARCH_PROVIDER_LABEL } from "@/lib/providers";
+import { isSearchProvider, llmModelName, searchProviderName } from "@/lib/providers";
 import { useStore, type ThreadMessage } from "@/lib/store";
 import { MODE_LABELS } from "@/lib/modes";
-import type { Mode, Source } from "@/lib/types";
+import type { Mode, SearchProvider, Source } from "@/lib/types";
 import { collapseWhitespace } from "@/lib/utils";
 
 interface ChatViewProps {
@@ -86,6 +86,8 @@ function ChatPane({ conversationId }: ChatViewProps) {
   // Mode picked before the first question; kept local so it does not change the saved default.
   const [draftMode, setDraftMode] = useState<Mode | null>(null);
   const mode = summary?.mode ?? draftMode ?? settings.defaultMode;
+  const [draftSearchProvider, setDraftSearchProvider] = useState<SearchProvider | null>(null);
+  const searchProvider = draftSearchProvider ?? settings.defaultSearchProvider;
   const [activeSource, setActiveSource] = useState<number | null>(null);
   const [sourceMessageId, setSourceMessageId] = useState<string | null>(null);
   const [sourcesHidden, setSourcesHidden] = useState(false);
@@ -158,11 +160,11 @@ function ChatPane({ conversationId }: ChatViewProps) {
       setLocalId(id);
       if (window.location.pathname === "/chat") window.history.replaceState(null, "", `/chat/${id}`);
     }
-    if (streams.start({ conversationId: id, mode, question })) {
+    if (streams.start({ conversationId: id, mode, searchProvider, question })) {
       setInput("");
       beforeStart();
     }
-  }, [input, live, followStored, activeId, createConversation, mode, showToast, streams, beforeStart]);
+  }, [input, live, followStored, activeId, createConversation, mode, searchProvider, showToast, streams, beforeStart]);
 
   const onRetry = useCallback(
     (messageId: string) => {
@@ -175,15 +177,17 @@ function ChatPane({ conversationId }: ChatViewProps) {
         // Never stored: ask the same question again as a new one.
         const question = list.slice(0, index).findLast((message) => message.role === "user");
         if (!question) return;
-        if (streams.start({ conversationId: activeId, mode, question: question.content })) {
+        if (streams.start({ conversationId: activeId, mode, searchProvider, question: question.content })) {
           removeMessages(activeId, question.local ? [failed.id, question.id] : [failed.id]);
           beforeStart();
         }
         return;
       }
-      if (streams.start({ conversationId: activeId, mode: failed.mode ?? mode, retryOf: failed.id })) beforeStart();
+      const failedProvider = failed.searchProvider && isSearchProvider(failed.searchProvider) ? failed.searchProvider : searchProvider;
+      setDraftSearchProvider(failedProvider);
+      if (streams.start({ conversationId: activeId, mode: failed.mode ?? mode, searchProvider: failedProvider, retryOf: failed.id })) beforeStart();
     },
-    [activeId, live, thread, streams, mode, removeMessages, beforeStart],
+    [activeId, live, thread, streams, mode, searchProvider, removeMessages, beforeStart],
   );
 
   useEffect(() => {
@@ -195,7 +199,9 @@ function ChatPane({ conversationId }: ChatViewProps) {
   const lastAssistant = useMemo(() => messages.findLast((message) => message.role === "assistant"), [messages]);
   const contextMessage = (sourceMessageId && messages.find((message) => message.id === sourceMessageId)) || lastAssistant;
   const sources = live ? live.sources : contextMessage?.sources ?? [];
-  const providerName = SEARCH_PROVIDER_LABEL;
+  const sourceProvider = live?.searchProvider ?? contextMessage?.searchProvider ?? searchProvider;
+  const providerName = searchProviderName(sourceProvider);
+  const selectedProviderName = searchProviderName(searchProvider);
   const modelName = llmModelName(settings.llmModel);
   const loadingSources = !!live && !live.sources.length && (live.stage === "searching" || live.stage === "reading");
   const showSources = !sourcesHidden && (sources.length > 0 || loadingSources);
@@ -279,7 +285,7 @@ function ChatPane({ conversationId }: ChatViewProps) {
         <div className="topbar-title">
           <strong>{summary?.title ?? (conversationId ? "Loading…" : "New question")}</strong>
           <span>
-            {MODE_LABELS[mode]} · {modelName} · {providerName}
+            {MODE_LABELS[mode]} · {modelName} · {selectedProviderName}
           </span>
         </div>
         <div className="topbar-actions">
@@ -344,7 +350,7 @@ function ChatPane({ conversationId }: ChatViewProps) {
                     {live.question ? <UserBubble content={live.question} /> : null}
                     <WorkingAnswer
                       live={live}
-                      providerName={providerName}
+                      providerName={searchProviderName(live.searchProvider)}
                       modelName={modelName}
                       onStop={() => activeId && streams.stop(activeId)}
                       onCitation={onLiveCitation}
@@ -389,6 +395,8 @@ function ChatPane({ conversationId }: ChatViewProps) {
           if (summary) setConversationMode(summary.id, next);
           else setDraftMode(next);
         }}
+        searchProvider={searchProvider}
+        onSearchProviderChange={setDraftSearchProvider}
         modelLabel={modelName}
         inputRef={inputRef}
       />

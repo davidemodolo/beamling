@@ -3,7 +3,8 @@
 import { useEffect, type RefObject } from "react";
 import { Icon } from "./ui/icon";
 import { MODE_LABELS, MODES } from "@/lib/modes";
-import type { Mode } from "@/lib/types";
+import { SEARCH_PROVIDERS } from "@/lib/providers";
+import type { Mode, SearchProvider } from "@/lib/types";
 
 interface ComposerProps {
   value: string;
@@ -17,6 +18,8 @@ interface ComposerProps {
   disabled?: boolean;
   mode: Mode;
   onModeChange: (mode: Mode) => void;
+  searchProvider: SearchProvider;
+  onSearchProviderChange: (provider: SearchProvider) => void;
   modelLabel: string;
   inputRef: RefObject<HTMLTextAreaElement | null>;
 }
@@ -31,6 +34,8 @@ export function Composer({
   disabled = false,
   mode,
   onModeChange,
+  searchProvider,
+  onSearchProviderChange,
   modelLabel,
   inputRef,
 }: ComposerProps) {
@@ -101,6 +106,21 @@ export function Composer({
           <span className="badge badge-mono composer-model" title="Model used for the next answer">
             {modelLabel}
           </span>
+          <label className="composer-provider-wrap" title="Search provider used for the next answer">
+            <span className="sr-only">Search provider</span>
+            <select
+              className="composer-provider"
+              value={searchProvider}
+              onChange={(event) => {
+                const next = SEARCH_PROVIDERS.find((provider) => provider.id === event.target.value);
+                if (next) onSearchProviderChange(next.id);
+              }}
+            >
+              {SEARCH_PROVIDERS.map((provider) => (
+                <option key={provider.id} value={provider.id}>{provider.name}</option>
+              ))}
+            </select>
+          </label>
           <span className="spacer" />
           <span className="badge" title="Keys are stored encrypted on the server">
             Live

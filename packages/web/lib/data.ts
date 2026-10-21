@@ -1,8 +1,9 @@
-import { DEFAULT_LLM_MODEL } from "./providers";
+import { DEFAULT_LLM_MODEL, DEFAULT_SEARCH_PROVIDER } from "./providers";
 import type { Settings } from "./types";
 
 export const DEFAULT_SETTINGS: Settings = {
   llmModel: DEFAULT_LLM_MODEL,
+  defaultSearchProvider: DEFAULT_SEARCH_PROVIDER,
   defaultMode: "quick",
 };
 

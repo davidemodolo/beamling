@@ -8,15 +8,19 @@ import { Icon } from "@/components/ui/icon";
 import { Wordmark } from "@/components/wordmark";
 import { WorkspaceError } from "@/components/workspace-error";
 import { errorMessage } from "@/lib/api";
-import { OPENROUTER_MODELS } from "@/lib/providers";
+import { OPENROUTER_MODELS, SEARCH_PROVIDERS, searchProviderInfo } from "@/lib/providers";
 import { useStore } from "@/lib/store";
+import type { SearchProvider } from "@/lib/types";
 
 export default function OnboardingPage() {
   const router = useRouter();
   const { addCredential, credentials, ready, settings, updateSettings, error, user } = useStore();
-  // Null until the user picks a model: the select shows the saved one and nothing else is changed.
+  // Null until the user changes it: the control shows the saved values and nothing else is changed.
   const [pickedModel, setPickedModel] = useState<string | null>(null);
+  const [pickedProvider, setPickedProvider] = useState<SearchProvider | null>(null);
   const llmModel = pickedModel ?? settings.llmModel;
+  const searchProvider = pickedProvider ?? settings.defaultSearchProvider;
+  const providerInfo = searchProviderInfo(searchProvider);
   const [llmKey, setLlmKey] = useState("");
   const [searchKey, setSearchKey] = useState("");
   const [bravePlan, setBravePlan] = useState<"free" | "paid">("free");
@@ -28,7 +32,10 @@ export default function OnboardingPage() {
   const [pending, setPending] = useState(false);
 
   const hasLlm = credentials.some((credential) => credential.kind === "llm");
-  const hasSearch = credentials.some((credential) => credential.kind === "search");
+  const hasSearch = credentials.some(
+    (credential) => credential.kind === "search" && credential.provider === searchProvider,
+  );
+  const hasAnySearch = credentials.some((credential) => credential.kind === "search");
 
   const finish = async (event: FormEvent) => {
     event.preventDefault();
@@ -40,7 +47,7 @@ export default function OnboardingPage() {
       return;
     }
     if (!hasSearch && nextSearch.length < 8) {
-      setSearchError("Paste your Brave Search key.");
+      setSearchError(`Paste your ${providerInfo.name} key.`);
       return;
     }
     setPending(true);
@@ -62,24 +69,27 @@ export default function OnboardingPage() {
       try {
         await addCredential({
           kind: "search",
-          provider: "brave",
+          provider: searchProvider,
           key: nextSearch,
-          plan: bravePlan,
-          expiresOn: expiresOn || null,
-          budgetUsd: budgetUsd ? Number(budgetUsd) : null,
+          plan: searchProvider === "brave" ? bravePlan : undefined,
+          expiresOn: searchProvider === "brave" && expiresOn ? expiresOn : null,
+          budgetUsd: searchProvider === "brave" && budgetUsd ? Number(budgetUsd) : null,
           budgetPeriod: "month",
         });
         setSearchKey("");
       } catch (cause) {
-        setSearchError(errorMessage(cause, "Brave rejected this key."));
+        setSearchError(errorMessage(cause, `${providerInfo.name} rejected this key.`));
         setPending(false);
         return;
       }
     }
     try {
-      if (pickedModel && pickedModel !== settings.llmModel) await updateSettings({ llmModel: pickedModel });
+      const patch: Parameters<typeof updateSettings>[0] = {};
+      if (pickedModel && pickedModel !== settings.llmModel) patch.llmModel = pickedModel;
+      if (searchProvider !== settings.defaultSearchProvider) patch.defaultSearchProvider = searchProvider;
+      if (Object.keys(patch).length) await updateSettings(patch);
     } catch (cause) {
-      setFormError(`Your keys are saved, but the default model could not be saved. ${errorMessage(cause, "Try again.")}`);
+      setFormError(`Your keys are saved, but the defaults could not be saved. ${errorMessage(cause, "Try again.")}`);
       setPending(false);
       return;
     }
@@ -104,7 +114,7 @@ export default function OnboardingPage() {
       <header className="onboard-top">
         <Wordmark href="/chat" />
         <span style={{ flex: 1 }} />
-        {hasLlm && hasSearch ? (
+        {hasLlm && hasAnySearch ? (
           <Link href="/chat" className="btn btn-ghost btn-sm">Back to chat</Link>
         ) : null}
       </header>
@@ -114,8 +124,8 @@ export default function OnboardingPage() {
           <span className="badge badge-beam" style={{ width: "fit-content" }}>Setup</span>
           <h1>Connect your keys</h1>
           <p className="lead">
-            Beamling runs on your own OpenRouter and Brave Search keys. They are validated once, encrypted at rest, and
-            never returned to the browser.
+            Beamling runs on your own OpenRouter and search-provider keys. They are validated once, encrypted at rest,
+            and never returned to the browser.
           </p>
 
           <section className="settings-card">
@@ -177,18 +187,35 @@ export default function OnboardingPage() {
           <section className="settings-card">
             <div className="settings-card-head">
               <div style={{ flex: 1 }}>
-                <h2>Brave Search</h2>
-                <p>Web Search plan key, used for retrieval.</p>
+                <h2>Web search</h2>
+                <p>Choose the provider used for retrieval. You can change it per answer later.</p>
               </div>
               {hasSearch ? <span className="badge badge-success">Connected</span> : null}
             </div>
             <div className="settings-card-body">
               <div className="field">
+                <label className="label" htmlFor="search-provider">Search provider</label>
+                <select
+                  id="search-provider"
+                  className="select"
+                  value={searchProvider}
+                  onChange={(event) => {
+                    setPickedProvider(event.target.value as SearchProvider);
+                    setSearchKey("");
+                    setSearchError("");
+                  }}
+                >
+                  {SEARCH_PROVIDERS.map((provider) => (
+                    <option key={provider.id} value={provider.id}>{provider.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
                 <label className="label" htmlFor="search-key">
-                  API key
+                  {providerInfo.name} API key
                   <a
                     className="btn btn-ghost btn-sm"
-                    href="https://api-dashboard.search.brave.com/app/keys"
+                    href={providerInfo.keyUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                   >
@@ -202,7 +229,7 @@ export default function OnboardingPage() {
                     setSearchKey(value);
                     setSearchError("");
                   }}
-                  placeholder={hasSearch ? "Connected · paste a new key to replace it" : "BSA..."}
+                  placeholder={hasSearch ? "Connected · paste a new key to replace it" : providerInfo.placeholder}
                   invalid={!!searchError}
                 />
                 {searchError ? (
@@ -213,44 +240,48 @@ export default function OnboardingPage() {
                   <p className="hint">Validated with one minimal request.</p>
                 )}
               </div>
-              <div className="field">
-                <label className="label" htmlFor="brave-plan">Brave plan</label>
-                <select
-                  id="brave-plan"
-                  className="select"
-                  value={bravePlan}
-                  onChange={(event) => setBravePlan(event.target.value === "paid" ? "paid" : "free")}
-                >
-                  <option value="free">Free · 1 request/second</option>
-                  <option value="paid">Paid / provider plan</option>
-                </select>
-                <p className="hint">We ask because Brave&apos;s API does not expose the key plan.</p>
-              </div>
-              <div className="field">
-                <label className="label" htmlFor="brave-expiry">Key expiry (optional)</label>
-                <input
-                  id="brave-expiry"
-                  className="input"
-                  type="date"
-                  value={expiresOn}
-                  onChange={(event) => setExpiresOn(event.target.value)}
-                />
-                <p className="hint">Set on the Brave dashboard. Used only for warnings.</p>
-              </div>
-              <div className="field">
-                <label className="label" htmlFor="brave-budget">Monthly budget in USD (optional)</label>
-                <input
-                  id="brave-budget"
-                  className="input"
-                  type="number"
-                  min="0.01"
-                  step="0.01"
-                  value={budgetUsd}
-                  onChange={(event) => setBudgetUsd(event.target.value)}
-                  placeholder="5.00"
-                />
-                <p className="hint">Also set on the Brave dashboard. Beamling estimates spend from request counts.</p>
-              </div>
+              {searchProvider === "brave" ? (
+                <>
+                  <div className="field">
+                    <label className="label" htmlFor="brave-plan">Brave plan</label>
+                    <select
+                      id="brave-plan"
+                      className="select"
+                      value={bravePlan}
+                      onChange={(event) => setBravePlan(event.target.value === "paid" ? "paid" : "free")}
+                    >
+                      <option value="free">Free · 1 request/second</option>
+                      <option value="paid">Paid / provider plan</option>
+                    </select>
+                    <p className="hint">We ask because Brave&apos;s API does not expose the key plan.</p>
+                  </div>
+                  <div className="field">
+                    <label className="label" htmlFor="brave-expiry">Key expiry (optional)</label>
+                    <input
+                      id="brave-expiry"
+                      className="input"
+                      type="date"
+                      value={expiresOn}
+                      onChange={(event) => setExpiresOn(event.target.value)}
+                    />
+                    <p className="hint">Set on the Brave dashboard. Used only for warnings.</p>
+                  </div>
+                  <div className="field">
+                    <label className="label" htmlFor="brave-budget">Monthly budget in USD (optional)</label>
+                    <input
+                      id="brave-budget"
+                      className="input"
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={budgetUsd}
+                      onChange={(event) => setBudgetUsd(event.target.value)}
+                      placeholder="5.00"
+                    />
+                    <p className="hint">Also set on the Brave dashboard. Beamling estimates spend from request counts.</p>
+                  </div>
+                </>
+              ) : null}
             </div>
           </section>
 

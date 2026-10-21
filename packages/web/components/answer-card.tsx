@@ -4,9 +4,9 @@ import { memo, useCallback, type ReactNode } from "react";
 import { describeAnswerError } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
 import { useToast } from "@/lib/hooks/use-toast";
-import { llmModelName, SEARCH_PROVIDER_LABEL } from "@/lib/providers";
+import { llmModelName, searchProviderName } from "@/lib/providers";
 import type { ThreadMessage } from "@/lib/store";
-import type { SearchTrace, Source, Usage } from "@/lib/types";
+import type { SearchProvider, SearchTrace, Source, Usage } from "@/lib/types";
 import { formatCost, formatNumber } from "@/lib/utils";
 import { useSidebar } from "./chat-shell";
 import { Markdown } from "./markdown";
@@ -22,7 +22,7 @@ interface AnswerCardProps {
 }
 
 /** Selected model, plus what OpenRouter actually routed it to when that differs. */
-function ModelBadges({ selected, usage }: { selected?: string; usage?: Usage }) {
+function ModelBadges({ selected, searchProvider, usage }: { selected?: string; searchProvider?: SearchProvider; usage?: Usage }) {
   const resolved = usage?.resolvedModel;
   const rerouted = resolved && selected && resolved !== selected;
   return (
@@ -42,7 +42,7 @@ function ModelBadges({ selected, usage }: { selected?: string; usage?: Usage }) 
           via {usage.upstreamProvider}
         </span>
       ) : null}
-      <span className="badge badge-mono">{SEARCH_PROVIDER_LABEL}</span>
+      {searchProvider ? <span className="badge badge-mono">{searchProviderName(searchProvider)}</span> : null}
     </>
   );
 }
@@ -58,7 +58,7 @@ function UsageLine({ usage }: { usage: Usage }) {
       <span className="dot" />
       <span title="Generation cost reported by OpenRouter">{formatCost(usage.costUsd)} actual</span>
       {usage.searchCostUsd != null ? (
-        <span title="Brave Search cost at the plan's list price">
+        <span title={`${searchProviderName(usage.searchProvider ?? "brave")} cost at the list price`}>
           + {formatCost(usage.searchCostUsd)} est. ({searches} {searches === 1 ? "search" : "searches"})
         </span>
       ) : null}
@@ -262,7 +262,7 @@ export const AnswerCard = memo(function AnswerCard({ message, onCitation, onOpen
         {!error && !writing ? (
           <div className="answer-footer">
             <div className="meta">
-              <ModelBadges selected={message.llmModel} usage={message.usage} />
+              <ModelBadges selected={message.llmModel} searchProvider={message.searchProvider ?? message.usage?.searchProvider} usage={message.usage} />
               {message.usage ? <UsageLine usage={message.usage} /> : null}
             </div>
             <div className="actions">

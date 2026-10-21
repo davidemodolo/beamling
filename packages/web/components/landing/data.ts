@@ -1,5 +1,5 @@
 export const LLM_NAMES = ["OpenRouter"] as const;
-export const SEARCH_NAMES = ["Brave"] as const;
+export const SEARCH_NAMES = ["Brave", "Tavily", "Exa"] as const;
 
 export const FEATURES = [
   {
@@ -10,7 +10,7 @@ export const FEATURES = [
   },
   {
     title: "Your keys, your models",
-    body: "Alpha 1 uses OpenRouter for generation and Brave Search for retrieval. Your credentials do the work, with no shared provider account and no markup.",
+    body: "Alpha 1 uses OpenRouter for generation and Brave, Tavily or Exa for retrieval. Your credentials do the work, with no shared provider account and no markup.",
     icon: "key" as const,
     label: "02",
   },
@@ -41,5 +41,5 @@ export const STATS = [
   { value: "3 s", label: "p95 to first token" },
   { value: "8", label: "sources per quick answer" },
   { value: "0%", label: "markup on your keys" },
-  { value: "1 + 1", label: "providers in Alpha" },
+  { value: "1 + 3", label: "providers in Alpha" },
 ];

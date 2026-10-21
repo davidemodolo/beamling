@@ -3,7 +3,7 @@
 import { Icon } from "@/components/ui/icon";
 import { errorMessage } from "@/lib/api";
 import { useToast } from "@/lib/hooks/use-toast";
-import { OPENROUTER_MODELS } from "@/lib/providers";
+import { OPENROUTER_MODELS, SEARCH_PROVIDERS } from "@/lib/providers";
 import { useStore } from "@/lib/store";
 import { MODE_HINTS, MODE_LABELS, MODES } from "@/lib/modes";
 
@@ -60,8 +60,18 @@ export function DefaultsPanel() {
           </div>
 
           <div className="field">
-            <span className="label">Search</span>
-            <div className="input mono" style={{ display: "flex", alignItems: "center" }}>Brave Search · Web Search</div>
+            <label className="label" htmlFor="search-provider">Default search provider</label>
+            <select
+              id="search-provider"
+              className="select"
+              value={settings.defaultSearchProvider}
+              onChange={(event) => save({ defaultSearchProvider: event.target.value as typeof settings.defaultSearchProvider }, "Search provider updated")}
+            >
+              {SEARCH_PROVIDERS.map((provider) => (
+                <option key={provider.id} value={provider.id}>{provider.name}</option>
+              ))}
+            </select>
+            <p className="hint">You can change it for an individual answer from the composer.</p>
           </div>
         </div>
       </section>

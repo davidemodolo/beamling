@@ -1,4 +1,5 @@
 export type Mode = "quick" | "deep" | "deeper";
+export type SearchProvider = "brave" | "tavily" | "exa";
 type Role = "user" | "assistant";
 type MessageStatus = "pending" | "streaming" | "complete" | "stopped" | "error";
 export type ChatStage =
@@ -41,6 +42,8 @@ export interface Usage {
   searchCostUsd?: number;
   latencyMs?: number;
   searchRequests?: number;
+  /** The search provider selected for this answer. */
+  searchProvider?: SearchProvider;
   /** The model and upstream provider OpenRouter actually used, when it reports them. */
   resolvedModel?: string;
   upstreamProvider?: string;
@@ -53,6 +56,7 @@ export interface Message {
   status: MessageStatus;
   createdAt: string;
   mode?: Mode;
+  searchProvider?: SearchProvider;
   sources?: Source[];
   llmModel?: string;
   usage?: Usage;
@@ -109,6 +113,7 @@ export interface Credential {
 
 export interface Settings {
   llmModel: string;
+  defaultSearchProvider: SearchProvider;
   defaultMode: Mode;
 }
 

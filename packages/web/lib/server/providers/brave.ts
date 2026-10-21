@@ -4,15 +4,20 @@ import { ApiError } from "../http";
 import { log } from "../log";
 import { reserveProviderSlot } from "../repo";
 import { providerFetch, unavailable } from "./errors";
+import {
+  clampQuery,
+  DEFAULT_RETRY_WAIT_MS,
+  MAX_RETRY_WAIT_MS,
+  normalizedDate,
+  plainText,
+  requestSignal,
+  retryWaitMs as baseRetryWaitMs,
+  sleep,
+  type RetrievedSource,
+  type SearchOptions,
+} from "./shared";
 
-export interface RetrievedSource {
-  position: number;
-  title: string;
-  url: string;
-  domain: string;
-  snippet: string;
-  publishedAt?: string;
-}
+export type { RetrievedSource } from "./shared";
 
 interface BraveWebResponse {
   web?: {
@@ -27,32 +32,6 @@ interface BraveWebResponse {
 
 interface BraveErrorBody {
   error?: { code?: string; detail?: string; message?: string };
-}
-
-const REQUEST_TIMEOUT_MS = 30_000;
-/** A 429 is retried once, and only when the provider asks for a short wait. */
-const MAX_RETRY_WAIT_MS = 5_000;
-const DEFAULT_RETRY_WAIT_MS = 1_000;
-
-function normalizedDate(value: string | undefined): string | undefined {
-  if (!value) return undefined;
-  if (!/^\d{4}-\d{2}-\d{2}/.test(value)) return undefined;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? undefined : value;
-}
-
-function plainText(value: string | undefined): string {
-  if (!value) return "";
-  return value
-    .replace(/<[^>]*>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/\s+/g, " ")
-    .trim();
 }
 
 /** Maps a Brave HTTP status and error body to a stable Beamling error. */
@@ -84,22 +63,12 @@ async function readError(response: Response): Promise<ApiError> {
   return braveError(response.status, body);
 }
 
-function clampQuery(query: string): string {
-  const words = query.trim().split(/\s+/).filter(Boolean).slice(0, 75).join(" ");
-  return words.slice(0, 600);
-}
-
 function freshnessValue(days?: number): string | undefined {
   if (!days || days <= 0 || days > 365) return undefined;
   if (days <= 1) return "pd";
   if (days <= 7) return "pw";
   if (days <= 31) return "pm";
   return "py";
-}
-
-function requestSignal(signal?: AbortSignal): AbortSignal {
-  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
-  return signal ? AbortSignal.any([signal, timeout]) : timeout;
 }
 
 function minIntervalMs(plan: "free" | "paid"): number {
@@ -109,24 +78,6 @@ function minIntervalMs(plan: "free" | "paid"): number {
   }
   const raw = Number(process.env.BRAVE_MIN_INTERVAL_MS ?? "1100");
   return Number.isFinite(raw) && raw >= 0 ? raw : 1100;
-}
-
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(new DOMException("Aborted", "AbortError"));
-      return;
-    }
-    const timer = setTimeout(() => {
-      signal?.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    const onAbort = () => {
-      clearTimeout(timer);
-      reject(new DOMException("Aborted", "AbortError"));
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
 }
 
 /**
@@ -144,23 +95,18 @@ async function waitForSlot(apiKey: string, plan: "free" | "paid", signal?: Abort
 
 /** Milliseconds Brave asks us to wait, from Retry-After or the per-second reset header. */
 function retryWaitMs(headers: Headers, now = Date.now()): number {
-  const retryAfter = headers.get("retry-after");
-  if (retryAfter) {
-    const seconds = Number(retryAfter);
-    if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
-    const date = Date.parse(retryAfter);
-    if (!Number.isNaN(date)) return Math.max(0, date - now);
-  }
+  const base = baseRetryWaitMs(headers, now);
+  if (base !== DEFAULT_RETRY_WAIT_MS) return base;
   // X-RateLimit-Reset lists seconds until each window resets; the first is the per-second window.
   const reset = Number(headers.get("x-ratelimit-reset")?.split(",")[0]?.trim());
   if (Number.isFinite(reset) && reset >= 0) return reset * 1000;
-  return DEFAULT_RETRY_WAIT_MS;
+  return base;
 }
 
 async function requestWebSearch(
   key: string,
   query: string,
-  options: { count: number; freshnessDays?: number; signal?: AbortSignal; plan?: "free" | "paid" },
+  options: SearchOptions,
 ): Promise<Response> {
   const url = new URL("https://api.search.brave.com/res/v1/web/search");
   url.searchParams.set("q", clampQuery(query));
@@ -200,7 +146,7 @@ export async function validateBraveKey(key: string, plan: "free" | "paid" = "fre
 export async function searchBrave(
   key: string,
   query: string,
-  options: { count: number; freshnessDays?: number; signal?: AbortSignal; plan?: "free" | "paid" },
+  options: SearchOptions,
 ): Promise<RetrievedSource[]> {
   const response = await requestWebSearch(key, query, options);
   if (!response.ok) throw await readError(response);

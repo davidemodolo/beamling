@@ -30,6 +30,7 @@ const schema = z
     question: question.optional(),
     retryOf: z.string().uuid().optional(),
     mode: z.enum(["quick", "deep", "deeper"]),
+    searchProvider: z.enum(["brave", "tavily", "exa"]).optional(),
   })
   .refine((input) => (input.question === undefined) !== (input.retryOf === undefined), {
     message: "Send either a question or the answer to retry.",

@@ -1,5 +1,6 @@
 import { decryptCredential } from "@/lib/server/crypto";
 import { ApiError, idParam, json, notFound } from "@/lib/server/http";
+import { isSearchProvider } from "@/lib/providers";
 import { validateProviderKey } from "@/lib/server/providers";
 import { credentialStatusFor } from "@/lib/server/providers/errors";
 import { consumeRateLimit, getCredentialById, updateCredentialValidation } from "@/lib/server/repo";
@@ -13,7 +14,7 @@ export const POST = apiRoute<{ params: Promise<{ id: string }> }>(async ({ conte
   await consumeRateLimit(`credentials:${user.id}`, 20, 3600);
   const row = await getCredentialById(user.id, id);
   if (!row) throw notFound("Credential not found.");
-  const provider = row.provider === "brave" ? "brave" : "openrouter";
+  const provider = row.kind === "search" && isSearchProvider(row.provider) ? row.provider : "openrouter";
 
   let key: string;
   try {

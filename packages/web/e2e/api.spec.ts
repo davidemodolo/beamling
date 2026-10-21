@@ -138,3 +138,14 @@ test("Brave plan, expiry and budget are stored as user-declared limits", async (
   expect(updated.plan).toBe("paid");
   expect(updated.budgetUsd).toBe(10);
 });
+
+test("the default search provider can be changed and invalid providers are rejected", async ({ request }) => {
+  await signIn(request);
+  const saved = await request.patch("/api/settings", { data: { defaultSearchProvider: "tavily" } });
+  expect(saved.ok()).toBe(true);
+  expect((await saved.json()).settings.defaultSearchProvider).toBe("tavily");
+  expect((await (await request.get("/api/state")).json()).settings.defaultSearchProvider).toBe("tavily");
+
+  const invalid = await request.patch("/api/settings", { data: { defaultSearchProvider: "serper" } });
+  expect(invalid.status()).toBe(400);
+});

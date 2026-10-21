@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { isAllowedModel } from "@/lib/providers";
+import { isAllowedModel, SEARCH_PROVIDER_IDS } from "@/lib/providers";
 import { ApiError, json, parseBody } from "@/lib/server/http";
 import { updateSettings } from "@/lib/server/repo";
 import { apiRoute } from "@/lib/server/route";
@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 
 const schema = z.object({
   llmModel: z.string().max(200).optional(),
+  defaultSearchProvider: z.enum(SEARCH_PROVIDER_IDS).optional(),
   defaultMode: z.enum(["quick", "deep", "deeper"]).optional(),
 });
 

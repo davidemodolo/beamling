@@ -1,7 +1,7 @@
 "use client";
 
 import { createParser } from "eventsource-parser";
-import type { ChatStage, DoneEvent, Mode, SearchTrace, Source, Usage } from "./types";
+import type { ChatStage, DoneEvent, Mode, SearchProvider, SearchTrace, Source, Usage } from "./types";
 
 export class ApiRequestError extends Error {
   constructor(
@@ -62,13 +62,17 @@ export function describeAnswerError(code: string | undefined, message?: string):
     case "UNAUTHENTICATED":
       return { title: "Session expired", message: SESSION_EXPIRED, action: "reload" };
     case "CREDENTIAL_MISSING":
-      return settings("Key needed", "Add your OpenRouter and Brave Search keys in Settings.");
+      return settings("Key needed", "Add your OpenRouter key and a key for the selected search provider in Settings.");
     case "CREDENTIAL_INVALID":
       return settings("Key rejected", "A provider rejected your key. Replace it in Settings, then retry.");
     case "CREDENTIAL_UNREADABLE":
       return settings("Key unreadable", "A saved key can no longer be read. Replace it in Settings.");
     case "BRAVE_PLAN_MISSING_SEARCH":
       return settings("Brave plan missing", "Your Brave key has no Search plan. Use a Search-plan key.");
+    case "SEARCH_PLAN_MISSING":
+      return settings("Search plan missing", "The selected search key does not include a search plan.");
+    case "QUOTA_EXCEEDED":
+      return retry("Search limit reached", "The selected search provider has reached its plan limit.");
     case "MODEL_NOT_FOUND":
       return settings("Model unavailable", "OpenRouter does not offer this model right now. Pick another in Settings.");
     case "INSUFFICIENT_CREDITS":
@@ -181,6 +185,7 @@ export interface StreamHandle {
 export interface StreamInput {
   conversationId: string;
   mode: Mode;
+  searchProvider?: SearchProvider;
   question?: string;
   retryOf?: string;
 }

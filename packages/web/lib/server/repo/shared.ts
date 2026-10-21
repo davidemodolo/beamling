@@ -1,4 +1,5 @@
 import { DEFAULT_SETTINGS } from "../../data";
+import { DEFAULT_SEARCH_PROVIDER, isSearchProvider } from "../../providers";
 import { decryptText } from "../workspace-key";
 import type {
   ConversationSummary,
@@ -56,6 +57,7 @@ export function mapSettings(row: SettingsRow | undefined): Settings {
   if (!row) return { ...DEFAULT_SETTINGS };
   return {
     llmModel: row.llmModel,
+    defaultSearchProvider: isSearchProvider(row.defaultSearchProvider) ? row.defaultSearchProvider : DEFAULT_SEARCH_PROVIDER,
     defaultMode: row.defaultMode === "deeper" ? "deeper" : row.defaultMode === "deep" ? "deep" : "quick",
   };
 }
@@ -90,6 +92,7 @@ export async function mapMessage(userId: string, row: MessageRow, sourceRows: So
         searchCostUsd: money(row.searchCostUsd),
         latencyMs: row.latencyMs ?? undefined,
         searchRequests: row.searchRequests,
+        searchProvider: isSearchProvider(row.searchProvider) ? row.searchProvider : DEFAULT_SEARCH_PROVIDER,
         resolvedModel: row.resolvedModel ?? undefined,
         upstreamProvider: row.upstreamProvider ?? undefined,
       }
@@ -111,6 +114,7 @@ export async function mapMessage(userId: string, row: MessageRow, sourceRows: So
         : "complete",
     createdAt: iso(row.createdAt),
     mode: row.mode === "deeper" ? "deeper" : row.mode === "deep" ? "deep" : row.mode === "quick" ? "quick" : undefined,
+    searchProvider: isSearchProvider(row.searchProvider) ? row.searchProvider : DEFAULT_SEARCH_PROVIDER,
     sources: await Promise.all(sourceRows.map((source) => mapSource(userId, source))),
     llmModel: row.llmModel ?? undefined,
     usage,

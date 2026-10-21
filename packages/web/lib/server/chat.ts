@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { APICallError, ToolLoopAgent, isStepCount, tool } from "ai";
 import { z } from "zod";
-import { DEFAULT_LLM_MODEL, isAllowedModel } from "../providers";
-import type { DoneEvent, Message, Mode, SearchTrace, Source, Usage } from "../types";
+import { DEFAULT_LLM_MODEL, isAllowedModel, isSearchProvider, searchProviderName } from "../providers";
+import type { DoneEvent, Message, Mode, SearchProvider, SearchTrace, Source, Usage } from "../types";
 import { isShutdown } from "./active-chats";
 import { hasValidCitation, newCitations, sanitizeCitations } from "./citations";
 import { decryptCredential } from "./crypto";
@@ -37,8 +37,8 @@ import {
   type AssistantOutcome,
 } from "./repo";
 
-/** Brave's list price per Web Search request; shown as an estimate. */
-const BRAVE_COST_PER_REQUEST = 0.005;
+/** List-price estimate per search request. Provider-reported costs are not returned by the adapters yet. */
+const SEARCH_COST_PER_REQUEST: Record<SearchProvider, number> = { brave: 0.005, tavily: 0.008, exa: 0.005 };
 const QUICK_SOURCE_LIMIT = 8;
 const DEEP_SOURCE_LIMIT = 20;
 const DEEP_RESULTS_PER_QUERY = 6;
@@ -82,6 +82,7 @@ export interface PreparedChat {
   mode: Mode;
   model: string;
   llmKey: string;
+  searchProvider: SearchProvider;
   searchKey: string;
   searchCredentialId: string;
   searchPlan: "free" | "paid";
@@ -118,14 +119,15 @@ function addUsage(state: RunState, result: ChatResult): void {
   state.costUsd += result.usage.costUsd;
 }
 
-function finalUsage(state: RunState, startedAt: number): Usage {
+function finalUsage(state: RunState, startedAt: number, searchProvider: SearchProvider): Usage {
   return {
     tokensIn: state.promptTokens,
     tokensOut: state.completionTokens,
     costUsd: Number(state.costUsd.toFixed(6)),
-    searchCostUsd: Number((state.searchRequests * BRAVE_COST_PER_REQUEST).toFixed(6)),
+    searchCostUsd: Number((state.searchRequests * SEARCH_COST_PER_REQUEST[searchProvider]).toFixed(6)),
     latencyMs: Date.now() - startedAt,
     searchRequests: state.searchRequests,
+    searchProvider,
     resolvedModel: state.resolvedModel,
     upstreamProvider: state.upstreamProvider,
   };
@@ -211,12 +213,12 @@ async function runBounded<T>(
   await Promise.all(runners);
 }
 
-function credentialMissing(provider: "openrouter" | "brave"): ApiError {
-  const name = provider === "openrouter" ? "an OpenRouter" : "a Brave Search";
+function credentialMissing(provider: "openrouter" | SearchProvider): ApiError {
+  const name = provider === "openrouter" ? "an OpenRouter" : `a ${searchProviderName(provider)}`;
   return new ApiError("CREDENTIAL_MISSING", `Add ${name} key before asking a question.`, 400, provider);
 }
 
-async function readKey(userId: string, row: Parameters<typeof decryptCredential>[1], provider: "openrouter" | "brave") {
+async function readKey(userId: string, row: Parameters<typeof decryptCredential>[1], provider: "openrouter" | SearchProvider) {
   try {
     return await decryptCredential(userId, row);
   } catch (error) {
@@ -234,22 +236,25 @@ export async function prepareChat(input: {
   userId: string;
   conversationId?: string;
   mode: Mode;
+  searchProvider?: SearchProvider;
   question?: string;
   retryOf?: string;
 }): Promise<PreparedChat> {
   const startedAt = Date.now();
   const settings = await ensureSettings(input.userId);
   const model = isAllowedModel(settings.llmModel) ? settings.llmModel : DEFAULT_LLM_MODEL;
+  const searchProvider =
+    input.searchProvider && isSearchProvider(input.searchProvider) ? input.searchProvider : settings.defaultSearchProvider;
 
   const [llmCredential, searchCredential] = await Promise.all([
     getCredentialRow(input.userId, "llm", "openrouter"),
-    getCredentialRow(input.userId, "search", "brave"),
+    getCredentialRow(input.userId, "search", searchProvider),
   ]);
   if (!llmCredential) throw credentialMissing("openrouter");
-  if (!searchCredential) throw credentialMissing("brave");
+  if (!searchCredential) throw credentialMissing(searchProvider);
   const llmKey = await readKey(input.userId, llmCredential, "openrouter");
-  const searchKey = await readKey(input.userId, searchCredential, "brave");
-  for (const [key, provider] of [[llmKey, "openrouter"], [searchKey, "brave"]] as const) {
+  const searchKey = await readKey(input.userId, searchCredential, searchProvider);
+  for (const [key, provider] of [[llmKey, "openrouter"], [searchKey, searchProvider]] as const) {
     if (key === null) {
       throw new ApiError("CREDENTIAL_UNREADABLE", "Your saved key can no longer be read. Replace it in Settings.", 400, provider);
     }
@@ -269,6 +274,7 @@ export async function prepareChat(input: {
     conversationId,
     mode: input.mode,
     llmModel: model,
+    searchProvider,
     question: input.question,
     retryOf: input.retryOf,
   });
@@ -297,6 +303,7 @@ export async function prepareChat(input: {
     mode: input.mode,
     model,
     llmKey: llmKey as string,
+    searchProvider,
     searchKey: searchKey as string,
     searchCredentialId: searchCredential.id,
     searchPlan: searchCredential.provider === "brave" && searchCredential.plan === "paid" ? "paid" : "free",
@@ -306,13 +313,13 @@ export async function prepareChat(input: {
 }
 
 async function searchSources(ctx: RunContext, query: string, count: number): Promise<Omit<Source, "position">[]> {
-  const results = await search("brave", ctx.prepared.searchKey, query, {
+  const results = await search(ctx.prepared.searchProvider, ctx.prepared.searchKey, query, {
     count,
     freshnessDays: ctx.freshnessDays,
     signal: ctx.signal,
     plan: ctx.prepared.searchPlan,
   });
-  await recordCredentialUsage(ctx.prepared.searchCredentialId, BRAVE_COST_PER_REQUEST).catch(() => {});
+  await recordCredentialUsage(ctx.prepared.searchCredentialId, SEARCH_COST_PER_REQUEST[ctx.prepared.searchProvider]).catch(() => {});
   return results.map((result) => ({
     id: randomUUID(),
     title: result.title,
@@ -399,7 +406,7 @@ async function retrieveSources(
 
   if (state.searchRequests === 0 && firstError) {
     if (!isSearchOutage(firstError)) throw firstError;
-    throw new ApiError("SEARCH_FAILED", "Every web search failed, so no answer was written. Try again shortly.", 502, "brave");
+    throw new ApiError("SEARCH_FAILED", "Every web search failed, so no answer was written. Try again shortly.", 502, ctx.prepared.searchProvider);
   }
   const ranked = rankSources(batches.filter(Boolean), {
     limit: options.append ? sourceLimit - state.sources.length : sourceLimit,
@@ -478,7 +485,7 @@ async function runDeeperResearch(ctx: RunContext, state: RunState): Promise<void
 
   const searchTool = tool({
     description:
-      "Search the web with Brave. Use 1–4 short keyword queries per call. Returns compact result summaries and the total number of sources collected. The final writer sees the full source set.",
+      `Search the web with ${searchProviderName(prepared.searchProvider)}. Use 1–4 short keyword queries per call. Returns compact result summaries and the total number of sources collected. The final writer sees the full source set.`,
     inputSchema: z.object({
       queries: z.array(z.string().min(2).max(180)).min(1).max(DEEPER_QUERIES_PER_CALL).describe("1–4 distinct search queries"),
     }),
@@ -615,7 +622,7 @@ async function runDeeperResearch(ctx: RunContext, state: RunState): Promise<void
     state.upstreamProvider = metadata?.provider || state.upstreamProvider;
   }
   if (!state.sources.length && state.searchFailures > 0) {
-    throw new ApiError("SEARCH_FAILED", "Every web search failed, so no answer was written. Try again shortly.", 502, "brave");
+    throw new ApiError("SEARCH_FAILED", "Every web search failed, so no answer was written. Try again shortly.", 502, ctx.prepared.searchProvider);
   }
 }
 
@@ -697,7 +704,7 @@ export async function runChat(prepared: PreparedChat, options: { signal: AbortSi
   let finished = false;
 
   const complete = async (fields: Omit<AssistantOutcome, "userId" | "messageId" | "usage" | "searches" | "reasoning">) => {
-    const usage = finalUsage(state, prepared.startedAt);
+    const usage = finalUsage(state, prepared.startedAt, prepared.searchProvider);
     await completeAssistant({
       degraded: state.degraded,
       searchFailures: state.searchFailures,

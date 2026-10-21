@@ -21,7 +21,11 @@ test("onboarding connects keys and keeps the saved model and mode", async ({ pag
   await page.getByRole("button", { name: "Start asking" }).click();
   await expect(page).toHaveURL(/\/chat$/);
   const state = await (await page.request.get("/api/state")).json();
-  expect(state.settings).toEqual({ llmModel: "anthropic/claude-haiku-4.5", defaultMode: "deep" });
+  expect(state.settings).toEqual({
+    llmModel: "anthropic/claude-haiku-4.5",
+    defaultSearchProvider: "brave",
+    defaultMode: "deep",
+  });
   expect(problems).toEqual([]);
 });
 
@@ -54,6 +58,24 @@ test("a Quick answer streams with citations, cost breakdown and sources", async 
   await expect(page.locator(".message-user .bubble")).toHaveText(["What is Beamling?"]);
   await expect(sidebarItem(page, "What is Beamling?")).toBeVisible();
   expect(problems).toEqual([]);
+});
+
+test("a different search provider can be selected for an answer", async ({ page }) => {
+  await connectKeys(page.request);
+  const tavily = await page.request.post("/api/credentials", {
+    data: { kind: "search", provider: "tavily", key: "test-tavily-key" },
+  });
+  expect(tavily.status()).toBe(201);
+
+  await page.goto("/chat");
+  await page.getByLabel("Search provider").selectOption("tavily");
+  await ask(page, "Use Tavily for this answer");
+  const answer = answers(page).last();
+  await expect(answer).toContainText("fixture answer", { timeout: 20_000 });
+  await expect(answer.locator(".badge").filter({ hasText: "Tavily" })).toBeVisible();
+  await expect(answer).toContainText("est. (1 search)");
+  await page.reload();
+  await expect(answers(page).last().locator(".badge").filter({ hasText: "Tavily" })).toBeVisible();
 });
 
 test("Deeper mode runs a research loop and persists the mode", async ({ page }) => {

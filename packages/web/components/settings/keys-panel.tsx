@@ -5,6 +5,7 @@ import { SecretKeyInput } from "@/components/secret-key-input";
 import { Icon } from "@/components/ui/icon";
 import { errorMessage } from "@/lib/api";
 import { useToast } from "@/lib/hooks/use-toast";
+import { SEARCH_PROVIDERS } from "@/lib/providers";
 import { useStore } from "@/lib/store";
 import type { Credential, CredentialKind } from "@/lib/types";
 import { CredentialRow } from "./credential-row";
@@ -25,14 +26,14 @@ const PROVIDERS: {
     inputId: "openrouter-key",
     placeholder: "sk-or-v1-...",
   },
-  {
-    kind: "search",
-    provider: "brave",
-    name: "Brave Search",
-    description: "Used for every web search.",
-    inputId: "brave-key",
-    placeholder: "BSA...",
-  },
+  ...SEARCH_PROVIDERS.map((provider) => ({
+    kind: "search" as const,
+    provider: provider.id,
+    name: provider.name,
+    description: `Used when ${provider.name} is selected for an answer.`,
+    inputId: `${provider.id}-key`,
+    placeholder: provider.placeholder,
+  })),
 ];
 
 function LimitsForm({
@@ -78,7 +79,7 @@ function LimitsForm({
 
 export function KeysPanel() {
   const { credentials, addCredential, removeCredential, validateCredential, updateCredentialLimits } = useStore();
-  const [editing, setEditing] = useState<CredentialKind | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
   const [key, setKey] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -91,12 +92,16 @@ export function KeysPanel() {
   const [limitsError, setLimitsError] = useState("");
   const [toast, showToast] = useToast();
 
-  const start = (kind: CredentialKind) => {
-    setEditing(kind);
+  const credentialFor = (provider: (typeof PROVIDERS)[number]) =>
+    credentials.find((item) => item.kind === provider.kind && item.provider === provider.provider);
+
+  const start = (provider: (typeof PROVIDERS)[number]) => {
+    const existing = credentialFor(provider);
+    setEditing(provider.provider);
     setKey("");
-    setPlan(credentials.find((item) => item.kind === kind)?.plan ?? "free");
-    setExpiry(credentials.find((item) => item.kind === kind)?.expiresOn ?? "");
-    setBudget(credentials.find((item) => item.kind === kind)?.budgetUsd?.toString() ?? "");
+    setPlan(existing?.plan ?? "free");
+    setExpiry(existing?.expiresOn ?? "");
+    setBudget(existing?.budgetUsd?.toString() ?? "");
     setError("");
   };
 
@@ -128,7 +133,7 @@ export function KeysPanel() {
       showToast(`${provider.name} key saved`);
       cancel();
     } catch (cause) {
-      setError(errorMessage(cause, "The provider rejected this key."));
+      setError(errorMessage(cause, `The provider rejected this ${provider.name} key.`));
     } finally {
       setPending(false);
     }
@@ -185,15 +190,15 @@ export function KeysPanel() {
   return (
     <div className="settings-stack">
       {PROVIDERS.map((provider) => {
-        const credential = credentials.find((item) => item.kind === provider.kind);
+        const credential = credentialFor(provider);
         return (
-          <section className="settings-card" key={provider.kind}>
+          <section className="settings-card" key={provider.provider}>
             <div className="settings-card-head">
               <div style={{ flex: 1 }}>
                 <h2>{provider.name}</h2>
                 <p>{provider.description}</p>
               </div>
-              <button type="button" className="btn btn-secondary btn-sm" onClick={() => start(provider.kind)}>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => start(provider)}>
                 <Icon name={credential ? "refresh" : "plus"} size={13} /> {credential ? "Replace" : "Add key"}
               </button>
             </div>
@@ -224,7 +229,7 @@ export function KeysPanel() {
                   onSave={() => void saveLimits(credential)}
                 />
               ) : null}
-              {editing === provider.kind ? (
+              {editing === provider.provider ? (
                 <KeyForm
                   id={provider.inputId}
                   label={`${provider.name} API key`}

@@ -1,5 +1,6 @@
 import { ApiError } from "../http";
-import type { RetrievedSource } from "./brave";
+import type { SearchProvider } from "../../types";
+import type { RetrievedSource } from "./shared";
 import type { ChatMessage, ChatPurpose, ChatResult } from "./openrouter";
 
 // Fixture switches for tests: put the marker in the question.
@@ -20,18 +21,18 @@ function aborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
 }
 
-export async function fakeValidateKey(key: string, provider: "openrouter" | "brave"): Promise<void> {
+export async function fakeValidateKey(key: string, provider: "openrouter" | SearchProvider): Promise<void> {
   await sleep(20);
   if (!key.startsWith("test-")) {
     throw new ApiError("CREDENTIAL_INVALID", "Fixture providers accept keys that start with test-.", 400, provider);
   }
 }
 
-export async function fakeSearch(query: string, count: number, signal?: AbortSignal): Promise<RetrievedSource[]> {
+export async function fakeSearch(query: string, count: number, signal?: AbortSignal, provider: SearchProvider = "brave"): Promise<RetrievedSource[]> {
   await sleep(30);
   aborted(signal);
   if (query.includes(FAILING_QUERY)) {
-    throw new ApiError("PROVIDER_UNAVAILABLE", "Brave Search is temporarily unavailable.", 502, "brave");
+    throw new ApiError("PROVIDER_UNAVAILABLE", `${provider === "brave" ? "Brave Search" : provider === "tavily" ? "Tavily" : "Exa"} is temporarily unavailable.`, 502, provider);
   }
   if (/\bno sources\b/i.test(query)) return [];
   const base = [

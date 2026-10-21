@@ -13,7 +13,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { DEFAULT_CONVERSATION_TITLE } from "../data";
-import { DEFAULT_LLM_MODEL } from "../providers";
+import { DEFAULT_LLM_MODEL, DEFAULT_SEARCH_PROVIDER } from "../providers";
 
 // Millisecond precision matches JavaScript dates, so timestamps round-trip exactly as pagination cursors.
 const timestampMs = (name: string) => timestamp(name, { withTimezone: true, precision: 3 });
@@ -120,6 +120,7 @@ export const settings = pgTable("settings", {
     .primaryKey()
     .references(() => users.id, { onDelete: "cascade" }),
   llmModel: text("llm_model").notNull().default(DEFAULT_LLM_MODEL),
+  defaultSearchProvider: text("default_search_provider").notNull().default(DEFAULT_SEARCH_PROVIDER),
   defaultMode: text("default_mode").notNull().default("quick"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -166,8 +167,9 @@ export const messages = pgTable(
     // Encrypted JSON search trace and model-provided reasoning.
     searches: text("searches"),
     reasoning: text("reasoning"),
-    // The model the user selected; OpenRouter may resolve it to a specific model and upstream provider.
+    // The model and search provider the user selected for this answer.
     llmModel: text("llm_model"),
+    searchProvider: text("search_provider").notNull().default(DEFAULT_SEARCH_PROVIDER),
     resolvedModel: text("resolved_model"),
     upstreamProvider: text("upstream_provider"),
     searchRequests: integer("search_requests").notNull().default(0),
@@ -176,7 +178,7 @@ export const messages = pgTable(
     tokensOut: integer("tokens_out"),
     // Generation cost reported by OpenRouter (actual).
     costUsd: numeric("cost_usd", { precision: 12, scale: 6 }),
-    // Brave cost from the plan's list price (estimated).
+    // Search cost estimated from the selected provider's list price.
     searchCostUsd: numeric("search_cost_usd", { precision: 12, scale: 6 }),
     latencyMs: integer("latency_ms"),
     errorCode: text("error_code"),

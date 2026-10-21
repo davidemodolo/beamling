@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { and, count, desc, eq, gt, inArray, lt, lte, sql } from "drizzle-orm";
 import { DEFAULT_CONVERSATION_TITLE, titleFromQuestion } from "../../data";
-import type { Message, Mode, SearchTrace, Source, Usage } from "../../types";
+import { DEFAULT_SEARCH_PROVIDER } from "../../providers";
+import type { Message, Mode, SearchProvider, SearchTrace, Source, Usage } from "../../types";
 import { db } from "../db";
 import { maxConcurrentChats } from "../env";
 import { ApiError, pgErrorCode, storableText } from "../http";
@@ -87,6 +88,7 @@ export async function createExchange(input: {
   conversationId: string;
   mode: Mode;
   llmModel: string;
+  searchProvider?: SearchProvider;
   question?: string;
   retryOf?: string;
 }): Promise<{ userMessage: MessageRow; assistantMessage: MessageRow; questionText: string }> {
@@ -166,6 +168,7 @@ export async function createExchange(input: {
           status: "streaming",
           mode: input.mode,
           llmModel: input.llmModel,
+          searchProvider: input.searchProvider ?? DEFAULT_SEARCH_PROVIDER,
           // Strictly after the question, so the thread order never depends on the clock's resolution.
           createdAt: new Date(Math.max(now.getTime(), userMessage.createdAt.getTime()) + 1),
         })

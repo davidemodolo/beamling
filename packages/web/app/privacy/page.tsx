@@ -66,7 +66,7 @@ export default function PrivacyPage() {
         <h2>Subprocessors</h2>
         <p>
           A production deployment uses Google for sign-in, a hosting platform, a managed Postgres database, OpenRouter,
-          Brave Search, a managed KMS master-key provider and optional error tracking. There is no email provider or
+          the search providers you choose (Brave, Tavily or Exa), a managed KMS master-key provider and optional error tracking. There is no email provider or
           advertising network in Alpha 1.
         </p>
 

@@ -1,0 +1,132 @@
+import { isSafeHttpUrl } from "../../url";
+import { ApiError } from "../http";
+import { log } from "../log";
+import { providerFetch, unavailable } from "./errors";
+import { clampQuery, MAX_RETRY_WAIT_MS, normalizedDate, plainText, requestSignal, retryWaitMs, sleep, type RetrievedSource, type SearchOptions } from "./shared";
+
+interface TavilyResponse {
+  results?: {
+    title?: string;
+    url?: string;
+    content?: string;
+    published_date?: string;
+    score?: number;
+  }[];
+  usage?: { credits?: number };
+}
+
+interface TavilyErrorBody {
+  detail?: { error?: string } | string;
+  error?: string;
+}
+
+function detailOf(body: TavilyErrorBody | undefined): string {
+  if (typeof body?.detail === "string") return body.detail.slice(0, 500);
+  return (body?.detail?.error ?? body?.error ?? "").slice(0, 500);
+}
+
+export function tavilyError(status: number, body: TavilyErrorBody = {}): ApiError {
+  const detail = detailOf(body);
+  const error = (code: string, message: string, httpStatus: number) => new ApiError(code, message, httpStatus, "tavily");
+  if (status === 401) return error("CREDENTIAL_INVALID", "Tavily rejected this key.", 400);
+  if (status === 432) return error("SEARCH_PLAN_MISSING", "This Tavily key does not include Search access.", 400);
+  if (status === 433) return error("QUOTA_EXCEEDED", "This Tavily key reached its plan limit.", 402);
+  if (status === 402) return error("INSUFFICIENT_CREDITS", "Tavily has no remaining credits for this key.", 402);
+  if (status === 403) return error("CREDENTIAL_INVALID", "Tavily cannot use this key for Search.", 400);
+  if (status === 429) return error("PROVIDER_RATE_LIMITED", "Tavily is rate-limiting this key.", 429);
+  if (status === 408 || status >= 500) return unavailable("tavily");
+  return error("PROVIDER_ERROR", detail || `Tavily returned HTTP ${status}.`, 502);
+}
+
+async function readError(response: Response): Promise<ApiError> {
+  let body: TavilyErrorBody | undefined;
+  try {
+    body = (await response.json()) as TavilyErrorBody;
+  } catch {}
+  const detail = detailOf(body);
+  if (detail) log.warn("Tavily request failed", { status: response.status, detail: detail.slice(0, 300) });
+  return tavilyError(response.status, body);
+}
+
+function timeRange(days?: number): string | undefined {
+  if (!days || days <= 0 || days > 365) return undefined;
+  if (days <= 1) return "day";
+  if (days <= 7) return "week";
+  if (days <= 31) return "month";
+  return "year";
+}
+
+async function requestSearch(key: string, query: string, options: SearchOptions): Promise<Response> {
+  const body: Record<string, unknown> = {
+    query: clampQuery(query),
+    max_results: Math.min(20, Math.max(1, options.count)),
+    search_depth: "basic",
+    include_answer: false,
+    include_raw_content: false,
+    include_images: false,
+    include_usage: true,
+    include_published_date: true,
+    safe_search: true,
+    topic: options.freshnessDays ? "news" : "general",
+  };
+  const range = timeRange(options.freshnessDays);
+  if (range) body.time_range = range;
+
+  const send = () =>
+    providerFetch(
+      "tavily",
+      "https://api.tavily.com/search",
+      {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+        body: JSON.stringify(body),
+        signal: requestSignal(options.signal),
+        cache: "no-store",
+      },
+      options.signal,
+    );
+
+  const response = await send();
+  if (response.status !== 429) return response;
+  const wait = retryWaitMs(response.headers);
+  if (wait > MAX_RETRY_WAIT_MS) return response;
+  await response.arrayBuffer().catch(() => {});
+  await sleep(wait, options.signal);
+  return send();
+}
+
+export async function validateTavilyKey(key: string): Promise<void> {
+  const response = await requestSearch(key, "Beamling connectivity test", { count: 1 });
+  if (!response.ok) throw await readError(response);
+  await response.arrayBuffer().catch(() => {});
+}
+
+export async function searchTavily(key: string, query: string, options: SearchOptions): Promise<RetrievedSource[]> {
+  const response = await requestSearch(key, query, options);
+  if (!response.ok) throw await readError(response);
+  let body: TavilyResponse;
+  try {
+    body = (await response.json()) as TavilyResponse;
+  } catch (error) {
+    if (options.signal?.aborted) throw error;
+    throw unavailable("tavily", "Tavily returned an unreadable response.");
+  }
+  const seen = new Set<string>();
+  const out: RetrievedSource[] = [];
+  for (const item of body.results ?? []) {
+    if (!item.url || seen.has(item.url) || !isSafeHttpUrl(item.url) || item.url.length > 2048) continue;
+    const snippet = plainText(item.content).slice(0, 1800);
+    if (!snippet) continue;
+    seen.add(item.url);
+    const domain = new URL(item.url).hostname.replace(/^www\./, "").slice(0, 255);
+    out.push({
+      position: out.length + 1,
+      title: (plainText(item.title) || domain).slice(0, 300),
+      url: item.url,
+      domain,
+      snippet,
+      publishedAt: normalizedDate(item.published_date)?.slice(0, 40),
+    });
+  }
+  return out;
+}

@@ -65,6 +65,9 @@
   .composer-model {
     display: none;
   }
+  .composer-provider {
+    max-width: 96px;
+  }
   .segmented button {
     padding: 0 7px;
   }
