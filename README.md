@@ -49,7 +49,7 @@ git commit -m "chore(release): v0.3.0"
 git push origin main
 ```
 
-On a green `main` build, CI tags `v0.3.0`, pushes the image to GHCR as `v0.3.0` and `latest`, and creates the GitHub release. `/api/health`, the landing footer and the sidebar expose the same version and commit.
+On a green `main` build, CI tags the new version, pushes the image to GHCR as that tag and `latest`, and creates the GitHub release. `/api/health`, the landing footer and the sidebar expose the same version and commit.
 
 ## Deploying
 
@@ -60,7 +60,7 @@ On a green `main` build, CI tags `v0.3.0`, pushes the image to GHCR as `v0.3.0` 
 - On `SIGTERM` the server stores running answers as interrupted before exiting; allow it about 10 seconds.
 - Accounts persist across Google sign-ins; expired sessions are deleted, but account data is only removed by account deletion or retention policy.
 - Production uses GCP Cloud KMS. The env master key and `scripts/rewrap-credentials.mjs` are for local tests only.
-- Enable database backups with a 30-day expiry, platform log retention of at most 30 days, and alerts on `/api/health`.
+- Enable database backups with a 30-day expiry, platform log retention of at most 30 days, and alerting on the watchdog and `/api/health`.
 - Analytics is opt-in and off by default. Set `ANALYTICS_ENABLED=true` plus `POSTHOG_API_KEY`, `POSTHOG_PERSONAL_API_KEY`, `POSTHOG_PROJECT_ID` and a 32-byte `ANALYTICS_SALT` to send allowlisted metadata events to PostHog Cloud EU. `POSTHOG_HOST` defaults to the EU ingestion host; the personal key needs `person:write` so account deletion can remove the hashed person and its events. Set `ANALYTICS_ENABLED=false` to stop all events immediately.
-- Publish the operator's legal entity and monitored privacy contact before opening sign-ups; the supplied legal pages are factual drafts, not legal review.
+- Set `LEGAL_ENTITY` and `LEGAL_CONTACT_EMAIL`, have counsel review the implemented legal pages, and choose `SIGNUP_MODE=open` only after that review.
 - Before each release: `pnpm audit --prod`, a Gitleaks history scan, and a container scan of the built image. CI runs the production audit and Gitleaks automatically.

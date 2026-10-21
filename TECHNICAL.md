@@ -60,10 +60,13 @@ The server does not fetch result pages, crawl the web or load remote media in an
 │  ├─ app/                        Pages and route handlers
 │  ├─ components/                 React UI
 │  ├─ lib/                        Client state, API client, shared types
+│  │  ├─ provider-catalog.ts       Client/server-safe provider catalog
+│  │  ├─ contracts.ts              Domain enums shared by routes and types
+│  │  ├─ stream-events.ts          Shared SSE event union and parser
 │  ├─ lib/server/                 Server-only code
 │  │  ├─ providers/               OpenRouter, Brave, Tavily, Exa, fixtures
 │  │  ├─ repo/                    Database access
-│  │  ├─ chat.ts                  Answer pipeline
+│  │  ├─ answer-pipeline.ts       Answer pipeline
 │  │  ├─ auth.ts                  Google OIDC flow and account upsert
 │  │  ├─ kms.ts                   Env/AWS/GCP KMS adapters
 │  │  ├─ workspace-key.ts          Per-account content encryption
@@ -125,13 +128,15 @@ Configuration is read from environment variables at request/startup time. There 
 |---|---|
 | `DATABASE_URL` | PostgreSQL connection string. Required when `NODE_ENV=production`. Falls back to `postgres://beamling:beamling@127.0.0.1:5432/beamling` outside production. |
 | `APP_URL` | Public origin. Required in production and must be an origin only (no credentials, path, query or fragment); `https://` outside localhost. Development falls back to `OPENROUTER_APP_URL`, then `NEXT_PUBLIC_APP_URL`, then `http://localhost:3000`. Also sent to OpenRouter as `HTTP-Referer`. |
-| `AUTH_SECRET` | Exactly 32 bytes, base64 encoded. Root secret for two HKDF-SHA256 subkeys: one encrypts the short-lived OIDC transaction cookie, the other keys the IP hashes. |
+| `AUTH_SECRET` | Exactly 32 bytes, base64 encoded. Root secret for purpose-separated HKDF-SHA256 subkeys: OIDC transaction encryption, IP hashes, credential fingerprints and provider-slot keys. |
 | `OIDC_CLIENT_ID` | Google OAuth client id. |
 | `OIDC_CLIENT_SECRET` | Google OAuth client secret. |
 | `KMS_PROVIDER` | `gcp` in production, `aws` in the local parity stack, `env` only on localhost/tests. |
 | `KMS_KEY_NAME` | GCP Cloud KMS key resource name when `KMS_PROVIDER=gcp`. |
 | `GCP_KMS_CREDENTIALS` | Optional service-account JSON for hosts without a credentials file. Otherwise the GCP client uses Application Default Credentials. |
 | `KMS_KEY_ID` | AWS KMS key id or alias when `KMS_PROVIDER=aws`. |
+| `LEGAL_ENTITY` | Controller/operator name shown in the privacy policy, terms and contact page. Required outside localhost. |
+| `LEGAL_CONTACT_EMAIL` | Monitored privacy/security/abuse address. Required outside localhost and must look like an email address. |
 
 Production startup refuses to boot when any of these checks fails:
 
@@ -141,12 +146,15 @@ Production startup refuses to boot when any of these checks fails:
 - `TRUSTED_PROXY_HOPS` is missing outside localhost.
 - `AUTH_SECRET` is not a valid 32-byte base64 value.
 - `OIDC_CLIENT_ID` or `OIDC_CLIENT_SECRET` is missing.
-- `OIDC_ISSUER` is not HTTPS outside localhost.
+- `OIDC_ISSUER` is not HTTPS outside localhost, or is not `https://accounts.google.com` outside localhost (Google-only alpha).
+- `LEGAL_ENTITY` or a valid `LEGAL_CONTACT_EMAIL` is missing outside localhost.
+- `SIGNUP_MODE` is set to anything other than `open`, `allowlist` or `paused`.
 - `KMS_PROVIDER=env` outside localhost, or the selected KMS key setting is missing.
 - `GCP_KMS_CREDENTIALS` is present but is not valid service-account JSON with `client_email` and `private_key`.
 - `BEAMLING_FAKE_PROVIDERS=1` outside a localhost `APP_URL`.
 - `ANALYTICS_ENABLED` is set to anything other than `true` or `false`.
 - Analytics is enabled without `POSTHOG_API_KEY`, `POSTHOG_PERSONAL_API_KEY`, `POSTHOG_PROJECT_ID` or at least 32 bytes of `ANALYTICS_SALT`.
+- Any PostHog deletion setting is present but the deletion configuration is incomplete (salt, personal key, project id, hosts).
 - The PostHog ingestion or app host is not an HTTPS origin outside localhost, or `POSTHOG_PROJECT_ID` is not numeric. Outside production, plain-HTTP localhost is accepted for a local fake.
 
 ### 3.2 Optional
@@ -166,9 +174,18 @@ Production startup refuses to boot when any of these checks fails:
 | `PORT` | `3000` in Docker; Next.js default otherwise. |
 | `TRUSTED_PROXY_HOPS` | `1`; number of trusted proxies that append to `X-Forwarded-For`. `0` ignores the header and puts all clients in one IP bucket. |
 | `COOKIE_SECURE` | Forces Secure cookies on/off. Default: on in production unless `APP_URL` is localhost; on in development only for an HTTPS `APP_URL`. |
-| `MAX_CONCURRENT_CHATS` | `50` active streams across the database. |
+| `MAX_CONCURRENT_CHATS` | `50` active streams across the database. `fly.toml` sets `30` to leave connection headroom. |
+| `MAX_CONCURRENT_CHATS_PER_USER` | `2` active streams for one account, so one user cannot occupy every global slot. |
+| `PLATFORM_CONNECTION_LIMIT` | Optional platform connection ceiling (Fly uses `50`); startup warns when `MAX_CONCURRENT_CHATS` is not below it. |
 | `LOGINS_PER_IP_PER_HOUR` | `60` OIDC sign-in starts per hashed client IP per fixed hour. |
+| `AUTH_CALLBACKS_PER_IP_PER_HOUR` | `120` OIDC callback requests per hashed client IP per fixed hour. |
 | `NEW_ACCOUNTS_PER_HOUR` | `200` new accounts across the deployment per fixed hour. Returning users are not counted. |
+| `SIGNUPS_PER_IP_PER_HOUR` | `10` new accounts per hashed client IP per fixed hour, as a backstop when registration is open. |
+| `SIGNUP_MODE` | `open`, `allowlist` or `paused`; defaults to `open` outside production and `allowlist` in production. |
+| `SIGNUP_ALLOWED_EMAILS` | Comma-separated exact addresses for allowlist mode. |
+| `SIGNUP_ALLOWED_EMAIL_DOMAINS` | Comma-separated domain suffixes for allowlist mode; an empty allowlist admits nobody. |
+| `LEGAL_ADDRESS` | Optional postal address shown on the contact and privacy pages. |
+| `LEGAL_GOVERNING_LAW` | Governing-law text for the terms; defaults to `Italian law`. |
 | `BRAVE_MIN_INTERVAL_MS` | `1,100` ms between Free-plan Brave requests for the same key across all instances. `0` disables spacing. |
 | `BRAVE_PAID_MIN_INTERVAL_MS` | `0`; optional spacing for Paid-plan Brave keys. |
 | `BEAMLING_FAKE_PROVIDERS` | `1` uses fixture providers. Honored only when not production, or when production `APP_URL` is localhost. |
@@ -187,6 +204,8 @@ Production warnings (logged, not fatal):
 - Certificate verification is disabled.
 - The database password is the default `beamling`.
 - `TRUSTED_PROXY_HOPS=0`.
+- `MAX_CONCURRENT_CHATS` is not below `PLATFORM_CONNECTION_LIMIT`.
+- `SIGNUP_MODE=allowlist` has no allowed emails or domains; all new sign-ups are paused.
 
 ### 3.3 Fixture providers
 
@@ -226,10 +245,12 @@ GET /api/auth/callback/google
 
 Details:
 
-- Users are keyed by the OIDC subject (`google_sub`), with verified email, optional name and avatar URL.
+- Users are keyed by the OIDC subject (`google_sub`), with verified email, optional name and avatar URL. The avatar is rendered only from a validated `https://*.googleusercontent.com` URL, with an initial fallback.
 - There is no password, magic link, email OTP, other identity provider or account recovery inside Beamling. Recovery is Google's.
 - The transaction cookie is a JWE (`dir` + `A256GCM`) encrypted with the `oidc-transaction` HKDF subkey of `AUTH_SECRET`; it expires after 10 minutes.
-- A first sign-in counts against `NEW_ACCOUNTS_PER_HOUR` before the user row is created. Over the cap, the callback logs a warning and redirects to `/login?error=signups_paused`; other callback failures redirect to `/login?error=auth_failed`.
+- The callback is rate-limited by hashed IP (`AUTH_CALLBACKS_PER_IP_PER_HOUR`). The transaction cookie is consumed before the token exchange, so a failed attempt cannot be replayed.
+- A first sign-in is checked against `SIGNUP_MODE` and the allowlist/domain lists before the user row is created, then counts against global and per-IP signup buckets. Over the cap, the callback logs a warning and redirects to `/login?error=signups_paused`; an uninvited address gets `signup_not_invited`; other callback failures redirect to `/login?error=auth_failed`.
+- Production requires `OIDC_ISSUER=https://accounts.google.com`; Dex is a local-parity substitute only.
 - Session token: 32 random bytes, base64url encoded.
 - Stored value: SHA-256 hex of the token. The plaintext token never enters the database.
 - Cookie: `HttpOnly`, `SameSite=Lax`, `Path=/`, 30-day `Max-Age`.
@@ -318,16 +339,17 @@ Credential operations are rate-limited to 20 per user per fixed hour.
 ### 5.4 Replace, delete, rotation
 
 - Saving a credential validates it before writing.
-- Re-entering the same key (same fingerprint) preserves the credential id, declared plan, expiry, budget and usage period. The ciphertext is re-written under the same id.
-- A different key deletes the old credential first (cascading its usage), then inserts a new row with a new id because the AAD is bound to the credential id.
-- Deleting a credential hard-deletes the row and its daily usage. There is no recovery.
+- The route encrypts the new key first, then updates the existing `(user, kind, provider)` row in place. A KMS or database failure leaves the working credential and its usage history intact.
+- Replacing a key keeps the credential id and daily usage. Concurrent replacements cannot rewrite the primary key; a losing different-id insert returns the row the first insert created.
+- Fingerprints and Brave provider-slot keys are keyed HMACs, not bare SHA-256, so a database reader cannot test candidate keys offline.
+- Deleting a credential hard-deletes the row and its daily usage, and releases the matching Brave slot when the key can be decrypted. There is no recovery.
 - Env-adapter master-key rotation:
   1. Deploy a new `CREDENTIAL_MASTER_KEY` with a new `CREDENTIAL_MASTER_KEY_ID`.
   2. Put the old key in `CREDENTIAL_PREVIOUS_MASTER_KEYS`.
   3. Run `node scripts/rewrap-credentials.mjs`.
   4. Remove the old key from the environment.
 
-The re-wrap script updates only `key_id`, `wrapped_dek`, `dek_nonce` and `dek_tag`. It updates rows only while their old `wrapped_dek` still matches, so a credential replaced during rotation is skipped. KMS-backed keys are rotated at the KMS layer; this script is for the env adapter.
+The re-wrap script updates only `key_id`, `wrapped_dek`, `dek_nonce` and `dek_tag`. It updates rows only while their old `wrapped_dek` still matches, so a credential replaced during rotation is skipped. For AWS/GCP, unwrap uses the stored `key_id` resource, so a new `KMS_KEY_NAME`/`KMS_KEY_ID` applies to new writes while old rows remain readable. Workspace keys are re-wrapped lazily on the next read when the configured KMS key id changes. The script itself remains env-adapter only.
 
 ### 5.5 Current data-protection boundary
 
@@ -340,6 +362,8 @@ The re-wrap script updates only `key_id`, `wrapped_dek`, `dek_nonce` and `dek_ta
 | User and assistant message content | AES-256-GCM ciphertext under the account's workspace key |
 | Source URL/title/domain/snippet | AES-256-GCM ciphertext under the account's workspace key |
 | Search trace and model reasoning | AES-256-GCM ciphertext under the account's workspace key |
+
+Content reads fail closed: a non-empty value without the `enc:v1:` envelope is rejected instead of being served as trusted plaintext. The only plaintext values tolerated are the empty string and the fixed synchronous `INTERRUPTED` message.
 | Stored provider error messages | AES-256-GCM ciphertext; the fixed `INTERRUPTED` message remains plaintext |
 | Usage counters and costs | Plaintext metadata |
 | Request logs | Structured JSON; no request bodies or credentials; database parameters are not logged |
@@ -432,7 +456,7 @@ Important indexes and constraints:
 - `rate_limits.expires_at`, `provider_slots.next_at` and `analytics_erasures.next_attempt_at` are indexed for cleanup.
 - Users cascade to sessions, workspace keys, credentials, settings, conversations, messages and sources.
 
-The migration also creates a `beamling_migrations(filename, applied_at)` ledger in the migration script.
+The migration also creates a `beamling_migrations(filename, checksum, applied_at)` ledger in the migration script. Applied files are checksummed; editing one fails the next migration run. Existing rows without a checksum are baselined on the next run.
 
 ### 6.2 Message lifecycle
 
@@ -466,7 +490,7 @@ The partial unique index turns a second concurrent answer in one conversation in
 
 `completeAssistant()` runs in one transaction:
 
-1. Update the assistant row with final content, status, flags, usage, cost, resolved model/provider and error fields, scoped to the owner.
+1. Update the assistant row with final content, status, flags, usage, cost, resolved model/provider and error fields, scoped to the owner and `status = streaming`. A late completion after a reaper/shutdown marked the row `INTERRUPTED` updates zero rows and is not announced as success.
 2. If the row no longer exists, return `false` (its conversation or account was deleted).
 3. Delete any previous sources for the message.
 4. Insert the final sources with their positions.
@@ -567,7 +591,7 @@ Evidence-gap behavior:
 - Accepts at most 2 follow-up query strings.
 - Runs the follow-up searches sequentially.
 - Appends new sources after existing ones without renumbering; max 20 total.
-- A failed gap call or failed follow-up search is ignored; the answer continues with existing evidence.
+- A failed planner/gap model call is ignored; a terminal credential/plan/quota search error is propagated.
 
 ### 7.4 Deeper mode
 
@@ -590,7 +614,8 @@ Loop controls:
 - The first step forces `toolChoice: { type: "tool", toolName: "search" }`, so the model cannot answer without searching.
 - Each step accepts 1–4 queries. Exact duplicate queries are filtered in the tool; the prompt also asks the model to avoid near-duplicates.
 - `stopWhen` combines `isStepCount(24)` with a closure that stops at 60 searches or 60 sources.
-- The tool refuses new searches once the budget is exhausted and tells the model to finish.
+- Search budget is reserved synchronously before launching each query, so parallel tool calls cannot exceed 60. The tool refuses new searches once the budget is exhausted and tells the model to finish.
+- A terminal credential/plan/quota error is retained and rethrown instead of being replaced by a generic `SEARCH_FAILED`.
 - Every search emits the normal `search` and `progress` SSE events. The final writer uses the existing citation and `truncated` contract.
 - Agent output text is not shown as the answer; it only signals that research is complete. A separate synthesis call writes the cited report.
 - Research-agent tokens and OpenRouter cost are read from each AI SDK step's `providerMetadata.openrouter` and added to the answer usage.
@@ -718,7 +743,7 @@ The system prompts also instruct the model to ignore instructions inside sources
 - Deeper research agent steps: `max_tokens: 4000`.
 - These caps include reasoning tokens when the model emits them, so they are deliberately larger than the answer length alone requires.
 - OpenRouter is called with `stream: true` and temperature `0.2`.
-- Deltas are forwarded to the SSE client and accumulated in memory.
+- Deltas are forwarded to the SSE client and accumulated in memory. The browser batches React updates to one animation frame instead of re-parsing Markdown per token.
 - On a delta containing `]`, the server scans the accumulated content for new valid citation positions and emits one `citation` event per new position.
 - On completion, `sanitizeCitations()` removes out-of-range markers while preserving markers inside code fences, inline code, URLs and Markdown link targets.
 - `uncited` is true when the final answer has no valid in-range citation.
@@ -758,6 +783,8 @@ X-Accel-Buffering: no
 A comment heartbeat (`: ping`) is written every 15 seconds.
 
 ### 8.1 Events
+
+Server and client share `lib/stream-events.ts`; the client validates each payload and ignores unknown or malformed events.
 
 | Event | Data | When |
 |---|---|---|
@@ -1150,18 +1177,24 @@ A `429` is retried once with the same short-wait policy as Brave.
 
 | Route | Current behavior |
 |---|---|
-| `/` | Public cinematic landing page with a scripted demo, feature cards, provider list, CTA to `/onboarding` or `/chat`, and a footer with Privacy, Terms and Licenses |
-| `/login` | Google-only sign-in page; redirects to `/onboarding` or `/chat` after the callback |
+| `/` | Public cinematic landing page with a scripted demo, feature cards, provider list, CTA to `/onboarding` or `/chat`, and the full legal footer |
+| `/login` | Google-only sign-in page; redirects to `/onboarding` or `/chat` after the callback. Sign-in start failures redirect back with `auth_unavailable` or `login_rate_limited` instead of returning JSON. |
 | `/onboarding` | Account setup form: OpenRouter key, default model, search-provider picker and provider key, plus Brave plan/expiry/budget when Brave is selected; validates and saves, then routes to `/chat` |
 | `/chat` | New-question view; loads workspace state, conversation list and threads |
 | `/chat/[id]` | Conversation view; loads the newest 60 messages and supports earlier-message pagination |
-| `/privacy` | Draft privacy page with the shared legal footer |
-| `/terms` | Draft terms page with the shared legal footer |
+| `/privacy` | Privacy notice with controller, purposes, retention, international transfers, rights and the shared legal footer |
+| `/terms` | Alpha terms with IP, availability, liability, termination and governing law |
+| `/cookies` | Essential-cookie table; no analytics or advertising cookies |
+| `/subprocessors` | Current provider and subprocessor list |
+| `/security` | Security controls and vulnerability-disclosure route |
+| `/contact` | Operator identity and monitored privacy/security/abuse contact |
+| `/status` | Human-readable readiness for the app, database, schema and KMS |
 | `/licenses` | Generated open-source inventory from `packages/web/lib/generated/licenses.json`, with notices, license texts and the shared legal footer |
-| `/api/health` | Database liveness check |
+| `/api/health` | Cached readiness: database, schema and KMS |
+| `/api/live` | DB-free liveness probe |
 | `/robots.txt` | Allows `/`, disallows `/chat`, `/onboarding`, `/api/` |
 
-The Next.js metadata base is `https://beamling.ai`; the landing demo also prints `beamling.ai`.
+The Next.js metadata base and the landing demo host are derived from `APP_URL`, so metadata, canonical URLs and the visible demo follow the deployed origin.
 
 ### 12.2 Client state
 
@@ -1173,6 +1206,9 @@ The Next.js metadata base is `https://beamling.ai`; the landing demo also prints
 - Merges a refreshed newest page with earlier pages already loaded, dropping provisional copies and preserving local failures.
 - Uses request sequence numbers so a slow older response cannot overwrite a newer one.
 - Tracks conversations created or deleted during an in-flight refresh.
+- The sidebar renders a skeleton until the first `/api/state` resolves and shows an inline retry when a later refresh fails, instead of briefly claiming there are no conversations.
+- The topbar and Account panel use the same initial/avatar component. Google profile pictures are rendered only from a validated `https://*.googleusercontent.com` URL.
+- Streaming deltas are batched per animation frame before updating the live answer.
 - Exposes methods for refresh, pagination, thread loading, conversation CRUD, pinning, settings, credential limits, sign-out and account deletion.
 
 `AnswerStreamsProvider` owns live answers:
@@ -1216,7 +1252,7 @@ Markdown support is intentionally small:
 - Headings `##`–`####`, paragraphs, unordered/ordered lists, blockquotes, horizontal rules and fenced code.
 - GitHub-style tables: header row, delimiter row, left/center/right alignment, inline formatting in cells and horizontal scrolling.
 - Inline code, bold, italics, and links. Raw HTML is not parsed.
-- Links must be `http:` or `https:`; other schemes render as plain text.
+- Links must be `http:` or `https:` **and** exactly match a URL in the answer's retrieved sources; model-chosen links render as plain label text. This blocks model-authored phishing links while keeping cited sources clickable.
 - `[n]` renders as a citation button only when `n` is within the answer's source count; otherwise it stays as text.
 - Citation clicks use event delegation to a `data-citation` attribute.
 
@@ -1234,13 +1270,13 @@ Deleting the account hard-deletes server data and the wrapped workspace key, cle
 
 ### 12.6 Landing page
 
-The root page is a static marketing surface:
+The root page is static marketing content rendered per request so the CSP nonce can be injected:
 
 - Dark brand theme, Inter and JetBrains Mono.
 - Hero and mascot.
 - A scripted, replayable demo that cycles through queued/searching/reading/writing/done; it is not a live provider call.
 - Stats, three-step explanation, three feature cards, provider pills.
-- Footer with Privacy, Terms, Licenses, “Keys encrypted at rest” and “No training on your data.”
+- Footer with Privacy, Terms, Cookies, Subprocessors, Security, Contact and Licenses, “Keys encrypted at rest” and “No training by Beamling.”
 - `prefers-reduced-motion` skips the demo animation.
 
 ### 12.7 Accessibility and responsive behavior
@@ -1267,7 +1303,7 @@ A per-request CSP is generated in `proxy.ts` with a random nonce:
 default-src 'self'
 script-src 'self' 'nonce-…' 'strict-dynamic'
 style-src 'self' 'unsafe-inline'
-img-src 'self' data: blob:
+img-src 'self' data: blob: https://*.googleusercontent.com
 font-src 'self'
 connect-src 'self'
 object-src 'none'
@@ -1302,7 +1338,7 @@ frame-ancestors 'none'
 ### 13.3 Provider-key handling
 
 - Keys are never logged, stored in browser state, or returned after creation.
-- Only encrypted rows, a SHA-256 fingerprint and the last four characters are stored.
+- Only encrypted rows, a keyed fingerprint and the last four characters are stored.
 - Decryption is scoped to the authenticated user's row and AAD.
 - The provider key is held in memory only for the request that needs it.
 - The KMS adapter is selected by `KMS_PROVIDER`; production refuses to boot without the configured KMS key.
@@ -1313,7 +1349,9 @@ frame-ancestors 'none'
 - Fixed-window counters in `rate_limits` use one atomic insert-or-update.
 - Login starts, chat, conversation creation, credentials and reads have separate keys and limits.
 - IP keys are keyed-HMACed with a subkey derived from `AUTH_SECRET`; raw addresses are not stored and a database dump cannot enumerate them.
-- The global stream cap is enforced inside a transaction-scoped advisory lock and counts committed streaming rows across all instances.
+- The global stream cap is enforced inside a transaction-scoped advisory lock and counts committed streaming rows across all instances. A per-account cap (`MAX_CONCURRENT_CHATS_PER_USER`, default 2) prevents one account from occupying every slot.
+- Signup enforcement is `open`, `allowlist` or `paused`; production defaults to allowlist, and open mode also has per-IP and global buckets.
+- Rate-limit windows, stale-stream detection and cleanup use PostgreSQL time where the decision is shared across instances.
 - A second stream in one conversation is blocked by a partial unique index, not by process memory.
 - Brave request spacing uses a per-key database slot, so multiple instances cannot exceed the configured interval.
 - DELETE conversation/account aborts local streams and leaves other instances to observe the missing/non-streaming row through their stop poll.
@@ -1321,8 +1359,9 @@ frame-ancestors 'none'
 ### 13.5 Logging and error handling
 
 - Logs are one-line JSON with level, timestamp, message and optional fields.
+- API routes log one structured completion line with request id, method, path, status, duration and a keyed user hash; `x-request-id` is also returned to the client.
 - Error summaries keep the error name, Postgres code, message and failing SQL text; they strip SQL parameters.
-- Provider error details are truncated, and request/response body text plus bearer/provider keys are redacted before logging.
+- Provider error payload text is not logged; adapters log provider and HTTP status only. Request/response body text plus bearer/provider keys are redacted from other error summaries.
 - Request bodies, cookies, authorization headers and plaintext keys are not logged.
 - Unknown errors return `INTERNAL` with a generic message; details stay in server logs.
 - The API never returns stack traces.
@@ -1331,6 +1370,8 @@ frame-ancestors 'none'
 ### 13.6 Supply chain and release checks
 
 - CI runs `pnpm audit --prod --audit-level high` and a Gitleaks history scan on every push and pull request.
+- GitHub Actions are pinned to full commit SHAs, and the runtime base image is pinned to a multi-arch digest. Dependency install uses `--ignore-scripts`; the mascot package build is explicit.
+- The release job records the pushed GHCR digest; deploy uses that digest and verifies `/api/health` afterward.
 - Dependabot checks npm, GitHub Actions and Docker weekly.
 - The built image is scanned separately; the current image has no HIGH, CRITICAL or MEDIUM findings after removing the npm/corepack trees and applying Alpine security updates.
 - `pnpm audit` still reports two development-only tooling advisories (`braces` via ESLint, `esbuild` via drizzle-kit). Neither is in the runtime image.
@@ -1340,12 +1381,12 @@ frame-ancestors 'none'
 - Deleting a conversation cascades to messages and sources.
 - Deleting an account cascades to sessions, the workspace data key, credentials, usage, settings, conversations, messages and sources, and removes the user's rate-limit keys.
 - Local active chats are aborted; remote instances stop on the next poll.
-- The cleanup job removes expired sessions and counters; accounts are retained for a future Google sign-in.
+- The cleanup job removes expired sessions, counters, stale provider slots and empty conversations older than one hour; accounts are retained for a future Google sign-in.
 - There is no soft-delete or recovery path.
-- When PostHog deletion is configured, account deletion also erases the PostHog person through a durable queue in `analytics_erasures`, which holds only the HMAC distinct id:
+- When PostHog deletion is configured, account deletion also erases the PostHog person through a durable queue in `analytics_erasures`, which holds only the HMAC distinct id. Deletion settings do not depend on `ANALYTICS_ENABLED` or the ingestion token; a partial deletion configuration is a production boot error.
   - The row and the account deletion commit in one transaction, so a failed deletion does not erase a live account's analytics and a successful deletion cannot lose the erasure.
   - The first attempt runs in the deletion request; the cleanup job runs the rest. Rows are claimed with `FOR UPDATE SKIP LOCKED` and hidden for 5 minutes, so instances never run the same row at once.
-  - A failure retries with exponential backoff from 5 minutes, capped at 24 hours, and is never dropped. From the fifth failed attempt each failure is logged as an error (`PostHog erasure keeps failing`) with the distinct id, for alerting and manual cleanup.
+  - A failure retries with exponential backoff from 5 minutes, capped at 24 hours, and is never dropped. From the fifth failed attempt each failure is logged as an error (`PostHog erasure keeps failing`) with only an 8-character prefix of the distinct id.
   - A success schedules one confirming pass an hour later, which catches events that were still in flight when the account was deleted. The row is deleted after the second success.
   - Deletion uses its own configuration, so it keeps running behind the `ANALYTICS_ENABLED=false` kill switch as long as the PostHog variables stay set.
 
@@ -1434,11 +1475,12 @@ Migrations are a release step, not an app-start side effect. The local compose `
 
 ### 14.4 Health and shutdown
 
-- `/api/health` runs `select 1` against the pool.
-- Healthy: 200 `{ "ok": true, "database": "up", "version": "0.1.0", "commit": "...", "builtAt": "..." }`.
-- Unhealthy: 503 `{ "ok": false, "database": "down", "version": "0.1.0", "commit": "...", "builtAt": "..." }`.
-- No authentication and no cache headers.
-- On `SIGTERM` or `SIGINT`, if `NEXT_MANUAL_SIG_HANDLE` is set, the server aborts active chats with a shutdown error, waits up to 8 seconds for outcomes, marks leftovers interrupted, closes the pg pool and exits.
+- `/api/live` is a DB-free liveness probe returning `{ "ok": true }`.
+- `/api/health` is cached readiness for five seconds: database `select 1`, the `beamling_migrations` table, and a KMS wrap/unwrap probe.
+- Healthy: 200 `{ "ok": true, "database": "up", "schema": "up", "kms": "up", "version": "0.2.0", "commit": "...", "builtAt": "..." }`.
+- Unhealthy: 503 with the failing component marked `down`; no error details are exposed.
+- No authentication and no cache headers. `/status` renders the same readiness state for people.
+- On `SIGTERM` or `SIGINT`, if `NEXT_MANUAL_SIG_HANDLE` is set, the process sets a global shutdown flag, rejects new `/api/chat` requests, aborts active chats, loops over late registrations, waits up to 8 seconds for outcomes, marks leftovers interrupted, closes the pg pool and exits.
 - The Docker Compose grace period is 15 seconds.
 
 ### 14.5 Versioning and releases
@@ -1446,17 +1488,20 @@ Migrations are a release step, not an app-start side effect. The local compose `
 - The root `package.json` version is the single source of truth; the web and mascot packages are kept in sync.
 - `pnpm version` prints it, `pnpm version:set 0.2.0` updates all three package files, and `pnpm version:check v0.2.0` rejects a mismatched tag.
 - `next.config.ts` injects `NEXT_PUBLIC_APP_VERSION`, `NEXT_PUBLIC_GIT_COMMIT` and `NEXT_PUBLIC_BUILD_TIME` at build time. `/api/health`, the landing footer and the sidebar show the same identity.
-- On a green push to `main`, CI creates the annotated tag `v<version>` if it does not exist, builds the production image, pushes `ghcr.io/<repo>:v<version>` and `:latest`, then creates a GitHub release with generated notes.
+- On a green push to `main`, CI creates the annotated tag `v<version>` if it does not exist, builds the production image, pushes `ghcr.io/<repo>:v<version>` and `:latest`, records the registry digest and creates a GitHub release with generated notes.
+- The deploy job deploys that digest with `flyctl deploy --image`, not a second source build, and runs a post-deploy `/api/health` smoke check.
 - A new release requires a version bump. Pushing another commit without one leaves the existing tag and image untouched.
 
 ### 14.6 Fly.io deployment
 
 `fly.toml` describes the production topology: one shared-CPU 1 GB machine in `fra`, scale-to-zero, a 20-second shutdown window, HTTP health checks on `/api/health`, and the migration release command.
 
-- Production deploys are gated by the repository variable `FLY_DEPLOY_ENABLED=true`. When a new version tag is created, the `deploy` job in `ci.yml` installs pinned flyctl `0.4.120` and runs `flyctl deploy --remote-only --ha=false`.
-- Required Fly secrets: `DATABASE_URL`, `AUTH_SECRET`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `KMS_KEY_NAME`, `GCP_KMS_CREDENTIALS`, `KILL_SWITCH_SECRET`, `METRICS_SECRET` and, when analytics is enabled, the PostHog values.
+- Production deploys are gated by the repository variable `FLY_DEPLOY_ENABLED=true`. When a new version tag is created, the `deploy` job in `ci.yml` installs pinned flyctl `0.4.120` and deploys the GHCR digest produced by the release job.
+- Required Fly secrets: `DATABASE_URL`, `AUTH_SECRET`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `KMS_KEY_NAME`, `GCP_KMS_CREDENTIALS`, `KILL_SWITCH_SECRET`, `METRICS_SECRET`, `LEGAL_ENTITY`, `LEGAL_CONTACT_EMAIL` and, when analytics is enabled, the PostHog values.
+- `SIGNUP_MODE=allowlist` is the Fly default. Set `SIGNUP_MODE=open` explicitly to open public registration, or add `SIGNUP_ALLOWED_EMAILS`/`SIGNUP_ALLOWED_EMAIL_DOMAINS`.
+- The public smoke URL comes from the repository variable `PUBLIC_APP_URL` (falling back to `https://beamling.app`).
 - `GCP_KMS_CREDENTIALS` is the service-account JSON. It lets the GCP client run on a host with no credentials file; Application Default Credentials remain the fallback.
-- `release_command = "node scripts/migrate.mjs"` applies the schema before the new machine receives traffic.
+- `release_command = "node scripts/migrate.mjs"` applies the schema before the new machine receives traffic. Applied migrations store a SHA-256 checksum; editing an applied file fails the run instead of silently drifting.
 - Neon must use its pooled connection string with TLS; `DATABASE_SSL=true` is set in `fly.toml`.
 - `APP_URL` defaults to `https://beamling.app`. Override it as a Fly secret for staging or a different domain, and register the matching Google OAuth callback.
 - The Fly app and certificate are not created by the repository. Create the app, set the secrets, enable the workflow variable and attach the custom domain before the first deploy.
@@ -1478,7 +1523,8 @@ Migrations are a release step, not an app-start side effect. The local compose `
 - `/api/chat` reads the flag before parsing the question or starting work. When closed, it returns 503 `SERVICE_BUSY` with `Retry-After: 60`; existing streams are not aborted.
 - `GET /api/internal/metrics` requires a Bearer `METRICS_SECRET` and returns the flag, active stream count, configured stream cap and build identity.
 - A missing or short secret disables its endpoint (404) and logs a production startup warning. A wrong bearer token returns 401. Neither endpoint uses a session or the public read limiter.
-- The GitHub Actions watchdog and external alerting described in the target operations section are not implemented; an operator or a later watchdog calls the endpoint.
+- `.github/workflows/watchdog.yml` probes `/api/live`, `/api/health` and `/` every five minutes. Failure notifies GitHub and, when `WATCHDOG_WEBHOOK_URL` is configured, an operator webhook.
+- There is no bundled error-tracking service; Sentry/Better Stack remain operator choices.
 
 ### 14.9 License inventory
 
@@ -1487,7 +1533,7 @@ Migrations are a release step, not an app-start side effect. The local compose `
 - Each package keeps its name, versions, license, homepage, copyright or NOTICE text. The page also renders one full license text per license expression.
 - `pnpm licenses:check` fails CI when the committed inventory is stale or a dependency adds an unreviewed license.
 - Sharp is excluded from optional dependencies and Next image optimization is disabled because the app does not use `next/image`; this keeps the LGPL libvips binary out of the production image.
-- The landing, sign-in, privacy, terms and licenses pages share a small legal footer. The full public footer and the cookie, subprocessor, security and contact pages remain target work.
+- The landing, sign-in and legal pages share a small legal footer with Privacy, Terms, Cookies, Subprocessors, Security, Status, Contact and Licenses.
 
 ## 15. Tests
 
@@ -1496,9 +1542,9 @@ The repository contains four layers.
 | Suite | Count | Coverage |
 |---|---|---|
 | `packages/mascot/test/geometry.test.mjs` | 6 | Eye/beam geometry, expressions, state mapping |
-| `packages/web/tests/unit.test.ts` | 46 | KMS-backed credential encryption/rotation, model allowlist, Brave/Tavily/Exa/OpenRouter mapping, 429 retry, network vs abort, citations, ranking, freshness, language, prompt injection, client IP HMAC, same-origin anchors, production config and PostHog host rules, analytics allowlist/identity/delivery/deletion/kill-switch deletion/shared client, erasure backoff, Tavily free validation, body limits, provider-safe log redaction |
-| `packages/web/tests/integration.test.ts` | 29 | Database-backed account persistence, content encryption, Quick/Deep/Deeper, the Deeper AI SDK tool loop, planner repair/degrade, partial search, missing keys, selected-provider persistence and cost, no fallback, one stream per conversation, global concurrency, lock timeout, stop flag, mid-answer delete, timeout, NUL, retry, stale repair, pinned ordering, pagination, session cleanup, rate limits, Brave spacing, key replacement, unverified keys, the analytics erasure queue, the new-stream flag |
-| `packages/web/e2e/*.spec.ts` | 32 | 11 API checks, 15 UI flows and 6 route variants for CSP and axe; Quick checks search details, reasoning and tables, provider selection checks Tavily and marks a provider without a key, an Exa key is saved unvalidated and checked later, the killswitch rejects new streams and metrics stay secret-protected, the license page and its footer links resolve, Deeper checks the third mode, and sidebar checks pinning and title search |
+| `packages/web/tests/unit.test.ts` | 52 | KMS-backed credential encryption/rotation, model allowlist, Brave/Tavily/Exa/OpenRouter mapping, 429 retry, network vs abort, citations, ranking, freshness, language, prompt injection, client IP HMAC, same-origin anchors, production config and PostHog host rules, analytics allowlist/identity/delivery/deletion/kill-switch deletion/shared client, erasure backoff, Tavily free validation, body limits, provider-safe log redaction, fail-closed plaintext reads, malformed provider bodies, missing OpenRouter completion markers, PostHog deletion behind the kill switch |
+| `packages/web/tests/integration.test.ts` | 32 | Database-backed account persistence, content encryption, Quick/Deep/Deeper, the Deeper AI SDK tool loop, planner repair/degrade, partial search, missing keys, selected-provider persistence and cost, no fallback, one stream per conversation, global concurrency, lock timeout, stop flag, mid-answer delete, timeout, NUL, retry, stale repair, pinned ordering, pagination, session cleanup, rate limits, Brave spacing, key replacement, unverified keys, the analytics erasure queue, the new-stream flag, per-account concurrency, empty-conversation cleanup, interrupted-terminal race |
+| `packages/web/e2e/*.spec.ts` | 37 | 11 API checks, 15 UI flows and 11 public-route variants for CSP and axe; Quick checks search details, reasoning and tables, provider selection checks Tavily and marks a provider without a key, an Exa key is saved unvalidated and checked later, the killswitch rejects new streams and metrics stay secret-protected, the license page and its footer links resolve, Deeper checks the third mode, and sidebar checks pinning and title search |
 
 Commands:
 
@@ -1582,3 +1628,13 @@ The Playwright suite checks:
 | Observability | Structured JSON logs, versioned health endpoint, build identity in the UI, optional server-side PostHog events |
 | Analytics | Opt-in server-side PostHog events with allowlisted metadata, HMAC ids, kill switch and deletion cleanup |
 | Testing | Unit, integration, E2E and mascot geometry suites |
+
+### 14.10 Incident runbook
+
+- **Sign-in outage:** check `/status`, then the OIDC issuer and Google OAuth client. A bad callback secret or a `503`/JSON error at `/api/auth/login` redirects to `/login?error=auth_unavailable`; the underlying cause is in the request log with its `requestId`.
+- **Answer outage:** check `/api/health` (`database`, `schema`, `kms`) and the `answer_failed` rate by error code. Use the kill switch for a provider-wide failure; existing streams continue.
+- **KMS or schema down:** health returns 503 with that component `down`. Do not bypass readiness or the migration checksum; restore the key/version or apply a new migration.
+- **Database pressure:** check the active-stream count in `/api/internal/metrics`, the pool size and Fly connection limits. Keep `MAX_CONCURRENT_CHATS` below `PLATFORM_CONNECTION_LIMIT`.
+- **PostHog erasure failures:** query `analytics_erasures` ordered by `next_attempt_at`; failures are retried with backoff and logged after five attempts with a truncated distinct-id prefix.
+- **Rollback:** list releases with `flyctl releases`, then deploy the previous image digest with `flyctl deploy --image <digest>`. Migrations are forward-only; restore from a backup if a schema change must be undone.
+- **Watchdog:** `.github/workflows/watchdog.yml` runs every five minutes and can be triggered manually. Set `WATCHDOG_WEBHOOK_URL` for operator notification. Sentry/Better Stack are optional operator choices, not bundled dependencies.

@@ -43,10 +43,10 @@ This file is the **target contract** for Alpha 1 and public launch. It is not an
 | Settings | Curated model, default search provider and default mode; per-answer provider picker in the composer | Add optional cost ceiling |
 | Credentials | KMS-backed AES-256-GCM envelope encryption; OpenRouter, Brave, Tavily and Exa keys; free Tavily key check; optional unverified save for Brave/Exa; Brave plan, expiry and budget metadata; usage warnings | Same; GCP KMS in production |
 | Content at rest | Conversation titles, messages, sources and stored errors are encrypted with per-account workspace keys | Same; GCP KMS in production |
-| Public pages | `/`, `/login`, `/onboarding`, `/chat`, `/chat/[id]`, `/privacy`, `/terms`, `/licenses` | Add `/welcome` if needed, remaining legal routes and full footer, docs, status, support and supporters |
+| Public pages | `/`, `/login`, `/onboarding`, `/chat`, `/chat/[id]`, `/privacy`, `/terms`, `/cookies`, `/subprocessors`, `/security`, `/contact`, `/status`, `/licenses` | Add `/welcome` if needed, docs, support and supporters; legal review still required |
 | Analytics | Server-side PostHog events with an allowlist, HMAC distinct IDs, opt-in kill switch and account-deletion hook; no browser SDK | PostHog Cloud EU, server-side metadata-only events and operator dashboards |
 | Operations | Production-parity Docker Compose with Caddy TLS, Dex OIDC, LocalStack KMS, TLS Postgres and the production image; release migrations, versioned health, tagged releases, graceful shutdown; Fly configuration and gated deploy job, not yet deployed; database killswitch and internal metrics | Fly + Neon, GCP KMS, monitoring, backups, killswitch |
-| Tests | 46 web unit tests, 29 database integration tests, 32 Playwright E2E tests, 6 mascot tests | Add parity-stack smoke, analytics, remaining legal, dump-encryption, load and eval gates |
+| Tests | 52 web unit tests, 32 database integration tests, 37 Playwright E2E tests, 6 mascot tests | Add parity-stack smoke, analytics, dump-encryption, load and eval gates |
 | Donations | None | Optional post-public `/support` and `/supporters` |
 
 ---
@@ -529,7 +529,7 @@ Each requirement has a priority (P0 = Alpha 1 target, P1 = private alpha/v1, P2 
 - **FR-59 (P2):** `/supporters` lists only donors who explicitly consented to publication, with no amounts, emails, legal names or scraped data.
   - Acceptance: every entry has a recorded consent reference; removal requests are honored; the page has no payment SDK.
 
-**Current checkout:** `/licenses` is generated from the production dependency graph, every installed license is checked against the allowlist in CI, and `/`, `/login`, `/privacy`, `/terms` and `/licenses` link to each other. The full global footer, the remaining legal routes, public docs, status and support pages are still target work.
+**Current checkout:** `/licenses` is generated from the production dependency graph, every installed license is checked against the allowlist in CI, and the public pages share a footer with Privacy, Terms, Cookies, Subprocessors, Security, Status, Contact and Licenses. `/contact`, `/cookies`, `/subprocessors`, `/security` and `/status` now exist. Legal review and the public docs/support pages remain target work.
 
 ---
 
@@ -1377,7 +1377,7 @@ Warnings are not error codes:
 | `/chat` | New conversation; requires a signed-in account |
 | `/chat/[id]` | Conversation view with pagination |
 | `/login` | Google-only sign-in page; redirects to `/onboarding` or `/chat` after callback |
-| `/privacy`, `/terms` | Draft legal pages; not a full legal surface |
+| `/privacy`, `/terms`, `/cookies`, `/subprocessors`, `/security`, `/contact`, `/status` | Implemented legal/status surface; legal review still required |
 | `/licenses` | Generated open-source license inventory with package notices and license texts |
 
 **Public-launch target**
@@ -1389,7 +1389,7 @@ Warnings are not error codes:
 | `/supporters` | Opt-in public list of donors |
 | `/cookies`, `/subprocessors`, `/security`, `/contact` | Cookie, subprocessor, security and contact pages |
 
-The landing page, sign-in page and legal pages contain a partial shared footer. The full global footer described below, including the remaining legal routes, docs, status and support links, is still target work.
+The landing page, sign-in page and legal pages share a footer with Privacy, Terms, Cookies, Subprocessors, Security, Status, Contact and Licenses. Public docs and support links remain target work.
 
 ### 16.2 Layout
 
@@ -1470,7 +1470,7 @@ The landing page, sign-in page and legal pages contain a partial shared footer. 
 
 ### 16.7 Welcome page, legal surface and consent (public-launch target)
 
-The current checkout has a marketing landing page at `/`, `/login`, draft `/privacy` and `/terms` pages, and no `/welcome` or complete legal footer. This section describes the target public surface; the implemented landing content is documented in `TECHNICAL.md`.
+The current checkout has a marketing landing page at `/`, `/login`, and implemented privacy, terms, cookies, subprocessors, security, contact and status pages with a shared footer. It has no `/welcome` page. This section describes the target public surface; the implemented landing content is documented in `TECHNICAL.md`.
 
 **Welcome page**
 
@@ -1584,7 +1584,7 @@ Alpha 1 does not fetch pages: the selected search provider returns snippets. The
 - OpenRouter routing: disclose that OpenRouter selects and may fail over to upstream model providers, and that the user's key and prompt are sent to OpenRouter and the selected upstream provider. Display the resolved model and any upstream provider returned by OpenRouter.
 - Search providers: disclose that queries go to the selected provider (Brave, Tavily or Exa); link to each provider's current terms and privacy policy. Do not repeat a training claim without linking to the current policy.
 - Subprocessors: Google Identity (OIDC), hosting, database, OpenRouter, the selected search providers (Brave, Tavily, Exa), master key provider, PostHog Cloud EU, the CMP (Iubenda or Cookiebot) when enabled, optional error tracking. Publish a subprocessor list and DPAs. Tipeee/PayPal are outbound donation links, not subprocessors, because Beamling sends them no payment data; add them to the list only if an embedded widget is ever introduced. No payment processor or Beamling-operated email subprocessor at launch.
-- Legal and licenses: publish the pages in §16.7, keep `/licenses` generated from the production dependency graph, and keep the dependency-license allowlist enforced in CI. The public docs repository is not a license for the application source. Current checkout: draft `/privacy` and `/terms`, plus the generated `/licenses` page; the remaining legal routes are still target work.
+- Legal and licenses: publish the pages in §16.7, keep `/licenses` generated from the production dependency graph, and keep the dependency-license allowlist enforced in CI. The public docs repository is not a license for the application source. Current checkout: implemented `/privacy`, `/terms`, `/cookies`, `/subprocessors`, `/security`, `/contact`, `/status` and generated `/licenses`; counsel review is still required.
 - Cookies: only the essential session cookie and, when a CMP is enabled, its consent-state cookie before consent. Product analytics is server-side and cookie-free. Donation links are outbound and set no Beamling cookie. If a browser SDK, session replay, marketing or other non-essential script is added, load it only through the CMP after consent; see §16.7. Document the legal basis.
 - Age policy: 16+.
 - Content policy: no illegal content, no targeted harassment, no medical or legal advice presented as professional advice. Abuse reports go to a monitored address.
@@ -1715,9 +1715,9 @@ Rules:
 | Layer | Tool | Current coverage |
 |---|---|---|
 | Mascot unit | Node test runner | 6 geometry/expression tests |
-| Web unit | Node test runner | 46 tests: credential encryption and rotation, model allowlist, citation parsing, Brave/Tavily/Exa/OpenRouter error mapping, retries, URL filtering, ranking, language detection, prompt injection boundaries, client IP, production configuration, analytics allowlist/identity/delivery/deletion/erasure retries, body limits, log redaction |
-| Web integration | Node test runner + PostgreSQL | 29 tests: account persistence and content encryption, Quick/Deep/Deeper, the Deeper AI SDK tool loop, planner repair, partial search, missing keys, selected-provider persistence/cost, no fallback, one-stream-per-conversation, global cap, lock contention, stop flag, delete mid-answer, timeout, NUL handling, retry replacement, stale answer repair, pagination, session cleanup, atomic rate limits, per-key search spacing, credential replacement, unverified keys, atomic analytics erasure queuing, the new-stream flag |
-| End-to-end | Playwright | 32 tests: 11 API checks, 15 UI flows and 6 public-route axe/CSP checks; Quick-answer coverage includes search trace, reasoning and tables, provider selection checks Tavily and marks a keyless provider, unverified-key validation is covered, the killswitch blocks new streams, the generated license page and its footer links resolve, and Deeper coverage checks the third mode |
+| Web unit | Node test runner | 52 tests: credential encryption and rotation, model allowlist, citation parsing, Brave/Tavily/Exa/OpenRouter error mapping, retries, URL filtering, ranking, language detection, prompt injection boundaries, client IP, production configuration, analytics allowlist/identity/delivery/deletion/erasure retries, body limits, log redaction |
+| Web integration | Node test runner + PostgreSQL | 32 tests: account persistence and content encryption, Quick/Deep/Deeper, the Deeper AI SDK tool loop, planner repair, partial search, missing keys, selected-provider persistence/cost, no fallback, one-stream-per-conversation, global cap, lock contention, stop flag, delete mid-answer, timeout, NUL handling, retry replacement, stale answer repair, pagination, session cleanup, atomic rate limits, per-key search spacing, credential replacement, unverified keys, atomic analytics erasure queuing, the new-stream flag |
+| End-to-end | Playwright | 37 tests: 11 API checks, 15 UI flows and 11 public-route axe/CSP checks; Quick-answer coverage includes search trace, reasoning and tables, provider selection checks Tavily and marks a keyless provider, unverified-key validation is covered, the killswitch blocks new streams, the generated license and legal pages resolve, and Deeper coverage checks the third mode |
 
 Commands:
 
@@ -1937,7 +1937,7 @@ Verify each provider's current API at implementation time. Validation calls must
 
 ### D. Naming and domain status (checked 2026-10-19; re-check before purchase)
 
-The chosen primary domain is `beamling.app`. The current code still uses `https://beamling.ai` as the Next.js metadata base and in the landing demo host; align it with the registered domain before launch.
+The chosen primary domain is `beamling.app`. The current code derives the Next.js metadata base and landing demo host from `APP_URL`; the production configuration uses `https://beamling.app`.
 
 | Domain | Status |
 |---|---|
