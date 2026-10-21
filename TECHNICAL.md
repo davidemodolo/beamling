@@ -45,9 +45,10 @@ Current external dependencies:
 | Brave Search API | Web Search validation and retrieval |
 | Tavily Search API | Search validation and retrieval |
 | Exa Search API | Search validation and retrieval |
+| PostHog Cloud EU | Optional server-side, metadata-only product events |
 | Browser | Session cookie, SSE consumption, UI state |
 
-The server does not fetch result pages, crawl the web, load remote media in answers, or send analytics to a third party. Provider traffic goes directly from the Next.js process to OpenRouter and the selected search provider using the user's key.
+The server does not fetch result pages, crawl the web or load remote media in answers. Provider traffic goes directly from the Next.js process to OpenRouter and the selected search provider using the user's key. When analytics is explicitly enabled, the server also sends the allowlisted metadata events described in §13.8.
 
 ---
 
@@ -142,6 +143,9 @@ Production startup refuses to boot when any of these checks fails:
 - `OIDC_ISSUER` is not HTTPS outside localhost.
 - `KMS_PROVIDER=env` outside localhost, or the selected KMS key setting is missing.
 - `BEAMLING_FAKE_PROVIDERS=1` outside a localhost `APP_URL`.
+- `ANALYTICS_ENABLED` is set to anything other than `true` or `false`.
+- Analytics is enabled without `POSTHOG_API_KEY`, `POSTHOG_PERSONAL_API_KEY`, `POSTHOG_PROJECT_ID` or at least 32 bytes of `ANALYTICS_SALT`.
+- The PostHog ingestion or app host is not a valid HTTPS origin, or `POSTHOG_PROJECT_ID` is not numeric.
 
 ### 3.2 Optional
 
@@ -167,6 +171,13 @@ Production startup refuses to boot when any of these checks fails:
 | `BRAVE_PAID_MIN_INTERVAL_MS` | `0`; optional spacing for Paid-plan Brave keys. |
 | `BEAMLING_FAKE_PROVIDERS` | `1` uses fixture providers. Honored only when not production, or when production `APP_URL` is localhost. |
 | `BEAMLING_FAKE_DELAY_MS` | Overrides fixture delays (defaults vary by call). |
+| `ANALYTICS_ENABLED` | Off unless exactly `true`. Set `false` as the kill switch. |
+| `POSTHOG_HOST` | Ingestion origin, default `https://eu.i.posthog.com`. |
+| `POSTHOG_APP_HOST` | Personal API origin; derived from the EU/US ingestion host or set explicitly for self-hosted PostHog. |
+| `POSTHOG_API_KEY` | Project token; required when analytics is enabled. |
+| `POSTHOG_PERSONAL_API_KEY` | Personal key with `person:write`, used to delete a person and events on account deletion; required when analytics is enabled. |
+| `POSTHOG_PROJECT_ID` | Numeric PostHog project id; required when analytics is enabled. |
+| `ANALYTICS_SALT` | HMAC-SHA256 salt for the distinct id; at least 32 bytes and required when analytics is enabled. |
 
 Production warnings (logged, not fatal):
 
@@ -225,7 +236,7 @@ Details:
 - Missing or expired session on a protected route returns `UNAUTHENTICATED` with HTTP 401.
 - `/chat` and `/onboarding` are server-guarded and redirect to `/login` when signed out.
 - `POST /api/auth/logout` revokes the current session and clears the cookie. `POST /api/auth/logout?scope=all` revokes every session of the account (Settings → Account → Sign out everywhere).
-- `DELETE /api/account` deletes the account, all rows and the wrapped workspace key, clears the cookie, and returns `{ "ok": true }`.
+- `DELETE /api/account` deletes the account, all rows and the wrapped workspace key, asks PostHog to delete the hashed analytics person when analytics is enabled, clears the cookie, and returns `{ "ok": true }`.
 - Cleanup removes expired sessions and counters; it does not delete inactive accounts because Google sign-in can return to them.
 - `POST /api/auth/test-login` exists only when `BEAMLING_TEST_AUTH=1`, `BEAMLING_FAKE_PROVIDERS=1` and `APP_URL` is localhost. It creates a unique test account for each new request context and is used by Playwright. Otherwise it returns `NOT_FOUND` (404).
 
@@ -1302,20 +1313,33 @@ frame-ancestors 'none'
 - The API never returns stack traces.
 - Provider responses that echo user content are encrypted in `messages.error_message`; the fixed `INTERRUPTED` message is plaintext.
 
-### 13.7 Supply chain and release checks
+### 13.6 Supply chain and release checks
 
 - CI runs `pnpm audit --prod --audit-level high` and a Gitleaks history scan on every push and pull request.
 - Dependabot checks npm, GitHub Actions and Docker weekly.
 - The built image is scanned separately; the current image has no HIGH, CRITICAL or MEDIUM findings after removing the npm/corepack trees and applying Alpine security updates.
 - `pnpm audit` still reports two development-only tooling advisories (`braces` via ESLint, `esbuild` via drizzle-kit). Neither is in the runtime image.
 
-### 13.6 Data deletion
+### 13.7 Data deletion
 
 - Deleting a conversation cascades to messages and sources.
 - Deleting an account cascades to sessions, the workspace data key, credentials, usage, settings, conversations, messages and sources, and removes the user's rate-limit keys.
 - Local active chats are aborted; remote instances stop on the next poll.
 - The cleanup job removes expired sessions and counters; accounts are retained for a future Google sign-in.
 - There is no soft-delete or recovery path.
+- When analytics is enabled, account deletion also asks PostHog to bulk-delete the HMAC distinct id and its events; failure is logged but never blocks the application-data deletion.
+
+### 13.8 Analytics privacy
+
+Analytics is disabled unless `ANALYTICS_ENABLED=true` and the full PostHog configuration is present. It is server-side only: the browser loads no PostHog SDK and there is no autocapture, session replay, heatmap, survey or feature flag.
+
+- `lib/server/analytics.ts` owns the event map, property allowlist, HMAC identity, timeout, in-flight cap and deletion call.
+- `distinctId = HMAC-SHA256(userId, ANALYTICS_SALT)` truncated to 32 hex characters. Raw user ids, email addresses, session tokens and IP addresses are never sent. Keep the salt stable for the life of the PostHog project; rotating it orphans existing events and makes deletion by the new hash incomplete.
+- Every payload is rebuilt from the allowlist, so unknown keys and non-scalar values are dropped even if a caller passes them accidentally.
+- `$geoip_disable` is true and `$ip` is `0.0.0.0`.
+- Events are best-effort: at most eight requests are in flight, each has a 2-second timeout, failures are dropped and logged without payloads, and there are no retries that block a request.
+- Account deletion calls PostHog's `bulk_delete` endpoint with `delete_events` and `delete_recordings`; the personal key and project id never enter the browser.
+- Local and test environments remain silent because the flag is opt-in. Production refuses to start with an incomplete enabled configuration.
 
 ---
 
@@ -1424,7 +1448,7 @@ The repository contains four layers.
 | Suite | Count | Coverage |
 |---|---|---|
 | `packages/mascot/test/geometry.test.mjs` | 6 | Eye/beam geometry, expressions, state mapping |
-| `packages/web/tests/unit.test.ts` | 34 | KMS-backed credential encryption/rotation, allowlist, Brave/Tavily/Exa/OpenRouter mapping, 429 retry, network vs abort, citations, ranking, freshness, language, prompt injection, client IP HMAC, same-origin anchors, production config, body limits, provider-safe log redaction |
+| `packages/web/tests/unit.test.ts` | 40 | KMS-backed credential encryption/rotation, model allowlist, Brave/Tavily/Exa/OpenRouter mapping, 429 retry, network vs abort, citations, ranking, freshness, language, prompt injection, client IP HMAC, same-origin anchors, production config, analytics allowlist/identity/delivery/deletion, body limits, provider-safe log redaction |
 | `packages/web/tests/integration.test.ts` | 26 | Database-backed account persistence, content encryption, Quick/Deep/Deeper, the Deeper AI SDK tool loop, planner repair/degrade, partial search, missing keys, selected-provider persistence and cost, no fallback, one stream per conversation, global concurrency, lock timeout, stop flag, mid-answer delete, timeout, NUL, retry, stale repair, pinned ordering, pagination, session cleanup, rate limits, Brave spacing, key replacement |
 | `packages/web/e2e/*.spec.ts` | 27 | 9 API checks, 13 UI flows and 5 route variants for CSP and axe; Quick checks search details, reasoning and tables, provider selection checks Tavily, Deeper checks the third mode, and sidebar checks pinning and title search |
 
@@ -1502,5 +1526,6 @@ The Playwright suite checks:
 | Credential protection | AES-256-GCM envelope encryption, AAD binding, master-key rotation |
 | Persistence | PostgreSQL 18, Drizzle schema, forward-only migration ledger |
 | Local deployment | Docker Compose app + PostgreSQL, standalone image, build identity, health check, graceful shutdown |
-| Observability | Structured JSON logs, versioned health endpoint, build identity in the UI |
+| Observability | Structured JSON logs, versioned health endpoint, build identity in the UI, optional server-side PostHog events |
+| Analytics | Opt-in server-side PostHog events with allowlisted metadata, HMAC ids, kill switch and deletion cleanup |
 | Testing | Unit, integration, E2E and mascot geometry suites |

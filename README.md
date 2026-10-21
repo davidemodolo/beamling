@@ -18,6 +18,7 @@ Your models. Your search. Your bill.
 - Conversation history with pinned chats, title search and per-conversation deletion
 - Model, default search-provider and default-mode settings
 - Account deletion and sign-out
+- Optional server-side PostHog analytics with metadata-only allowlisted events, no browser SDK and account-deletion cleanup
 - Production-parity local stack with HTTPS, OIDC, KMS and TLS PostgreSQL
 
 ## Technical reference
@@ -60,5 +61,6 @@ On a green `main` build, CI tags `v0.3.0`, pushes the image to GHCR as `v0.3.0` 
 - Accounts persist across Google sign-ins; expired sessions are deleted, but account data is only removed by account deletion or retention policy.
 - Production uses GCP Cloud KMS. The env master key and `scripts/rewrap-credentials.mjs` are for local tests only.
 - Enable database backups with a 30-day expiry, platform log retention of at most 30 days, and alerts on `/api/health`.
+- Analytics is opt-in and off by default. Set `ANALYTICS_ENABLED=true` plus `POSTHOG_API_KEY`, `POSTHOG_PERSONAL_API_KEY`, `POSTHOG_PROJECT_ID` and a 32-byte `ANALYTICS_SALT` to send allowlisted metadata events to PostHog Cloud EU. `POSTHOG_HOST` defaults to the EU ingestion host; the personal key needs `person:write` so account deletion can remove the hashed person and its events. Set `ANALYTICS_ENABLED=false` to stop all events immediately.
 - Publish the operator's legal entity and monitored privacy contact before opening sign-ups; the supplied legal pages are factual drafts, not legal review.
 - Before each release: `pnpm audit --prod`, a Gitleaks history scan, and a container scan of the built image. CI runs the production audit and Gitleaks automatically.

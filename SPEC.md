@@ -44,9 +44,9 @@ This file is the **target contract** for Alpha 1 and public launch. It is not an
 | Credentials | KMS-backed AES-256-GCM envelope encryption; OpenRouter, Brave, Tavily and Exa keys; Brave plan, expiry and budget metadata; usage warnings | Same; GCP KMS in production |
 | Content at rest | Conversation titles, messages, sources and stored errors are encrypted with per-account workspace keys | Same; GCP KMS in production |
 | Public pages | `/`, `/login`, `/onboarding`, `/chat`, `/chat/[id]`, `/privacy`, `/terms` | Add `/welcome` if needed, full legal/footer surface, docs, status, licenses, support and supporters |
-| Analytics | Structured JSON logs and a database health check | PostHog Cloud EU, server-side metadata-only events |
+| Analytics | Server-side PostHog events with an allowlist, HMAC distinct IDs, opt-in kill switch and account-deletion hook; no browser SDK | PostHog Cloud EU, server-side metadata-only events and operator dashboards |
 | Operations | Production-parity Docker Compose with Caddy TLS, Dex OIDC, LocalStack KMS, TLS Postgres and the production image; release migrations, versioned health, tagged releases, graceful shutdown | Fly + Neon, GCP KMS, monitoring, backups, killswitch |
-| Tests | 34 web unit tests, 26 database integration tests, 27 Playwright E2E tests, 6 mascot tests | Add parity-stack smoke, analytics, legal, killswitch, dump-encryption, load and eval gates |
+| Tests | 40 web unit tests, 26 database integration tests, 27 Playwright E2E tests, 6 mascot tests | Add parity-stack smoke, analytics, legal, killswitch, dump-encryption, load and eval gates |
 | Donations | None | Optional post-public `/support` and `/supporters` |
 
 ---
@@ -243,7 +243,7 @@ Alpha 1 is the first end-to-end, BYOK product slice. It is deliberately narrow: 
 | History | List, open, delete conversations | P0 | Implemented |
 | Settings | One modal for keys, key plan/expiry/budget, default model, default search provider and default mode | P0 | Partial: model, mode, provider and Brave limits; no cost ceiling |
 | Costs | Per-answer token counts, generation cost and selected search-provider cost | P0 | Implemented: OpenRouter actual + selected-provider estimate |
-| Analytics | Server-side PostHog Cloud EU events and internal usage dashboards; metadata only | P0 | Target |
+| Analytics | Server-side PostHog Cloud EU events and internal usage dashboards; metadata only | P0 | Implemented: allowlisted events, HMAC IDs, kill switch and deletion hook; live dashboards are operator setup |
 | Errors | Invalid key, insufficient credits, rate limit, provider outage, no sources | P0 | Implemented |
 | Account | Delete the account and its data; sign out | P0 | Implemented |
 | Files | PDF upload and question answering over the document | P2 | Target |
@@ -750,7 +750,7 @@ This section describes the **entire project**, not only the frontend. Alpha 1 is
 
 Alpha 1 is Docker-first and PostgreSQL-only. The same container image runs locally through Docker Compose and in production on Fly.io with Neon Postgres. There is no platform-specific database or serverless adapter.
 
-**Current checkout:** production-parity Docker Compose with Caddy TLS, Dex OIDC, LocalStack KMS, TLS PostgreSQL 18, the production image, structured logs and `/api/health`. The KMS adapters support GCP (production) and AWS/LocalStack (local). Fly.io, Neon, PostHog, Sentry and Better Stack are target infrastructure; no code depends on them today.
+**Current checkout:** production-parity Docker Compose with Caddy TLS, Dex OIDC, LocalStack KMS, TLS PostgreSQL 18, the production image, structured logs and `/api/health`. The KMS adapters support GCP (production) and AWS/LocalStack (local). Fly.io, Neon, Sentry and Better Stack are target infrastructure; no code depends on them today. PostHog is implemented as an optional, opt-in integration.
 
 ### 12.2 Alpha 1 stack (target)
 
@@ -771,7 +771,7 @@ Alpha 1 is Docker-first and PostgreSQL-only. The same container image runs local
 | Search | Brave, Tavily or Exa | Provider adapter per answer; snippets only; no Beamling page fetcher |
 | Container | Multi-stage Dockerfile, Next standalone output | Non-root runtime, healthcheck, no secrets in the image |
 | Observability | Structured logs now; Sentry and Better Stack target | Fly/Neon metrics and PostHog usage analytics; no content in logs |
-| Analytics | PostHog Cloud EU, server-side (target) | Metadata-only product events; no content or keys; free tier. Current checkout emits no analytics events |
+| Analytics | PostHog Cloud EU, server-side (target) | Metadata-only product events; no content or keys; free tier. The checkout implements the event contract, opt-in kill switch and deletion hook |
 
 ### 12.3 Chat request path
 
@@ -825,7 +825,7 @@ Decision rule: use Fly.io for compute and Neon for Postgres at public launch. Ev
 - `docker-compose.yml` starts the production-parity stack: Caddy TLS, the app image, PostgreSQL 18 with TLS, Dex OIDC, LocalStack KMS and a one-shot migrator.
 - The image must not contain `.env` files, API keys or build-time user credentials.
 - Current environment: `DATABASE_URL` and TLS options, `APP_URL`, `AUTH_SECRET`, `OIDC_ISSUER`/`OIDC_CLIENT_ID`/`OIDC_CLIENT_SECRET`/`OIDC_REDIRECT_URI`, `KMS_PROVIDER` plus the selected KMS key settings, `PORT`, `TRUSTED_PROXY_HOPS`, `MAX_CONCURRENT_CHATS`, `BRAVE_MIN_INTERVAL_MS`/`BRAVE_PAID_MIN_INTERVAL_MS`, `COOKIE_SECURE` and the fixture-provider switches. The env KMS adapter additionally uses `CREDENTIAL_MASTER_KEY` and rotation variables.
-- Target public-launch additions: `POSTHOG_API_KEY`, `POSTHOG_HOST`, `ANALYTICS_SALT`, `KILL_SWITCH_SECRET` and `METRICS_SECRET`.
+- Target public-launch additions: `POSTHOG_API_KEY`, `POSTHOG_HOST`, `POSTHOG_PERSONAL_API_KEY`, `POSTHOG_PROJECT_ID`, `ANALYTICS_SALT`, `KILL_SWITCH_SECRET` and `METRICS_SECRET`. `POSTHOG_APP_HOST` is optional.
 - The image exposes a health endpoint and a Docker `HEALTHCHECK`.
 - Database migrations run as a release step, not automatically on every container start.
 - The Docker build must include `packages/web` and `packages/mascot` because the app depends on the workspace package.
@@ -1528,7 +1528,7 @@ Content order:
 
 ## 17. Security, Privacy, and Compliance
 
-The current checkout protects credentials and content with KMS-backed envelope encryption, session tokens with hashing, API routes with `APP_URL`-anchored same-origin checks and CSP, and logs with query-parameter and provider-body redaction. Analytics controls, the CMP, final legal review and the remaining public legal surface are target work.
+The current checkout protects credentials and content with KMS-backed envelope encryption, session tokens with hashing, API routes with `APP_URL`-anchored same-origin checks and CSP, and logs with query-parameter and provider-body redaction. The analytics allowlist, HMAC distinct IDs, opt-in kill switch and deletion hook are implemented; the CMP, final legal review and the remaining public legal surface are target work.
 
 ### 17.1 Threat model
 
@@ -1647,7 +1647,7 @@ Guardrail metrics: credential validation failures, key decryption errors, rate-l
 
 ### 19.1 Usage analytics service (target)
 
-The current checkout emits no analytics events. Alpha 1 target uses **PostHog Cloud EU (Frankfurt)** for internal product analytics and usage dashboards. It is the cheapest suitable option: the free plan includes **1,000,000 analytics events per month**, one project, one year of retention, no credit card, and it stops accepting events at the free limit instead of charging. Beamling does not operate an always-on analytics service.
+The checkout implements the event contract below; the PostHog project, dashboards and alerts are operator setup. Alpha 1 target uses **PostHog Cloud EU (Frankfurt)** for internal product analytics and usage dashboards. It is the cheapest suitable option: the free plan includes **1,000,000 analytics events per month**, one project, one year of retention, no credit card, and it stops accepting events at the free limit instead of charging. Beamling does not operate an always-on analytics service.
 
 **Scope**
 
@@ -1671,7 +1671,7 @@ The current checkout emits no analytics events. Alpha 1 target uses **PostHog Cl
 
 Rules:
 
-- `distinctId = HMAC-SHA256(userId, ANALYTICS_SALT)` truncated to 32 hex characters. No email, IP address, session token or raw user ID is sent.
+- `distinctId = HMAC-SHA256(userId, ANALYTICS_SALT)` truncated to 32 hex characters. No email, IP address, session token or raw user ID is sent. Keep `ANALYTICS_SALT` stable for the life of the project; rotating it breaks deletion by hash for older events.
 - PostHog IP capture and GeoIP are disabled. No geolocation, device fingerprint or page URL.
 - Never send questions, answers, conversation titles, source URLs, source titles, snippets, credential plaintext, error messages or provider-request bodies. `error_code` is allowed; `error_message` is not.
 - Cost fields record whether the value is provider-reported or estimated. PostHog dashboards keep actual and estimated costs separate.
@@ -1707,7 +1707,7 @@ Rules:
 | Layer | Tool | Current coverage |
 |---|---|---|
 | Mascot unit | Node test runner | 6 geometry/expression tests |
-| Web unit | Node test runner | 34 tests: credential encryption and rotation, model allowlist, citation parsing, Brave/Tavily/Exa/OpenRouter error mapping, retries, URL filtering, ranking, language detection, prompt injection boundaries, client IP, production configuration, body limits, log redaction |
+| Web unit | Node test runner | 40 tests: credential encryption and rotation, model allowlist, citation parsing, Brave/Tavily/Exa/OpenRouter error mapping, retries, URL filtering, ranking, language detection, prompt injection boundaries, client IP, production configuration, analytics allowlist/identity/delivery/deletion, body limits, log redaction |
 | Web integration | Node test runner + PostgreSQL | 26 tests: account persistence and content encryption, Quick/Deep/Deeper, the Deeper AI SDK tool loop, planner repair, partial search, missing keys, selected-provider persistence/cost, no fallback, one-stream-per-conversation, global cap, lock contention, stop flag, delete mid-answer, timeout, NUL handling, retry replacement, stale answer repair, pagination, session cleanup, atomic rate limits, per-key search spacing, credential replacement |
 | End-to-end | Playwright | 27 tests: 9 API checks, 13 UI flows and 5 public-route axe/CSP checks; Quick-answer coverage includes search trace, reasoning and tables, provider selection checks Tavily, and Deeper coverage checks the third mode |
 
@@ -1774,8 +1774,8 @@ Evaluation methodology: each golden question has a reference answer and expected
 - **Migrations:** forward-only, reviewed, applied before deploy with `node scripts/migrate.mjs`. No destructive migration without a backfill plan. The public-launch migration must encrypt any existing plaintext content (§13.6) and verify that a raw database dump contains no readable user content; this is a release gate.
 - **Encryption at rest:** per-workspace content encryption (§13.6) is live and the production deployment must use GCP KMS; the launch dump/backup check must pass.
 - **Backups:** managed database backups with point-in-time recovery where available, 30-day window. Quarterly restore drill.
-- **Secrets:** platform secret store only. No secrets in the repository or build logs. Public launch requires `DATABASE_URL`, `APP_URL`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_REDIRECT_URI`, `KMS_PROVIDER=gcp`, `KMS_KEY_NAME` plus a restricted GCP service account, `POSTHOG_API_KEY`, `POSTHOG_HOST`, `ANALYTICS_SALT`, `KILL_SWITCH_SECRET` and `METRICS_SECRET`. Local development may use the AWS/LocalStack KMS adapter; `CREDENTIAL_MASTER_KEY` is test-only.
-- **Analytics:** PostHog Cloud EU, server-side only. Environment: `POSTHOG_API_KEY`, `POSTHOG_HOST`, `ANALYTICS_SALT`; `ANALYTICS_ENABLED` is the kill switch. Keep the project on the free plan or a $0 billing limit; no browser SDK, autocapture or session replay.
+- **Secrets:** platform secret store only. No secrets in the repository or build logs. Public launch requires `DATABASE_URL`, `APP_URL`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_REDIRECT_URI`, `KMS_PROVIDER=gcp`, `KMS_KEY_NAME` plus a restricted GCP service account, `POSTHOG_API_KEY`, `POSTHOG_HOST`, `POSTHOG_PERSONAL_API_KEY`, `POSTHOG_PROJECT_ID`, `ANALYTICS_SALT`, `KILL_SWITCH_SECRET` and `METRICS_SECRET`. Local development may use the AWS/LocalStack KMS adapter; `CREDENTIAL_MASTER_KEY` is test-only.
+- **Analytics:** PostHog Cloud EU, server-side only. Environment: `POSTHOG_API_KEY`, `POSTHOG_HOST`, `POSTHOG_APP_HOST` (optional), `POSTHOG_PERSONAL_API_KEY`, `POSTHOG_PROJECT_ID`, `ANALYTICS_SALT`; `ANALYTICS_ENABLED=true` is the opt-in and `false` is the kill switch. The personal key needs `person:write` for account-deletion cleanup. Keep the project on the free plan or a $0 billing limit; no browser SDK, autocapture or session replay.
 - **Legal and consent:** publish reviewed Privacy/Terms/Cookie Policy/Subprocessors/Security pages; configure Iubenda (default) or Cookiebot only if non-essential scripts exist; add CMP domains to CSP; generate `/licenses` in CI; run the footer link checker.
 - **Public docs and feedback:** Product docs are published in a public repository with GitHub issue templates for bugs and feature requests and a private security disclosure path. The application source stays private; public docs do not grant an open-source license for the product.
 - **Status page:** public availability and provider incident feed (v1).
@@ -1851,7 +1851,7 @@ Evaluation methodology: each golden question has a reference answer and expected
 | Milestone | Deliverables | Exit criteria | State |
 |---|---|---|---|
 | M0 — Spec | This document, brand assets brief, domain purchases | Review complete | Spec exists; domain purchase unconfirmed |
-| M1 — Alpha 1 | Google-only accounts, OpenRouter credentials and streaming, Brave/Tavily/Exa search adapters, Brave plan/expiry/budget metadata, Quick, Deep, Deeper, citations, search animation, history, PostHog usage analytics, production-parity local stack | Quick and Deep cited answers render end to end; Google login works; animation follows real stages; local stack runs the production image with KMS-backed crypto | Partial: Google login, OpenRouter + Brave/Tavily/Exa, key metadata, Quick/Deep/Deeper, citations, animation, history, KMS-backed crypto and local parity work; PostHog is missing |
+| M1 — Alpha 1 | Google-only accounts, OpenRouter credentials and streaming, Brave/Tavily/Exa search adapters, Brave plan/expiry/budget metadata, Quick, Deep, Deeper, citations, search animation, history, PostHog usage analytics, production-parity local stack | Quick and Deep cited answers render end to end; Google login works; animation follows real stages; local stack runs the production image with KMS-backed crypto | Implemented in code and tests, including PostHog events, kill switch and deletion hook; live PostHog project, dashboards and alerts remain operator setup |
 | M2 — Private alpha | Onboarding, settings, usage/cost, error states, account deletion, 100-question eval, Fly + Neon deploy | 10–25 invited users complete real Quick, Deep and Deeper questions without key leakage | Target |
 | M3 — Public launch | All launch adapters, welcome page, public docs and GitHub feedback repo, legal pages, open-source license page, CMP if needed, rate limits, status page | Public Google sign-in open, SLOs met for one week | Target |
 | M3.1 — Support (optional, post-public) | `/support`, outbound Tipeee/PayPal link, opt-in `/supporters`, footer link | Donation link works with no payment script; consent and removal process documented | Target |
