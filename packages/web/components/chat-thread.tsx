@@ -101,11 +101,11 @@ export function WorkingAnswer({
       </div>
       <div className="assistant-body">
         <SearchTraceDetails traces={live.searches} />
-        <ReasoningDetails reasoning={live.reasoning} streaming />
+        <ReasoningDetails reasoning={live.reasoning} streaming links={live.sources.map((source) => source.url)} />
       </div>
       {live.content ? (
         <div className="assistant-body">
-          <Markdown text={live.content} citations={live.sources.length} onCitation={onCitation} streaming />
+          <Markdown text={live.content} citations={live.sources.length} onCitation={onCitation} streaming allowedLinks={live.sources.map((source) => source.url)} />
         </div>
       ) : (
         <div className="skeleton-answer" aria-hidden="true">

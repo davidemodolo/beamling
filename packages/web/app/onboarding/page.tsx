@@ -9,7 +9,8 @@ import { Icon } from "@/components/ui/icon";
 import { Wordmark } from "@/components/wordmark";
 import { WorkspaceError } from "@/components/workspace-error";
 import { errorMessage } from "@/lib/api";
-import { OPENROUTER_MODELS, SEARCH_PROVIDERS, searchProviderInfo } from "@/lib/providers";
+import { credentialInput } from "@/lib/credential-form";
+import { OPENROUTER_MODELS, SEARCH_PROVIDERS, searchProviderInfo } from "@/lib/provider-catalog";
 import { useStore } from "@/lib/store";
 import type { SearchProvider } from "@/lib/types";
 
@@ -69,16 +70,17 @@ export default function OnboardingPage() {
     }
     if (nextSearch) {
       try {
-        await addCredential({
-          kind: "search",
-          provider: searchProvider,
-          key: nextSearch,
-          plan: searchProvider === "brave" ? bravePlan : undefined,
-          expiresOn: searchProvider === "brave" && expiresOn ? expiresOn : null,
-          budgetUsd: searchProvider === "brave" && budgetUsd ? Number(budgetUsd) : null,
-          budgetPeriod: "month",
-          validate: providerInfo.freeValidation || validateSearch,
-        });
+        await addCredential(
+          credentialInput({
+            kind: "search",
+            provider: searchProvider,
+            key: nextSearch,
+            plan: bravePlan,
+            expiresOn,
+            budgetUsd,
+            validateNow: validateSearch,
+          }),
+        );
         setSearchKey("");
       } catch (cause) {
         setSearchError(errorMessage(cause, `${providerInfo.name} rejected this key.`));

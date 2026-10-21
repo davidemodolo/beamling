@@ -1,4 +1,4 @@
-import { DEFAULT_LLM_MODEL, DEFAULT_SEARCH_PROVIDER } from "./providers";
+import { DEFAULT_LLM_MODEL, DEFAULT_SEARCH_PROVIDER } from "./provider-catalog";
 import type { Settings } from "./types";
 
 export const DEFAULT_SETTINGS: Settings = {

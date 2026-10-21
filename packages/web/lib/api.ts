@@ -2,6 +2,7 @@
 
 import { createParser } from "eventsource-parser";
 import type { ChatStage, DoneEvent, Mode, SearchProvider, SearchTrace, Source, Usage } from "./types";
+import { parseStreamEvent } from "./stream-events";
 
 export class ApiRequestError extends Error {
   constructor(
@@ -235,46 +236,46 @@ export function streamAnswer(input: StreamInput, events: StreamEvents): StreamHa
           } catch {
             return;
           }
-          switch (event.event) {
+          const parsed = parseStreamEvent(event.event ?? "", data);
+          if (!parsed) return;
+          switch (parsed.event) {
             case "meta":
-              messageId = (data as StreamMeta).messageId;
-              events.onMeta?.(data as StreamMeta);
+              messageId = parsed.data.messageId;
+              events.onMeta?.(parsed.data);
               break;
-            case "stage": {
-              const { stage, detail } = data as { stage: ChatStage; detail?: string };
-              if (stage === "stopped") settle(() => events.onStopped?.(true));
-              else events.onStage?.(stage, detail);
+            case "stage":
+              if (parsed.data.stage === "stopped") settle(() => events.onStopped?.(true));
+              else events.onStage?.(parsed.data.stage, parsed.data.detail);
               break;
-            }
             case "plan":
-              events.onPlan?.((data as { queries: string[] }).queries);
+              events.onPlan?.(parsed.data.queries);
               break;
             case "search":
-              events.onSearch?.(data as SearchTrace);
+              events.onSearch?.(parsed.data);
               break;
             case "progress":
-              events.onProgress?.(data as { completed: number; total: number });
+              events.onProgress?.(parsed.data);
               break;
             case "sources":
-              events.onSources?.(data as Source[]);
+              events.onSources?.(parsed.data);
               break;
             case "delta":
-              events.onDelta?.((data as { text: string }).text);
+              events.onDelta?.(parsed.data.text);
               break;
             case "reasoning":
-              events.onReasoning?.((data as { text: string }).text);
+              events.onReasoning?.(parsed.data.text);
               break;
             case "citation":
-              events.onCitation?.((data as { position: number }).position);
+              events.onCitation?.(parsed.data.position);
               break;
             case "usage":
-              events.onUsage?.(data as Usage);
+              events.onUsage?.(parsed.data);
               break;
             case "done":
-              settle(() => events.onDone?.(data as DoneEvent));
+              settle(() => events.onDone?.(parsed.data));
               break;
             case "error":
-              settle(() => events.onError?.(data as StreamError));
+              settle(() => events.onError?.(parsed.data));
               break;
             default:
               // Unknown events are ignored, so the server can add new ones safely.

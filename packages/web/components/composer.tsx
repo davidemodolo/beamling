@@ -2,8 +2,8 @@
 
 import { useEffect, type RefObject } from "react";
 import { Icon } from "./ui/icon";
-import { MODE_LABELS, MODES } from "@/lib/modes";
-import { SEARCH_PROVIDERS } from "@/lib/providers";
+import { MODE_ICONS, MODE_LABELS, MODES } from "@/lib/modes";
+import { SEARCH_PROVIDERS } from "@/lib/provider-catalog";
 import type { Mode, SearchProvider } from "@/lib/types";
 
 interface ComposerProps {
@@ -102,7 +102,7 @@ export function Composer({
                 onClick={() => onModeChange(value)}
                 title={value === "deeper" ? "Agentic research loop with up to 60 searches" : undefined}
               >
-                <Icon name={value === "quick" ? "zap" : value === "deep" ? "layers" : "sparkles"} size={12} /> {MODE_LABELS[value]}
+                <Icon name={MODE_ICONS[value]} size={12} /> {MODE_LABELS[value]}
               </button>
             ))}
           </div>

@@ -6,6 +6,7 @@ import { Icon } from "@/components/ui/icon";
 import { errorMessage } from "@/lib/api";
 import { useToast } from "@/lib/hooks/use-toast";
 import { useStore } from "@/lib/store";
+import { UserAvatar } from "@/components/user-avatar";
 import { shortDate } from "@/lib/utils";
 
 export function AccountPanel() {
@@ -31,9 +32,7 @@ export function AccountPanel() {
     <div className="settings-stack">
       <section className="settings-card">
         <div className="settings-card-body" style={{ display: "flex", gap: 14, alignItems: "center" }}>
-          <div className="avatar" style={{ width: 46, height: 46, fontSize: 15 }}>
-            {(user?.name || user?.email || "?").slice(0, 1).toUpperCase()}
-          </div>
+          <UserAvatar name={user?.name} email={user?.email} avatarUrl={user?.avatarUrl} size={46} />
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 600 }}>{user?.name ?? "Google account"}</div>
             <div className="hint">

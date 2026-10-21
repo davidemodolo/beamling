@@ -3,9 +3,9 @@
 import { Icon } from "@/components/ui/icon";
 import { errorMessage } from "@/lib/api";
 import { useToast } from "@/lib/hooks/use-toast";
-import { OPENROUTER_MODELS, SEARCH_PROVIDERS } from "@/lib/providers";
+import { OPENROUTER_MODELS, SEARCH_PROVIDERS } from "@/lib/provider-catalog";
 import { useStore } from "@/lib/store";
-import { MODE_HINTS, MODE_LABELS, MODES } from "@/lib/modes";
+import { MODE_HINTS, MODE_ICONS, MODE_LABELS, MODES } from "@/lib/modes";
 
 export function DefaultsPanel() {
   const { settings, updateSettings } = useStore();
@@ -37,7 +37,7 @@ export function DefaultsPanel() {
                   aria-pressed={settings.defaultMode === mode}
                   onClick={() => save({ defaultMode: mode }, `${MODE_LABELS[mode]} is now the default`)}
                 >
-                  <Icon name={mode === "quick" ? "zap" : mode === "deep" ? "layers" : "sparkles"} size={12} />
+                  <Icon name={MODE_ICONS[mode]} size={12} />
                   {MODE_LABELS[mode]}
                 </button>
               ))}

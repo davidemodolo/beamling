@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Mascot } from "@/components/mascot";
 import { Icon } from "@/components/ui/icon";
 import { versionLabel } from "@/lib/version";
-import { LLM_NAMES, SEARCH_NAMES } from "./data";
+import { LLM_NAMES, SEARCH_NAMES } from "./landing-data";
 
 export function Brand() {
   return (
@@ -61,6 +61,11 @@ export function SiteFooter() {
           <h3>Trust</h3>
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>
+          <Link href="/cookies">Cookies</Link>
+          <Link href="/subprocessors">Subprocessors</Link>
+          <Link href="/security">Security</Link>
+          <Link href="/status">Status</Link>
+          <Link href="/contact">Contact</Link>
           <Link href="/licenses">Licenses</Link>
           <span>Keys encrypted at rest</span>
           <span>No training by Beamling</span>

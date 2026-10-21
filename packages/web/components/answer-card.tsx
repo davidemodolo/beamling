@@ -4,7 +4,7 @@ import { memo, useCallback, type ReactNode } from "react";
 import { describeAnswerError } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
 import { useToast } from "@/lib/hooks/use-toast";
-import { llmModelName, searchProviderName } from "@/lib/providers";
+import { llmModelName, searchProviderName } from "@/lib/provider-catalog";
 import type { ThreadMessage } from "@/lib/store";
 import type { SearchProvider, SearchTrace, Source, Usage } from "@/lib/types";
 import { formatCost, formatNumber } from "@/lib/utils";
@@ -114,7 +114,15 @@ export function SearchTraceDetails({ traces }: { traces?: SearchTrace[] }) {
   );
 }
 
-export function ReasoningDetails({ reasoning, streaming }: { reasoning?: string; streaming?: boolean }) {
+export function ReasoningDetails({
+  reasoning,
+  streaming,
+  links,
+}: {
+  reasoning?: string;
+  streaming?: boolean;
+  links?: readonly string[];
+}) {
   if (!reasoning) return null;
   return (
     <details className="trace trace-reasoning">
@@ -123,7 +131,7 @@ export function ReasoningDetails({ reasoning, streaming }: { reasoning?: string;
         <span className="trace-count">{streaming ? "live" : "provided by the model"}</span>
       </summary>
       <div className="reasoning-body">
-        <Markdown text={reasoning} citations={0} streaming={streaming} />
+        <Markdown text={reasoning} citations={0} streaming={streaming} allowedLinks={links} />
       </div>
     </details>
   );
@@ -203,7 +211,7 @@ export const AnswerCard = memo(function AnswerCard({ message, onCitation, onOpen
         ) : null}
 
         <SearchTraceDetails traces={message.searches} />
-        <ReasoningDetails reasoning={message.reasoning} />
+        <ReasoningDetails reasoning={message.reasoning} links={sources?.map((source) => source.url)} />
 
         {message.truncated ? (
           <Notice icon="alert" title="Cut short" tone="warn">
@@ -256,7 +264,7 @@ export const AnswerCard = memo(function AnswerCard({ message, onCitation, onOpen
             </div>
           </div>
         ) : (
-          <Markdown text={message.content} citations={sources?.length ?? 0} onCitation={cite} />
+          <Markdown text={message.content} citations={sources?.length ?? 0} onCitation={cite} allowedLinks={sources?.map((source) => source.url)} />
         )}
 
         {!error && !writing ? (

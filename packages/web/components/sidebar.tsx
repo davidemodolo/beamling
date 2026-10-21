@@ -26,6 +26,9 @@ function SidebarContent({ mobile, onNavigate }: SidebarProps) {
     setConversationPinned,
     user,
     signOut,
+    ready,
+    error,
+    refresh,
   } = useStore();
   const { openSettings } = useSidebar();
   const pathname = usePathname();
@@ -119,7 +122,21 @@ function SidebarContent({ mobile, onNavigate }: SidebarProps) {
       </div>
 
       <div className="sidebar-scroll">
-        {groups.length ? (
+        {error ? (
+          <div className="sidebar-error" role="status">
+            <span>{error}</span>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => void refresh()}>
+              Try again
+            </button>
+          </div>
+        ) : null}
+        {!ready ? (
+          <div className="sidebar-skeleton" aria-label="Loading conversations" aria-busy="true">
+            {[0, 1, 2, 3, 4].map((row) => (
+              <span key={row} />
+            ))}
+          </div>
+        ) : groups.length ? (
           groups.map((group) => (
             <section key={group.label} aria-label={group.label}>
               <h2 className="history-group">{group.label}</h2>

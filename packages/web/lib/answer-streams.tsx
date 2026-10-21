@@ -114,6 +114,34 @@ export function AnswerStreamsProvider({ children }: { children: ReactNode }) {
       let searches: SearchTrace[] = [];
       let sources: Source[] = [];
       let finished = false;
+      // Deltas arrive per token; batch React updates to at most one animation frame so Markdown
+      // does not re-parse the whole answer for every token.
+      let pendingContent = "";
+      let pendingReasoning = "";
+      let flushFrame: number | null = null;
+      const flushBuffered = () => {
+        if (flushFrame !== null) {
+          cancelAnimationFrame(flushFrame);
+          flushFrame = null;
+        }
+        const contentChunk = pendingContent;
+        const reasoningChunk = pendingReasoning;
+        pendingContent = "";
+        pendingReasoning = "";
+        if (!contentChunk && !reasoningChunk) return;
+        patch((current) => ({
+          ...current,
+          content: current.content + contentChunk,
+          reasoning: current.reasoning + reasoningChunk,
+        }));
+      };
+      const scheduleFlush = () => {
+        if (flushFrame !== null) return;
+        flushFrame = requestAnimationFrame(() => {
+          flushFrame = null;
+          flushBuffered();
+        });
+      };
 
       setLive((current) => ({
         ...current,
@@ -144,6 +172,7 @@ export function AnswerStreamsProvider({ children }: { children: ReactNode }) {
       const finish = async (stage: ChatStage, message: string, error?: StreamError) => {
         if (finished) return;
         finished = true;
+        flushBuffered();
         handles.current.delete(conversationId);
         announce(message);
         const now = new Date().toISOString();
@@ -265,11 +294,13 @@ export function AnswerStreamsProvider({ children }: { children: ReactNode }) {
           },
           onReasoning: (text) => {
             reasoning += text;
-            patch((current) => ({ ...current, reasoning: current.reasoning + text }));
+            pendingReasoning += text;
+            scheduleFlush();
           },
           onDelta: (text) => {
             content += text;
-            patch((current) => ({ ...current, content: current.content + text }));
+            pendingContent += text;
+            scheduleFlush();
           },
           onCitation: () => patch((current) => ({ ...current, citations: current.citations + 1 })),
           onDone: (result) => void finish(result.noSources ? "no-sources" : "done", doneMessage(result)),

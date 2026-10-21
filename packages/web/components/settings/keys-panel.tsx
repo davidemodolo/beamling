@@ -5,14 +5,15 @@ import { SecretKeyInput } from "@/components/secret-key-input";
 import { Icon } from "@/components/ui/icon";
 import { errorMessage } from "@/lib/api";
 import { useToast } from "@/lib/hooks/use-toast";
-import { SEARCH_PROVIDERS } from "@/lib/providers";
+import { SEARCH_PROVIDERS } from "@/lib/provider-catalog";
 import { useStore } from "@/lib/store";
-import type { Credential, CredentialKind } from "@/lib/types";
+import { credentialInput, DEFAULT_BUDGET_PERIOD } from "@/lib/credential-form";
+import type { Credential, CredentialKind, CredentialProvider } from "@/lib/types";
 import { CredentialRow } from "./credential-row";
 
 const PROVIDERS: {
   kind: CredentialKind;
-  provider: string;
+  provider: CredentialProvider;
   name: string;
   description: string;
   inputId: string;
@@ -127,16 +128,17 @@ export function KeysPanel() {
     setPending(true);
     setError("");
     try {
-      await addCredential({
-        kind: provider.kind,
-        provider: provider.provider,
-        key: value,
-        plan: provider.provider === "brave" ? plan : undefined,
-        expiresOn: provider.provider === "brave" && expiry ? expiry : null,
-        budgetUsd: provider.provider === "brave" && budget ? Number(budget) : null,
-        budgetPeriod: "month",
-        validate: provider.paidValidation ? validateNow : true,
-      });
+      await addCredential(
+        credentialInput({
+          kind: provider.kind,
+          provider: provider.provider,
+          key: value,
+          plan,
+          expiresOn: expiry,
+          budgetUsd: budget,
+          validateNow,
+        }),
+      );
       showToast(provider.paidValidation && !validateNow ? `${provider.name} key saved, not validated` : `${provider.name} key saved`);
       cancel();
     } catch (cause) {
@@ -173,7 +175,7 @@ export function KeysPanel() {
         plan,
         expiresOn: expiry || null,
         budgetUsd: budget ? Number(budget) : null,
-        budgetPeriod: "month",
+        budgetPeriod: DEFAULT_BUDGET_PERIOD,
       });
       showToast("Key limits updated");
       setLimitsFor(null);

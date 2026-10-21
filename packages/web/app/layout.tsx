@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { connection } from "next/server";
+import { appUrl } from "@/lib/server/env";
 import "./globals.css";
 // Split by surface; the order is the cascade order, keep it.
 import "./styles/primitives.css";
@@ -30,24 +31,27 @@ const jetbrains = JetBrains_Mono({
   fallback: ["ui-monospace", "SFMono-Regular", "monospace"],
 });
 
-export const metadata: Metadata = {
-  metadataBase: new URL("https://beamling.ai"),
-  title: {
-    default: "Beamling — a little light on every answer",
-    template: "%s · Beamling",
-  },
-  description:
-    "A bring-your-own-key answer engine. Ask anything, and Beamling shows you exactly where the answer comes from.",
-  applicationName: "Beamling",
-  openGraph: {
-    title: "Beamling — a little light on every answer",
-    description: "Your keys. Your models. Clear answers with sources you can inspect.",
-    type: "website",
-  },
-  icons: {
-    icon: "/mark.svg",
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return {
+    metadataBase: new URL(appUrl()),
+    title: {
+      default: "Beamling — a little light on every answer",
+      template: "%s · Beamling",
+    },
+    description:
+      "A bring-your-own-key answer engine. Ask anything, and Beamling shows you exactly where the answer comes from.",
+    applicationName: "Beamling",
+    openGraph: {
+      title: "Beamling — a little light on every answer",
+      description: "Your keys. Your models. Clear answers with sources you can inspect.",
+      type: "website",
+      url: "/",
+    },
+    icons: {
+      icon: "/mark.svg",
+    },
+  };
+}
 
 export const viewport: Viewport = {
   width: "device-width",

@@ -8,11 +8,21 @@ interface MarkdownProps {
   citations?: number;
   onCitation?: (position: number) => void;
   streaming?: boolean;
+  /** When set, only these exact hrefs are rendered as links. Model output is otherwise plain text. */
+  allowedLinks?: readonly string[];
 }
 
 const HR = /^---+$/;
 
-function inline(text: string, key: string, citations: number): ReactNode[] {
+function linkHref(value: string): string | null {
+  try {
+    return new URL(value).href;
+  } catch {
+    return null;
+  }
+}
+
+function inline(text: string, key: string, citations: number, allowedLinks: ReadonlySet<string>): ReactNode[] {
   const nodes: ReactNode[] = [];
   const pattern = /(\*\*[^*]+\*\*|`[^`]+`|\*[^*\s][^*]*\*|\[[^\]]+\]\([^)\s]+\)|\[\d+\])/g;
   let last = 0;
@@ -23,17 +33,18 @@ function inline(text: string, key: string, citations: number): ReactNode[] {
     const token = match[0];
     const k = `${key}-${i++}`;
     if (token.startsWith("**")) {
-      nodes.push(<strong key={k}>{inline(token.slice(2, -2), k, citations)}</strong>);
+      nodes.push(<strong key={k}>{inline(token.slice(2, -2), k, citations, allowedLinks)}</strong>);
     } else if (token.startsWith("`")) {
       nodes.push(<code key={k}>{token.slice(1, -1)}</code>);
     } else if (token.startsWith("*")) {
-      nodes.push(<em key={k}>{inline(token.slice(1, -1), k, citations)}</em>);
+      nodes.push(<em key={k}>{inline(token.slice(1, -1), k, citations, allowedLinks)}</em>);
     } else {
       const link = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(token);
       if (link) {
-        if (isSafeHttpUrl(link[2])) {
+        const href = isSafeHttpUrl(link[2]) ? linkHref(link[2]) : null;
+        if (href && allowedLinks.has(href)) {
           nodes.push(
-            <a key={k} href={link[2]} target="_blank" rel="noopener noreferrer">
+            <a key={k} href={href} target="_blank" rel="noopener noreferrer">
               {link[1]}
             </a>,
           );
@@ -93,7 +104,7 @@ function tableAlignments(line: string): ("left" | "center" | "right")[] | null {
   );
 }
 
-function tableBlock(lines: string[], start: number, key: number, citations: number): { node: ReactNode; next: number } | null {
+function tableBlock(lines: string[], start: number, key: number, citations: number, allowedLinks: ReadonlySet<string>): { node: ReactNode; next: number } | null {
   const header = tableCells(lines[start]);
   const alignments = tableAlignments(lines[start + 1] ?? "");
   if (!alignments || header.length !== alignments.length) return null;
@@ -112,7 +123,7 @@ function tableBlock(lines: string[], start: number, key: number, citations: numb
         <thead>
           <tr>
             {header.map((cell, index) => (
-              <th key={index} style={align(index)}>{inline(cell, `th${key}-${index}`, citations)}</th>
+              <th key={index} style={align(index)}>{inline(cell, `th${key}-${index}`, citations, allowedLinks)}</th>
             ))}
           </tr>
         </thead>
@@ -120,7 +131,7 @@ function tableBlock(lines: string[], start: number, key: number, citations: numb
           {body.map((row, rowIndex) => (
             <tr key={rowIndex}>
               {row.map((cell, index) => (
-                <td key={index} style={align(index)}>{inline(cell, `td${key}-${rowIndex}-${index}`, citations)}</td>
+                <td key={index} style={align(index)}>{inline(cell, `td${key}-${rowIndex}-${index}`, citations, allowedLinks)}</td>
               ))}
             </tr>
           ))}
@@ -131,7 +142,7 @@ function tableBlock(lines: string[], start: number, key: number, citations: numb
   return { node, next: i };
 }
 
-function parse(text: string, citations: number): ReactNode[] {
+function parse(text: string, citations: number, allowedLinks: ReadonlySet<string>): ReactNode[] {
   const lines = text.split("\n");
   const blocks: ReactNode[] = [];
   let i = 0;
@@ -158,7 +169,7 @@ function parse(text: string, citations: number): ReactNode[] {
     }
 
     if (line.includes("|")) {
-      const table = tableBlock(lines, i, key, citations);
+      const table = tableBlock(lines, i, key, citations, allowedLinks);
       if (table) {
         key++;
         blocks.push(table.node);
@@ -170,7 +181,7 @@ function parse(text: string, citations: number): ReactNode[] {
     const heading = /^(#{2,4})\s+(.+)$/.exec(line);
     if (heading) {
       const level = heading[1].length;
-      const content = inline(heading[2], `h${key}`, citations);
+      const content = inline(heading[2], `h${key}`, citations, allowedLinks);
       if (level === 2) blocks.push(<h2 key={`k${key++}`}>{content}</h2>);
       else if (level === 3) blocks.push(<h3 key={`k${key++}`}>{content}</h3>);
       else blocks.push(<h4 key={`k${key++}`}>{content}</h4>);
@@ -190,7 +201,7 @@ function parse(text: string, citations: number): ReactNode[] {
       blocks.push(
         <ul key={`k${key++}`}>
           {items.map((item, n) => (
-            <li key={n}>{inline(item, `u${key}-${n}`, citations)}</li>
+            <li key={n}>{inline(item, `u${key}-${n}`, citations, allowedLinks)}</li>
           ))}
         </ul>,
       );
@@ -203,7 +214,7 @@ function parse(text: string, citations: number): ReactNode[] {
       blocks.push(
         <ol key={`k${key++}`}>
           {items.map((item, n) => (
-            <li key={n}>{inline(item, `o${key}-${n}`, citations)}</li>
+            <li key={n}>{inline(item, `o${key}-${n}`, citations, allowedLinks)}</li>
           ))}
         </ol>,
       );
@@ -213,7 +224,7 @@ function parse(text: string, citations: number): ReactNode[] {
     if (line.startsWith("> ")) {
       const quote: string[] = [];
       while (i < lines.length && lines[i].startsWith("> ")) quote.push(lines[i++].slice(2));
-      blocks.push(<blockquote key={`k${key++}`}>{inline(quote.join(" "), `q${key}`, citations)}</blockquote>);
+      blocks.push(<blockquote key={`k${key++}`}>{inline(quote.join(" "), `q${key}`, citations, allowedLinks)}</blockquote>);
       continue;
     }
 
@@ -231,16 +242,26 @@ function parse(text: string, citations: number): ReactNode[] {
     ) {
       paragraph.push(lines[i++]);
     }
-    blocks.push(<p key={`k${key++}`}>{inline(paragraph.join(" "), `p${key}`, citations)}</p>);
+    blocks.push(<p key={`k${key++}`}>{inline(paragraph.join(" "), `p${key}`, citations, allowedLinks)}</p>);
   }
 
   return blocks;
 }
 
 /** A small, safe markdown subset: headings, lists, quotes, code, bold, italics and [n] citations. */
-export const Markdown = memo(function Markdown({ text, citations = 0, onCitation, streaming }: MarkdownProps) {
+export const Markdown = memo(function Markdown({
+  text,
+  citations = 0,
+  onCitation,
+  streaming,
+  allowedLinks,
+}: MarkdownProps) {
   // The parse only depends on the text, so citation clicks are handled by delegation instead of per-button closures.
-  const blocks = useMemo(() => parse(text, citations), [text, citations]);
+  const allowed = useMemo(
+    () => new Set((allowedLinks ?? []).map(linkHref).filter((href): href is string => href !== null)),
+    [allowedLinks],
+  );
+  const blocks = useMemo(() => parse(text, citations, allowed), [text, citations, allowed]);
 
   const onClick = (event: MouseEvent<HTMLDivElement>) => {
     const button = (event.target as HTMLElement).closest<HTMLElement>("[data-citation]");

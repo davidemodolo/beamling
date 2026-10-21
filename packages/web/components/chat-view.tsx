@@ -7,11 +7,12 @@ import { EmptyState, LoadErrorState, NotFoundState, Thread, ThreadSkeleton, User
 import { Composer } from "./composer";
 import { SourcesPanel, SourcesSheet } from "./sources";
 import { Icon } from "./ui/icon";
+import { UserAvatar } from "./user-avatar";
 import { useAnswerStreams, type LiveAnswer } from "@/lib/answer-streams";
 import { api, errorMessage } from "@/lib/api";
 import { useIsMobile } from "@/lib/hooks/use-is-mobile";
 import { useToast } from "@/lib/hooks/use-toast";
-import { isSearchProvider, llmModelName, searchProviderName } from "@/lib/providers";
+import { isSearchProvider, llmModelName, searchProviderName } from "@/lib/provider-catalog";
 import { useStore, type ThreadMessage } from "@/lib/store";
 import { MODE_LABELS } from "@/lib/modes";
 import type { Mode, SearchProvider, Source } from "@/lib/types";
@@ -312,8 +313,8 @@ function ChatPane({ conversationId }: ChatViewProps) {
               </span>
             </button>
           ) : null}
-          <button type="button" className="avatar" onClick={() => openSettings()} aria-label="Open settings">
-            G
+          <button type="button" className="avatar-button" onClick={() => openSettings()} aria-label="Open settings">
+            <UserAvatar name={user?.name} email={user?.email} avatarUrl={user?.avatarUrl} />
           </button>
         </div>
       </header>

@@ -22,7 +22,7 @@ const LABELS: Record<string, string> = {
   done: "Done · 2.1 s · $0.018",
 };
 
-export function LandingDemo() {
+export function LandingDemo({ host }: { host: string }) {
   const [stage, setStage] = useState<ChatStage>("done");
   const [written, setWritten] = useState(ANSWER);
   const [visibleSources, setVisibleSources] = useState(SOURCES.length);
@@ -93,7 +93,7 @@ export function LandingDemo() {
           <span className="ld-dot" />
           <span className="ld-dot" />
           <span className="ld-dot" />
-          <span className="ld-host">beamling.ai / new question</span>
+          <span className="ld-host">{host} / new question</span>
           <span className="ld-mode">Quick · Brave</span>
         </div>
         <div className="ld-body">

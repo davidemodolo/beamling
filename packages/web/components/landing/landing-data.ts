@@ -38,8 +38,8 @@ export const STEPS = [
 ];
 
 export const STATS = [
-  { value: "3 s", label: "p95 to first token" },
-  { value: "8", label: "sources per quick answer" },
+  { value: "3 s", label: "target p95 to first token" },
+  { value: "8", label: "up to 8 sources per quick answer" },
   { value: "0%", label: "markup on your keys" },
   { value: "1 + 3", label: "providers in Alpha" },
 ];

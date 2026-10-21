@@ -2,10 +2,12 @@ import Link from "next/link";
 import { Mascot } from "@/components/mascot";
 import { Icon } from "@/components/ui/icon";
 import { LandingDemo } from "./demo";
-import { FEATURES, STATS, STEPS } from "./data";
-import { Brand, ProviderPills, SiteFooter } from "./parts";
+import { FEATURES, STATS, STEPS } from "./landing-data";
+import { Brand, ProviderPills, SiteFooter } from "./landing-parts";
+import { appUrl } from "@/lib/server/env";
 
 export function CinematicLanding() {
+  const host = new URL(appUrl()).host;
   return (
     <div className="lp v1">
       <nav className="lp-nav">
@@ -55,7 +57,7 @@ export function CinematicLanding() {
 
         <section className="v1-demo">
           <div className="lp-container">
-            <LandingDemo />
+            <LandingDemo host={host} />
           </div>
         </section>
 
