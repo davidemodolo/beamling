@@ -141,7 +141,8 @@ jobs:
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: superfly/flyctl-actions/setup-flyctl@master
+      # Pinned to master as of 2026-10-21; flyctl itself is pinned to 0.4.120.
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
         with:
           version: 0.4.120
       - name: Deploy image
