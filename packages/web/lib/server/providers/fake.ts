@@ -85,6 +85,7 @@ export async function fakeChat(options: {
   messages: ChatMessage[];
   signal?: AbortSignal;
   onDelta?: (text: string) => void;
+  onReasoning?: (text: string) => void;
 }): Promise<ChatResult> {
   await sleep(20);
   aborted(options.signal);
@@ -107,12 +108,18 @@ export async function fakeChat(options: {
     });
   }
 
+  const reasoning = "I checked the three fixture sources and compared their claims before writing the answer.";
+  for (const word of reasoning.split(" ")) {
+    aborted(options.signal);
+    options.onReasoning?.(`${word} `);
+    await sleep(4);
+  }
   const content =
-    "This is a fixture answer for local testing. It demonstrates the streaming pipeline, source numbering and citations [1]. The second source adds a recent development [2], while the third records a limitation [3].";
+    "This is a fixture answer for local testing. It demonstrates the streaming pipeline, source numbering and citations [1]. The second source adds a recent development [2], while the third records a limitation [3].\n\n| Source | Finding |\n| --- | --- |\n| Overview | Fixture baseline |\n| Recent | Newer detail |";
   for (const word of content.split(" ")) {
     aborted(options.signal);
     options.onDelta?.(`${word} `);
     await sleep(8);
   }
-  return result(content, { promptTokens: 420, completionTokens: 80, costUsd: 0.00005 });
+  return { ...result(content, { promptTokens: 420, completionTokens: 80, costUsd: 0.00005 }), reasoning };
 }

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 const DEV_DATABASE_URL = "postgres://beamling:beamling@127.0.0.1:5432/beamling";
 const DEV_APP_URL = "http://localhost:3000";
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
@@ -28,7 +29,7 @@ function isLocalHost(hostname: string): boolean {
 
 function isLocalAppUrl(): boolean {
   const url = parseUrl(appUrl());
-  return url !== null && url.protocol === "http:" && isLocalHost(url.hostname);
+  return url !== null && isLocalHost(url.hostname);
 }
 
 export function databaseUrl(): string | undefined {
@@ -37,9 +38,12 @@ export function databaseUrl(): string | undefined {
 
 export function databaseSsl(): { rejectUnauthorized: boolean; ca?: string } | undefined {
   if (process.env.DATABASE_SSL !== "true") return undefined;
+  const ca =
+    process.env.DATABASE_SSL_CA?.replace(/\\n/g, "\n") ||
+    (process.env.DATABASE_SSL_CA_FILE ? readFileSync(process.env.DATABASE_SSL_CA_FILE, "utf8") : undefined);
   return {
     rejectUnauthorized: process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== "false",
-    ca: process.env.DATABASE_SSL_CA?.replace(/\\n/g, "\n") || undefined,
+    ca,
   };
 }
 
@@ -126,13 +130,44 @@ export function maxConcurrentChats(): number {
   return positiveInt("MAX_CONCURRENT_CHATS", 50);
 }
 
-export function guestsPerIpPerHour(): number {
-  return positiveInt("GUESTS_PER_IP_PER_HOUR", 20);
+export function loginsPerIpPerHour(): number {
+  return positiveInt("LOGINS_PER_IP_PER_HOUR", 60);
 }
 
-/** Global cap on new guest workspaces, independent of the client IP. */
-export function guestsPerHour(): number {
-  return positiveInt("MAX_GUESTS_PER_HOUR", 1000);
+export const OIDC_TRANSACTION_TTL_SECONDS = 600;
+
+export function oidcIssuer(): string {
+  return (process.env.OIDC_ISSUER ?? "https://accounts.google.com").replace(/\/$/, "");
+}
+
+export function oidcClientId(): string {
+  return process.env.OIDC_CLIENT_ID ?? "";
+}
+
+export function oidcClientSecret(): string {
+  return process.env.OIDC_CLIENT_SECRET ?? "";
+}
+
+export function oidcRedirectUri(): string {
+  return process.env.OIDC_REDIRECT_URI ?? `${appUrl()}/api/auth/callback/google`;
+}
+
+export function authSecret(): Buffer {
+  const raw = process.env.AUTH_SECRET;
+  if (!raw) throw new Error("AUTH_SECRET is not set. Generate one with: openssl rand -base64 32");
+  const decoded = Buffer.from(raw, "base64");
+  if (decoded.length !== 32) throw new Error("AUTH_SECRET must be exactly 32 bytes, base64 encoded.");
+  return decoded;
+}
+
+export function oidcTransactionCookieName(): string {
+  return secureCookies() ? "__Host-beamling_oidc" : "beamling_oidc";
+}
+
+export function kmsProvider(): "env" | "aws" | "gcp" {
+  const value = process.env.KMS_PROVIDER ?? "env";
+  if (value === "env" || value === "aws" || value === "gcp") return value;
+  throw new Error("KMS_PROVIDER must be env, aws or gcp.");
 }
 
 function databaseHost(): { hostname: string; password: string } | null {
@@ -146,13 +181,17 @@ export function productionConfigErrors(): string[] {
   const errors: string[] = [];
   if (!process.env.DATABASE_URL) errors.push("DATABASE_URL is required.");
 
-  const configured = configuredAppUrl();
+  // APP_URL is the public origin for same-origin checks, cookies and OIDC redirects. Unlike the
+  // development fallback, production may not infer it from a provider-specific alias.
+  const configured = process.env.APP_URL;
   const url = configured ? parseUrl(configured) : null;
   if (!configured) {
     errors.push("APP_URL is required (the public URL of this deployment).");
   } else if (!url || (url.protocol !== "https:" && url.protocol !== "http:")) {
     errors.push("APP_URL must be an absolute http(s) URL.");
-  } else if (!isLocalAppUrl()) {
+  } else if (url.username || url.password || url.pathname !== "/" || url.search || url.hash) {
+    errors.push("APP_URL must be an origin only, without credentials, a path, query or fragment.");
+  } else if (!isLocalHost(url.hostname)) {
     if (url.protocol !== "https:") errors.push("APP_URL must use https:// outside localhost.");
     if (process.env.COOKIE_SECURE === "false") errors.push("COOKIE_SECURE=false is only allowed on localhost.");
     if (nonNegativeInt(process.env.TRUSTED_PROXY_HOPS) === undefined) {
@@ -163,8 +202,43 @@ export function productionConfigErrors(): string[] {
   }
 
   try {
-    currentMasterKey();
-    previousMasterKeys();
+    authSecret();
+  } catch (error) {
+    errors.push((error as Error).message);
+  }
+  if (!process.env.OIDC_CLIENT_ID) errors.push("OIDC_CLIENT_ID is required.");
+  if (!process.env.OIDC_CLIENT_SECRET) errors.push("OIDC_CLIENT_SECRET is required.");
+  try {
+    const issuer = parseUrl(oidcIssuer());
+    if (!issuer || (issuer.protocol !== "https:" && !isLocalAppUrl())) {
+      errors.push("OIDC_ISSUER must be an https URL outside localhost.");
+    }
+    if (issuer && (issuer.username || issuer.password)) {
+      errors.push("OIDC_ISSUER must not contain credentials.");
+    }
+  } catch (error) {
+    errors.push((error as Error).message);
+  }
+  if (url) {
+    const redirect = parseUrl(oidcRedirectUri());
+    if (!redirect) {
+      errors.push("OIDC_REDIRECT_URI must be an absolute URL.");
+    } else {
+      if (redirect.origin !== url.origin) errors.push("OIDC_REDIRECT_URI must use the same origin as APP_URL.");
+      if (redirect.pathname !== "/api/auth/callback/google") {
+        errors.push("OIDC_REDIRECT_URI must end at /api/auth/callback/google.");
+      }
+    }
+  }
+  try {
+    const provider = kmsProvider();
+    if (provider === "env" && !isLocalAppUrl()) errors.push("KMS_PROVIDER=env is not allowed outside localhost.");
+    if (provider === "aws" && !process.env.KMS_KEY_ID) errors.push("KMS_KEY_ID is required for the AWS KMS adapter.");
+    if (provider === "gcp" && !process.env.KMS_KEY_NAME) errors.push("KMS_KEY_NAME is required for the GCP KMS adapter.");
+    if (provider === "env") {
+      currentMasterKey();
+      previousMasterKeys();
+    }
   } catch (error) {
     errors.push((error as Error).message);
   }

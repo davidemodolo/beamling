@@ -32,7 +32,7 @@
   padding: 10px 12px;
   font-size: 14px;
   color: var(--text);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color 0.15s ease;
 }
 .input {
   height: 42px;
@@ -46,7 +46,7 @@
 .textarea:focus {
   outline: none;
   border-color: color-mix(in oklab, var(--beam) 55%, var(--line));
-  box-shadow: 0 0 0 3px var(--beam-glow);
+  box-shadow: none;
 }
 .input[aria-invalid="true"] {
   border-color: var(--error);

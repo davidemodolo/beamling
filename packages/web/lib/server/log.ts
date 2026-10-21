@@ -10,22 +10,37 @@ interface ErrorSummary {
   name: string;
   message: string;
   code?: string;
+  status?: number;
   query?: string;
   cause?: ErrorSummary;
 }
 
 const MAX_DEPTH = 4;
+const MAX_MESSAGE = 300;
+const BEARER = /(Bearer\s+)[^\s"']+/gi;
+const PROVIDER_KEY = /\b(?:sk-or-v1-|BSA)[A-Za-z0-9_-]{8,}/g;
+const BODY_START = /\b(?:Text|responseBody|requestBodyValues|body|response):\s/i;
+
+/** Provider errors can embed request or response bodies; never let message content reach logs. */
+function safeMessage(error: Error): string {
+  let message = error.message;
+  const body = message.search(BODY_START);
+  if (body > 0) message = `${message.slice(0, body)}[body omitted]`;
+  return message.replace(BEARER, "$1[redacted]").replace(PROVIDER_KEY, "[redacted]").slice(0, MAX_MESSAGE);
+}
 
 export function summarizeError(error: unknown, depth = 0): ErrorSummary | string {
-  if (!(error instanceof Error)) return String(error).slice(0, 500);
+  if (!(error instanceof Error)) return String(error).slice(0, MAX_MESSAGE);
   const code = (error as { code?: unknown }).code;
+  const statusCode = (error as { statusCode?: unknown }).statusCode;
   const query = (error as { query?: unknown }).query;
   const isQueryError = typeof query === "string";
   const summary: ErrorSummary = {
     name: error.name,
-    message: isQueryError ? "Database query failed" : error.message.slice(0, 500),
+    message: isQueryError ? "Database query failed" : safeMessage(error),
   };
   if (typeof code === "string") summary.code = code;
+  if (typeof statusCode === "number") summary.status = statusCode;
   if (isQueryError) summary.query = query.slice(0, 300);
   if (error.cause !== undefined && depth < MAX_DEPTH) {
     const cause = summarizeError(error.cause, depth + 1);

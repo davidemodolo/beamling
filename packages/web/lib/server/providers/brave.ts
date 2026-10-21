@@ -57,7 +57,7 @@ function plainText(value: string | undefined): string {
 
 /** Maps a Brave HTTP status and error body to a stable Beamling error. */
 export function braveError(status: number, body: BraveErrorBody["error"] = {}): ApiError {
-  const detail = body.detail ?? body.message ?? "";
+  const detail = (body.detail ?? body.message ?? "").slice(0, 500);
   const error = (code: string, message: string, httpStatus: number) => new ApiError(code, message, httpStatus, "brave");
   if (/not included in the plan/i.test(detail) || body.code === "OPTION_NOT_IN_PLAN") {
     return error(
@@ -102,7 +102,11 @@ function requestSignal(signal?: AbortSignal): AbortSignal {
   return signal ? AbortSignal.any([signal, timeout]) : timeout;
 }
 
-function minIntervalMs(): number {
+function minIntervalMs(plan: "free" | "paid"): number {
+  if (plan === "paid") {
+    const paid = Number(process.env.BRAVE_PAID_MIN_INTERVAL_MS ?? "0");
+    return Number.isFinite(paid) && paid >= 0 ? paid : 0;
+  }
   const raw = Number(process.env.BRAVE_MIN_INTERVAL_MS ?? "1100");
   return Number.isFinite(raw) && raw >= 0 ? raw : 1100;
 }
@@ -129,8 +133,8 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
  * Waits for this key's next request slot. Slots are reserved in the database, so the spacing holds
  * across every instance; the key is stored only as a hash.
  */
-async function waitForSlot(apiKey: string, signal?: AbortSignal): Promise<void> {
-  const interval = minIntervalMs();
+async function waitForSlot(apiKey: string, plan: "free" | "paid", signal?: AbortSignal): Promise<void> {
+  const interval = minIntervalMs(plan);
   if (interval <= 0) return;
   const key = `brave:${createHash("sha256").update(apiKey).digest("hex").slice(0, 32)}`;
   const wait = await reserveProviderSlot(key, interval);
@@ -156,7 +160,7 @@ function retryWaitMs(headers: Headers, now = Date.now()): number {
 async function requestWebSearch(
   key: string,
   query: string,
-  options: { count: number; freshnessDays?: number; signal?: AbortSignal },
+  options: { count: number; freshnessDays?: number; signal?: AbortSignal; plan?: "free" | "paid" },
 ): Promise<Response> {
   const url = new URL("https://api.search.brave.com/res/v1/web/search");
   url.searchParams.set("q", clampQuery(query));
@@ -165,7 +169,7 @@ async function requestWebSearch(
   if (freshness) url.searchParams.set("freshness", freshness);
 
   const send = async () => {
-    await waitForSlot(key, options.signal);
+    await waitForSlot(key, options.plan ?? "free", options.signal);
     return providerFetch(
       "brave",
       url,
@@ -187,8 +191,8 @@ async function requestWebSearch(
   return send();
 }
 
-export async function validateBraveKey(key: string): Promise<void> {
-  const response = await requestWebSearch(key, "Beamling connectivity test", { count: 1 });
+export async function validateBraveKey(key: string, plan: "free" | "paid" = "free"): Promise<void> {
+  const response = await requestWebSearch(key, "Beamling connectivity test", { count: 1, plan });
   if (!response.ok) throw await readError(response);
   await response.arrayBuffer().catch(() => {});
 }
@@ -196,7 +200,7 @@ export async function validateBraveKey(key: string): Promise<void> {
 export async function searchBrave(
   key: string,
   query: string,
-  options: { count: number; freshnessDays?: number; signal?: AbortSignal },
+  options: { count: number; freshnessDays?: number; signal?: AbortSignal; plan?: "free" | "paid" },
 ): Promise<RetrievedSource[]> {
   const response = await requestWebSearch(key, query, options);
   if (!response.ok) throw await readError(response);
@@ -215,16 +219,17 @@ export async function searchBrave(
     if (!item.url || seen.has(item.url) || !isSafeHttpUrl(item.url)) continue;
     // A source is usable only with a non-empty snippet: it is the only evidence the model sees.
     const snippet = plainText(item.description).slice(0, 1800);
-    if (!snippet) continue;
+    if (!snippet || item.url.length > 2048) continue;
     seen.add(item.url);
-    const domain = new URL(item.url).hostname.replace(/^www\./, "");
+    const domain = new URL(item.url).hostname.replace(/^www\./, "").slice(0, 255);
+    const publishedAt = normalizedDate(item.age);
     out.push({
       position: out.length + 1,
-      title: plainText(item.title) || domain,
+      title: (plainText(item.title) || domain).slice(0, 300),
       url: item.url,
       domain,
       snippet,
-      publishedAt: normalizedDate(item.age),
+      publishedAt: publishedAt?.slice(0, 40),
     });
   }
   return out;

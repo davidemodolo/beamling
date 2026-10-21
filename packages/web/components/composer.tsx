@@ -2,6 +2,7 @@
 
 import { useEffect, type RefObject } from "react";
 import { Icon } from "./ui/icon";
+import { MODE_LABELS, MODES } from "@/lib/modes";
 import type { Mode } from "@/lib/types";
 
 interface ComposerProps {
@@ -85,14 +86,19 @@ export function Composer({
         </div>
         <div className="composer-tools">
           <div className="segmented" role="group" aria-label="Answer mode">
-            <button type="button" aria-pressed={mode === "quick"} onClick={() => onModeChange("quick")}>
-              <Icon name="zap" size={12} /> Quick
-            </button>
-            <button type="button" aria-pressed={mode === "deep"} onClick={() => onModeChange("deep")}>
-              <Icon name="layers" size={12} /> Deep
-            </button>
+            {MODES.map((value) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={mode === value}
+                onClick={() => onModeChange(value)}
+                title={value === "deeper" ? "Agentic research loop with up to 60 searches" : undefined}
+              >
+                <Icon name={value === "quick" ? "zap" : value === "deep" ? "layers" : "sparkles"} size={12} /> {MODE_LABELS[value]}
+              </button>
+            ))}
           </div>
-          <span className="badge badge-mono" title="Model used for the next answer">
+          <span className="badge badge-mono composer-model" title="Model used for the next answer">
             {modelLabel}
           </span>
           <span className="spacer" />

@@ -1,22 +1,35 @@
+import { randomUUID } from "node:crypto";
 import { and, asc, count, desc, eq, inArray, lt, or } from "drizzle-orm";
 import { CONVERSATION_PAGE_SIZE, DEFAULT_CONVERSATION_TITLE, MESSAGE_PAGE_SIZE } from "../../data";
 import type { Conversation, ConversationPage, ConversationSummary, Message, Mode } from "../../types";
 import { db } from "../db";
 import { ApiError } from "../http";
 import { conversations, messages, sources } from "../schema";
+import { decryptText, encryptText } from "../workspace-key";
 import { groupBy, mapMessage, mapSummary, type ConversationRow, type MessageRow } from "./shared";
 
-/** Opaque keyset cursor over (updated_at, id), newest first. */
+/** Opaque keyset cursor over (pinned, updated_at, id). */
 function encodeCursor(row: ConversationRow): string {
-  return Buffer.from(JSON.stringify([row.updatedAt.toISOString(), row.id])).toString("base64url");
+  return Buffer.from(JSON.stringify([row.pinned, row.updatedAt.toISOString(), row.id])).toString("base64url");
 }
 
-function decodeCursor(cursor: string): { updatedAt: Date; id: string } {
+function decodeCursor(cursor: string): { pinned: boolean; updatedAt: Date; id: string } {
   try {
-    const [updatedAt, id] = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as [string, string];
+    const [pinned, updatedAt, id] = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as [
+      boolean,
+      string,
+      string,
+    ];
     const date = new Date(updatedAt);
-    if (typeof id !== "string" || !/^[0-9a-f-]{36}$/i.test(id) || Number.isNaN(date.getTime())) throw new Error();
-    return { updatedAt: date, id };
+    if (
+      typeof pinned !== "boolean" ||
+      typeof id !== "string" ||
+      !/^[0-9a-f-]{36}$/i.test(id) ||
+      Number.isNaN(date.getTime())
+    ) {
+      throw new Error();
+    }
+    return { pinned, updatedAt: date, id };
   } catch {
     throw new ApiError("INVALID_CURSOR", "Invalid page cursor.", 400);
   }
@@ -32,17 +45,23 @@ export async function listConversationPage(userId: string, cursor?: string): Pro
         eq(conversations.userId, userId),
         after
           ? or(
-              lt(conversations.updatedAt, after.updatedAt),
-              and(eq(conversations.updatedAt, after.updatedAt), lt(conversations.id, after.id)),
+              lt(conversations.pinned, after.pinned),
+              and(
+                eq(conversations.pinned, after.pinned),
+                or(
+                  lt(conversations.updatedAt, after.updatedAt),
+                  and(eq(conversations.updatedAt, after.updatedAt), lt(conversations.id, after.id)),
+                ),
+              ),
             )
           : undefined,
       ),
     )
-    .orderBy(desc(conversations.updatedAt), desc(conversations.id))
+    .orderBy(desc(conversations.pinned), desc(conversations.updatedAt), desc(conversations.id))
     .limit(CONVERSATION_PAGE_SIZE + 1);
   const page = rows.slice(0, CONVERSATION_PAGE_SIZE);
   return {
-    conversations: page.map(mapSummary),
+    conversations: await Promise.all(page.map((row) => mapSummary(userId, row))),
     nextCursor: rows.length > CONVERSATION_PAGE_SIZE ? encodeCursor(page[page.length - 1]) : null,
   };
 }
@@ -65,6 +84,10 @@ export async function conversationExists(userId: string, id: string): Promise<bo
   return (await getConversationRow(userId, id)) !== null;
 }
 
+export async function conversationTitle(userId: string, row: ConversationRow): Promise<string> {
+  return decryptText(userId, "conversations", row.id, "title", row.title);
+}
+
 /** Attaches sources to a bounded page of messages (at most MESSAGE_PAGE_SIZE ids per query). */
 async function withSources(rows: MessageRow[]): Promise<Message[]> {
   const ids = rows.filter((row) => row.role === "assistant").map((row) => row.id);
@@ -72,7 +95,9 @@ async function withSources(rows: MessageRow[]): Promise<Message[]> {
     ? await db.select().from(sources).where(inArray(sources.messageId, ids)).orderBy(asc(sources.position))
     : [];
   const byMessage = groupBy(sourceRows, (row) => row.messageId);
-  return rows.map((row) => mapMessage(row, byMessage.get(row.id) ?? []));
+  const userId = rows[0]?.userId;
+  if (!userId) return [];
+  return Promise.all(rows.map((row) => mapMessage(userId, row, byMessage.get(row.id) ?? [])));
 }
 
 /** The newest page of messages older than `before` (or the newest overall), returned oldest first. */
@@ -106,7 +131,7 @@ export async function getConversation(userId: string, id: string): Promise<Conve
   const row = await getConversationRow(userId, id);
   if (!row) return null;
   const page = await messagePage(userId, row.id);
-  return { ...mapSummary(row), messages: page.messages, hasMoreMessages: page.hasMore };
+  return { ...(await mapSummary(userId, row)), messages: page.messages, hasMoreMessages: page.hasMore };
 }
 
 /** Messages older than `beforeMessageId`, or null when the conversation or message is not the user's. */
@@ -131,24 +156,36 @@ export async function getEarlierMessages(
 }
 
 export async function createConversation(userId: string, mode: Mode): Promise<ConversationSummary> {
+  const id = randomUUID();
   const [row] = await db
     .insert(conversations)
-    .values({ userId, mode, title: DEFAULT_CONVERSATION_TITLE })
+    .values({
+      id,
+      userId,
+      mode,
+      title: await encryptText(userId, "conversations", id, "title", DEFAULT_CONVERSATION_TITLE),
+    })
     .returning();
-  return mapSummary(row);
+  return mapSummary(userId, row);
 }
 
-export async function setConversationMode(
+export async function updateConversation(
   userId: string,
   id: string,
-  mode: Mode,
+  patch: { mode?: Mode; pinned?: boolean },
 ): Promise<ConversationSummary | null> {
+  const values: { mode?: Mode; pinned?: boolean; updatedAt?: Date } = {};
+  if (patch.mode !== undefined) {
+    values.mode = patch.mode;
+    values.updatedAt = new Date();
+  }
+  if (patch.pinned !== undefined) values.pinned = patch.pinned;
   const [row] = await db
     .update(conversations)
-    .set({ mode, updatedAt: new Date() })
+    .set(values)
     .where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
     .returning();
-  return row ? mapSummary(row) : null;
+  return row ? mapSummary(userId, row) : null;
 }
 
 export async function deleteConversation(userId: string, id: string): Promise<boolean> {

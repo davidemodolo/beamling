@@ -6,7 +6,7 @@ import { apiRoute } from "@/lib/server/route";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const schema = z.object({ mode: z.enum(["quick", "deep"]).default("quick") });
+const schema = z.object({ mode: z.enum(["quick", "deep", "deeper"]).default("quick") });
 
 /** The next page of conversation summaries, newest first. */
 export const GET = apiRoute(async ({ request, user }) => {

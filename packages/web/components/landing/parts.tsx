@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Mascot } from "@/components/mascot";
 import { Icon } from "@/components/ui/icon";
+import { versionLabel } from "@/lib/version";
 import { LLM_NAMES, SEARCH_NAMES } from "./data";
 
 export function Brand() {
@@ -61,7 +62,7 @@ export function SiteFooter() {
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>
           <span>Keys encrypted at rest</span>
-          <span>No training on your data</span>
+          <span>No training by Beamling</span>
         </div>
         <div>
           <h3>Get started</h3>
@@ -75,6 +76,7 @@ export function SiteFooter() {
         <span className="l-footer-note">
           <Icon name="lock" size={11} /> Your keys. Your models. Clear answers.
         </span>
+        <span>{versionLabel()}</span>
       </div>
     </footer>
   );

@@ -1,6 +1,7 @@
 {
   "name": "beamling",
   "private": true,
+  "version": "0.1.0",
   "packageManager": "pnpm@10.33.0",
   "scripts": {
     "mascot:dev": "pnpm --filter @beamling/mascot dev",
@@ -8,7 +9,13 @@
     "web:dev": "pnpm mascot:build && pnpm --filter @beamling/web dev",
     "web:build": "pnpm mascot:build && pnpm --filter @beamling/web build",
     "web:start": "pnpm --filter @beamling/web start",
+    "version": "node scripts/version.mjs",
+    "version:set": "node scripts/version.mjs set",
+    "version:check": "node scripts/version.mjs check",
     "test": "pnpm --filter @beamling/mascot test && pnpm --filter @beamling/web test",
-    "db:migrate": "pnpm --filter @beamling/web db:migrate"
+    "db:migrate": "pnpm --filter @beamling/web db:migrate",
+    "local:up": "docker compose up --build",
+    "local:down": "docker compose down",
+    "local:logs": "docker compose logs -f app"
   }
 }

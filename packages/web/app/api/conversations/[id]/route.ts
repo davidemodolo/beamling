@@ -1,13 +1,20 @@
 import { z } from "zod";
 import { abortChats } from "@/lib/server/active-chats";
 import { idParam, json, notFound, parseBody } from "@/lib/server/http";
-import { deleteConversation, getConversation, setConversationMode } from "@/lib/server/repo";
+import { deleteConversation, getConversation, updateConversation } from "@/lib/server/repo";
 import { apiRoute } from "@/lib/server/route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const schema = z.object({ mode: z.enum(["quick", "deep"]) });
+const schema = z
+  .object({
+    mode: z.enum(["quick", "deep", "deeper"]).optional(),
+    pinned: z.boolean().optional(),
+  })
+  .refine((input) => input.mode !== undefined || input.pinned !== undefined, {
+    message: "Send a mode or a pinned state.",
+  });
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -22,8 +29,8 @@ export const GET = apiRoute<Context>(async ({ context, user }) => {
 
 export const PATCH = apiRoute<Context>(async ({ request, context, user }) => {
   const id = await idParam(context);
-  const { mode } = await parseBody(request, schema);
-  const conversation = await setConversationMode(user.id, id, mode);
+  const patch = await parseBody(request, schema);
+  const conversation = await updateConversation(user.id, id, patch);
   if (!conversation) throw conversationNotFound();
   return json({ conversation });
 });

@@ -1,16 +1,16 @@
 import { and, eq, gt } from "drizzle-orm";
-import { cookies, headers } from "next/headers";
+import { cookies } from "next/headers";
 import { db } from "./db";
 import { hashToken, newSessionToken } from "./crypto";
-import { guestsPerHour, guestsPerIpPerHour, SESSION_TTL_DAYS, secureCookies, sessionCookieName } from "./env";
-import { ApiError, clientIpKey } from "./http";
-import { log } from "./log";
-import { consumeRateLimit } from "./repo";
-import { authSessions, settings, users } from "./schema";
+import { SESSION_TTL_DAYS, secureCookies, sessionCookieName } from "./env";
+import { ApiError } from "./http";
+import { authSessions, users } from "./schema";
 
 export interface SessionUser {
   id: string;
-  isGuest: boolean;
+  email: string;
+  name: string | null;
+  avatarUrl: string | null;
   createdAt: Date;
 }
 
@@ -48,14 +48,14 @@ async function readSession(token: string) {
       sessionId: authSessions.id,
       expiresAt: authSessions.expiresAt,
       id: users.id,
-      isGuest: users.isGuest,
+      email: users.email,
+      name: users.name,
+      avatarUrl: users.avatarUrl,
       createdAt: users.createdAt,
     })
     .from(authSessions)
     .innerJoin(users, eq(authSessions.userId, users.id))
-    .where(
-      and(eq(authSessions.tokenHash, hashToken(token)), gt(authSessions.expiresAt, new Date())),
-    )
+    .where(and(eq(authSessions.tokenHash, hashToken(token)), gt(authSessions.expiresAt, new Date())))
     .limit(1);
   return row ?? null;
 }
@@ -73,51 +73,34 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     await db.update(authSessions).set({ expiresAt: renewed }).where(eq(authSessions.id, session.sessionId));
     await setSessionCookie(token);
   }
-  return { id: session.id, isGuest: session.isGuest, createdAt: session.createdAt };
+  return {
+    id: session.id,
+    email: session.email,
+    name: session.name,
+    avatarUrl: session.avatarUrl,
+    createdAt: session.createdAt,
+  };
 }
 
-/** Every route except the workspace bootstrap requires an existing session. */
 export async function requireUser(): Promise<SessionUser> {
   const user = await getCurrentUser();
   if (!user) {
-    throw new ApiError(
-      "GUEST_SESSION_FAILED",
-      "Your session expired. Reload the page to start a new workspace.",
-      401,
-    );
+    throw new ApiError("UNAUTHENTICATED", "Sign in with Google to continue.", 401);
   }
   return user;
 }
 
-export async function getOrCreateUser(): Promise<SessionUser> {
-  const existing = await getCurrentUser();
-  if (existing) return existing;
-
-  const requestHeaders = await headers();
-  // Another site embedding /api/state must not mint workspaces (and use up the global cap).
-  if (requestHeaders.get("sec-fetch-site") === "cross-site") {
-    throw new ApiError("GUEST_SESSION_FAILED", "Open Beamling directly to start a workspace.", 403);
-  }
-  // The per-IP limit depends on proxy configuration; the global cap bounds growth regardless.
-  await consumeRateLimit(`guest:${clientIpKey(requestHeaders)}`, guestsPerIpPerHour(), 3600);
-  try {
-    await consumeRateLimit("guest:all", guestsPerHour(), 3600);
-  } catch (error) {
-    if (error instanceof ApiError && error.code === "RATE_LIMITED") {
-      log.warn("Global guest cap reached: new visitors are refused until the hour resets", { cap: guestsPerHour() });
-    }
-    throw error;
-  }
+export async function createSession(userId: string): Promise<void> {
   const token = newSessionToken();
-  const user = await db.transaction(async (tx) => {
-    const [created] = await tx
-      .insert(users)
-      .values({ isGuest: true })
-      .returning({ id: users.id, isGuest: users.isGuest, createdAt: users.createdAt });
-    await tx.insert(authSessions).values({ userId: created.id, tokenHash: hashToken(token), expiresAt: expiry() });
-    await tx.insert(settings).values({ userId: created.id }).onConflictDoNothing();
-    return created;
-  });
+  await db.insert(authSessions).values({ userId, tokenHash: hashToken(token), expiresAt: expiry() });
   await setSessionCookie(token);
-  return user;
+}
+
+export async function revokeCurrentSession(): Promise<void> {
+  const store = await cookies();
+  const token = store.get(sessionCookieName())?.value;
+  if (token) {
+    await db.delete(authSessions).where(eq(authSessions.tokenHash, hashToken(token)));
+  }
+  await clearSessionCookie();
 }

@@ -19,6 +19,9 @@ export default function OnboardingPage() {
   const llmModel = pickedModel ?? settings.llmModel;
   const [llmKey, setLlmKey] = useState("");
   const [searchKey, setSearchKey] = useState("");
+  const [bravePlan, setBravePlan] = useState<"free" | "paid">("free");
+  const [expiresOn, setExpiresOn] = useState("");
+  const [budgetUsd, setBudgetUsd] = useState("");
   const [llmError, setLlmError] = useState("");
   const [searchError, setSearchError] = useState("");
   const [formError, setFormError] = useState("");
@@ -57,7 +60,15 @@ export default function OnboardingPage() {
     }
     if (nextSearch) {
       try {
-        await addCredential({ kind: "search", provider: "brave", key: nextSearch });
+        await addCredential({
+          kind: "search",
+          provider: "brave",
+          key: nextSearch,
+          plan: bravePlan,
+          expiresOn: expiresOn || null,
+          budgetUsd: budgetUsd ? Number(budgetUsd) : null,
+          budgetPeriod: "month",
+        });
         setSearchKey("");
       } catch (cause) {
         setSearchError(errorMessage(cause, "Brave rejected this key."));
@@ -123,7 +134,7 @@ export default function OnboardingPage() {
                     className="btn btn-ghost btn-sm"
                     href="https://openrouter.ai/settings/keys"
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                   >
                     Get a key
                   </a>
@@ -179,7 +190,7 @@ export default function OnboardingPage() {
                     className="btn btn-ghost btn-sm"
                     href="https://api-dashboard.search.brave.com/app/keys"
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                   >
                     Get a key
                   </a>
@@ -201,6 +212,44 @@ export default function OnboardingPage() {
                 ) : (
                   <p className="hint">Validated with one minimal request.</p>
                 )}
+              </div>
+              <div className="field">
+                <label className="label" htmlFor="brave-plan">Brave plan</label>
+                <select
+                  id="brave-plan"
+                  className="select"
+                  value={bravePlan}
+                  onChange={(event) => setBravePlan(event.target.value === "paid" ? "paid" : "free")}
+                >
+                  <option value="free">Free · 1 request/second</option>
+                  <option value="paid">Paid / provider plan</option>
+                </select>
+                <p className="hint">We ask because Brave&apos;s API does not expose the key plan.</p>
+              </div>
+              <div className="field">
+                <label className="label" htmlFor="brave-expiry">Key expiry (optional)</label>
+                <input
+                  id="brave-expiry"
+                  className="input"
+                  type="date"
+                  value={expiresOn}
+                  onChange={(event) => setExpiresOn(event.target.value)}
+                />
+                <p className="hint">Set on the Brave dashboard. Used only for warnings.</p>
+              </div>
+              <div className="field">
+                <label className="label" htmlFor="brave-budget">Monthly budget in USD (optional)</label>
+                <input
+                  id="brave-budget"
+                  className="input"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={budgetUsd}
+                  onChange={(event) => setBudgetUsd(event.target.value)}
+                  placeholder="5.00"
+                />
+                <p className="hint">Also set on the Brave dashboard. Beamling estimates spend from request counts.</p>
               </div>
             </div>
           </section>

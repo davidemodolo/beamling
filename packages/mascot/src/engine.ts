@@ -253,8 +253,6 @@ export class Beamling {
       light: q("light"),
       lightL: q("light-l"),
       lightR: q("light-r"),
-      glowL: q("glow-l"),
-      glowR: q("glow-r"),
     };
   }
 
@@ -507,11 +505,9 @@ export class Beamling {
     const opacity = g.opacity.toFixed(2);
     if (g.left !== this.drawn.left) {
       nd.lightL?.setAttribute("d", g.left);
-      nd.glowL?.setAttribute("d", g.left);
     }
     if (g.right !== this.drawn.right) {
       nd.lightR?.setAttribute("d", g.right);
-      nd.glowR?.setAttribute("d", g.right);
     }
     if (opacity !== this.drawn.opacity) nd.light?.setAttribute("opacity", opacity);
     this.drawn = { left: g.left, right: g.right, opacity };

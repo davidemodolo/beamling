@@ -1,11 +1,11 @@
 import { assertSameOrigin, clientIpKey, errorResponse, PRIVATE_HEADERS } from "./http";
 import { consumeRateLimit } from "./repo";
-import { getCurrentUser, getOrCreateUser, requireUser, type SessionUser } from "./session";
+import { getCurrentUser, requireUser, type SessionUser } from "./session";
 
-type SessionMode = "required" | "create" | "optional";
+type SessionMode = "required" | "optional";
 
 interface RouteOptions<S extends SessionMode> {
-  /** "create" bootstraps a guest workspace; "optional" lets the handler run without one. */
+  /** "optional" lets the handler run without a session, e.g. sign-out. */
   session?: S;
 }
 
@@ -24,7 +24,6 @@ const READ_WINDOW_SECONDS = 600;
 
 const loaders: Record<SessionMode, () => Promise<SessionUser | null>> = {
   required: requireUser,
-  create: getOrCreateUser,
   optional: getCurrentUser,
 };
 

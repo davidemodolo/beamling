@@ -1,29 +1,89 @@
+name: beamling
+
 services:
+  certs:
+    image: alpine:3.22
+    entrypoint: ["/bin/sh", "-c", "apk add --no-cache openssl >/dev/null && /bin/sh /certs/generate.sh"]
+    volumes:
+      - beamling-local-certs:/certs
+      - ./local/certs/generate.sh:/certs/generate.sh:ro
+    restart: "no"
+
   db:
     image: postgres:18-alpine
+    command:
+      - postgres
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/certs/db.crt
+      - -c
+      - ssl_key_file=/certs/db.key
     environment:
       POSTGRES_DB: beamling
       POSTGRES_USER: beamling
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-beamling}
-    # Local development only: bound to loopback so the database is not reachable from the network.
+    # Loopback only, for host-run integration tests.
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - beamling-postgres:/var/lib/postgresql
+      - beamling-local-certs:/certs:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U beamling -d beamling"]
       interval: 5s
       timeout: 5s
       retries: 20
+    depends_on:
+      certs:
+        condition: service_completed_successfully
+
+  localstack:
+    image: localstack/localstack:4.14.0
+    environment:
+      SERVICES: kms
+      DEBUG: "0"
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+    volumes:
+      - ./local/localstack-init.sh:/etc/localstack/init/ready.d/10-kms.sh:ro
+      - beamling-localstack:/var/lib/localstack
+    healthcheck:
+      test: ["CMD-SHELL", "awslocal kms list-keys >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  dex:
+    image: ghcr.io/dexidp/dex:v2.46.0
+    command: ["dex", "serve", "/etc/dex/config.yaml"]
+    volumes:
+      - ./local/dex/config.yaml:/etc/dex/config.yaml:ro
+    ports:
+      - "127.0.0.1:5556:5556"
+    networks:
+      default:
+        aliases:
+          - auth.localhost
 
   migrate:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        APP_VERSION: ${APP_VERSION:-0.1.0}
+        GIT_COMMIT: ${GIT_COMMIT:-local}
     command: ["node", "scripts/migrate.mjs"]
     environment:
       DATABASE_URL: postgres://beamling:${POSTGRES_PASSWORD:-beamling}@db:5432/beamling
-      BEAMLING_FAKE_PROVIDERS: ${BEAMLING_FAKE_PROVIDERS:-0}
+      DATABASE_SSL: "true"
+      DATABASE_SSL_CA_FILE: /certs/ca.crt
+      DATABASE_SSL_REJECT_UNAUTHORIZED: "true"
+      BEAMLING_FAKE_PROVIDERS: "0"
+      NODE_ENV: production
+    volumes:
+      - beamling-local-certs:/certs:ro
     depends_on:
       db:
         condition: service_healthy
@@ -32,35 +92,66 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        APP_VERSION: ${APP_VERSION:-0.1.0}
+        GIT_COMMIT: ${GIT_COMMIT:-local}
     environment:
+      NODE_ENV: production
       DATABASE_URL: postgres://beamling:${POSTGRES_PASSWORD:-beamling}@db:5432/beamling
-      CREDENTIAL_MASTER_KEY: ${CREDENTIAL_MASTER_KEY:?Set CREDENTIAL_MASTER_KEY}
-      CREDENTIAL_MASTER_KEY_ID: ${CREDENTIAL_MASTER_KEY_ID:-k1}
-      CREDENTIAL_PREVIOUS_MASTER_KEYS: ${CREDENTIAL_PREVIOUS_MASTER_KEYS:-}
-      # No default: a forgotten APP_URL must not silently run with localhost settings (non-Secure cookies).
-      APP_URL: ${APP_URL:?Set APP_URL, e.g. http://localhost:3000 for a local run}
+      DATABASE_SSL: "true"
+      DATABASE_SSL_CA_FILE: /certs/ca.crt
+      DATABASE_SSL_REJECT_UNAUTHORIZED: "true"
+      APP_URL: https://localhost
       PORT: "3000"
-      # Empty unless set: the server then uses 1 locally, and refuses to start outside localhost.
-      TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-}
+      TRUSTED_PROXY_HOPS: "1"
+      COOKIE_SECURE: "true"
+      AUTH_SECRET: ${AUTH_SECRET:-YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=}
+      OIDC_ISSUER: http://auth.localhost:5556
+      OIDC_CLIENT_ID: beamling
+      OIDC_CLIENT_SECRET: local-dex-secret
+      OIDC_REDIRECT_URI: https://localhost/api/auth/callback/google
+      KMS_PROVIDER: aws
+      KMS_ENDPOINT: http://localstack:4566
+      KMS_KEY_ID: alias/beamling-local
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
       MAX_CONCURRENT_CHATS: ${MAX_CONCURRENT_CHATS:-50}
-      BEAMLING_FAKE_PROVIDERS: ${BEAMLING_FAKE_PROVIDERS:-0}
-      BEAMLING_FAKE_DELAY_MS: ${BEAMLING_FAKE_DELAY_MS:-8}
       BRAVE_MIN_INTERVAL_MS: ${BRAVE_MIN_INTERVAL_MS:-1100}
-    # Running answers get time to store their partial text on shutdown.
+      BEAMLING_FAKE_PROVIDERS: "0"
+    volumes:
+      - beamling-local-certs:/certs:ro
     stop_grace_period: 15s
-    # Local only: bound to loopback. Without a reverse proxy, X-Forwarded-For comes from the client,
-    # so do not publish this port to a network; put a TLS proxy in front instead.
-    ports:
-      - "127.0.0.1:3000:3000"
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health >/dev/null || exit 1"]
       interval: 15s
       timeout: 5s
-      retries: 5
+      retries: 10
       start_period: 30s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      localstack:
+        condition: service_healthy
+      dex:
+        condition: service_started
+
+  caddy:
+    image: caddy:2.11.7-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./local/Caddyfile:/etc/caddy/Caddyfile:ro
+      - beamling-caddy-data:/data
+      - beamling-caddy-config:/config
+    depends_on:
+      app:
+        condition: service_healthy
 
 volumes:
   beamling-postgres:
+  beamling-local-certs:
+  beamling-localstack:
+  beamling-caddy-data:
+  beamling-caddy-config:

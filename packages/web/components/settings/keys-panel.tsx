@@ -35,19 +35,68 @@ const PROVIDERS: {
   },
 ];
 
+function LimitsForm({
+  plan,
+  expiry,
+  budget,
+  error,
+  onPlan,
+  onExpiry,
+  onBudget,
+  onCancel,
+  onSave,
+}: {
+  plan: "free" | "paid";
+  expiry: string;
+  budget: string;
+  error: string;
+  onPlan: (value: "free" | "paid") => void;
+  onExpiry: (value: string) => void;
+  onBudget: (value: string) => void;
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  return (
+    <div style={{ padding: "16px 18px", borderTop: "1px solid var(--line)", display: "grid", gap: 10 }}>
+      <label className="label" htmlFor="brave-limits-plan">Brave plan</label>
+      <select id="brave-limits-plan" className="select" value={plan} onChange={(event) => onPlan(event.target.value === "paid" ? "paid" : "free")}>
+        <option value="free">Free · 1 request/second</option>
+        <option value="paid">Paid / provider plan</option>
+      </select>
+      <label className="label" htmlFor="brave-limits-expiry">Key expiry (optional)</label>
+      <input id="brave-limits-expiry" className="input" type="date" value={expiry} onChange={(event) => onExpiry(event.target.value)} />
+      <label className="label" htmlFor="brave-limits-budget">Monthly budget in USD (optional)</label>
+      <input id="brave-limits-budget" className="input" type="number" min="0.01" step="0.01" value={budget} onChange={(event) => onBudget(event.target.value)} placeholder="5.00" />
+      {error ? <p className="validation-err" role="alert">{error}</p> : null}
+      <div style={{ display: "flex", gap: 8 }}>
+        <button type="button" className="btn btn-primary btn-sm" onClick={onSave}>Save limits</button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 export function KeysPanel() {
-  const { credentials, addCredential, removeCredential, validateCredential } = useStore();
+  const { credentials, addCredential, removeCredential, validateCredential, updateCredentialLimits } = useStore();
   const [editing, setEditing] = useState<CredentialKind | null>(null);
   const [key, setKey] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [validating, setValidating] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [limitsFor, setLimitsFor] = useState<string | null>(null);
+  const [plan, setPlan] = useState<"free" | "paid">("free");
+  const [expiry, setExpiry] = useState("");
+  const [budget, setBudget] = useState("");
+  const [limitsError, setLimitsError] = useState("");
   const [toast, showToast] = useToast();
 
   const start = (kind: CredentialKind) => {
     setEditing(kind);
     setKey("");
+    setPlan(credentials.find((item) => item.kind === kind)?.plan ?? "free");
+    setExpiry(credentials.find((item) => item.kind === kind)?.expiresOn ?? "");
+    setBudget(credentials.find((item) => item.kind === kind)?.budgetUsd?.toString() ?? "");
     setError("");
   };
 
@@ -67,7 +116,15 @@ export function KeysPanel() {
     setPending(true);
     setError("");
     try {
-      await addCredential({ kind: provider.kind, provider: provider.provider, key: value });
+      await addCredential({
+        kind: provider.kind,
+        provider: provider.provider,
+        key: value,
+        plan: provider.provider === "brave" ? plan : undefined,
+        expiresOn: provider.provider === "brave" && expiry ? expiry : null,
+        budgetUsd: provider.provider === "brave" && budget ? Number(budget) : null,
+        budgetPeriod: "month",
+      });
       showToast(`${provider.name} key saved`);
       cancel();
     } catch (cause) {
@@ -86,6 +143,30 @@ export function KeysPanel() {
       showToast(errorMessage(cause, "Validation failed"));
     } finally {
       setValidating(null);
+    }
+  };
+
+  const openLimits = (credential: Credential) => {
+    setLimitsFor(credential.id);
+    setPlan(credential.plan ?? "free");
+    setExpiry(credential.expiresOn ?? "");
+    setBudget(credential.budgetUsd?.toString() ?? "");
+    setLimitsError("");
+  };
+
+  const saveLimits = async (credential: Credential) => {
+    setLimitsError("");
+    try {
+      await updateCredentialLimits(credential.id, {
+        plan,
+        expiresOn: expiry || null,
+        budgetUsd: budget ? Number(budget) : null,
+        budgetPeriod: "month",
+      });
+      showToast("Key limits updated");
+      setLimitsFor(null);
+    } catch (cause) {
+      setLimitsError(errorMessage(cause, "Could not save the key limits."));
     }
   };
 
@@ -125,10 +206,24 @@ export function KeysPanel() {
                   deleting={deleting === credential.id}
                   onValidate={() => void revalidate(credential)}
                   onDelete={() => void remove(credential)}
+                  onLimits={credential.provider === "brave" ? () => openLimits(credential) : undefined}
                 />
               ) : (
                 <p className="hint" style={{ padding: 18 }}>No {provider.name} key connected.</p>
               )}
+              {limitsFor === credential?.id ? (
+                <LimitsForm
+                  plan={plan}
+                  expiry={expiry}
+                  budget={budget}
+                  error={limitsError}
+                  onPlan={setPlan}
+                  onExpiry={setExpiry}
+                  onBudget={setBudget}
+                  onCancel={() => setLimitsFor(null)}
+                  onSave={() => void saveLimits(credential)}
+                />
+              ) : null}
               {editing === provider.kind ? (
                 <KeyForm
                   id={provider.inputId}
@@ -140,6 +235,13 @@ export function KeysPanel() {
                   onChange={setKey}
                   onCancel={cancel}
                   onSave={() => void save(provider)}
+                  plan={plan}
+                  expiry={expiry}
+                  budget={budget}
+                  showLimits={provider.provider === "brave"}
+                  onPlan={setPlan}
+                  onExpiry={setExpiry}
+                  onBudget={setBudget}
                 />
               ) : null}
             </div>
@@ -167,6 +269,13 @@ function KeyForm({
   onChange,
   onCancel,
   onSave,
+  plan,
+  expiry,
+  budget,
+  showLimits,
+  onPlan,
+  onExpiry,
+  onBudget,
 }: {
   id: string;
   label: string;
@@ -177,6 +286,13 @@ function KeyForm({
   onChange: (value: string) => void;
   onCancel: () => void;
   onSave: () => void;
+  plan: "free" | "paid";
+  expiry: string;
+  budget: string;
+  showLimits: boolean;
+  onPlan: (value: "free" | "paid") => void;
+  onExpiry: (value: string) => void;
+  onBudget: (value: string) => void;
 }) {
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -187,6 +303,20 @@ function KeyForm({
     <form onSubmit={submit} style={{ padding: "16px 18px", borderTop: "1px solid var(--line)", display: "grid", gap: 10 }}>
       <label className="label" htmlFor={id}>{label}</label>
       <SecretKeyInput id={id} value={value} onChange={onChange} placeholder={placeholder} invalid={!!error} />
+      {showLimits ? (
+        <div style={{ display: "grid", gap: 8 }}>
+          <label className="label" htmlFor={`${id}-plan`}>Brave plan</label>
+          <select id={`${id}-plan`} className="select" value={plan} onChange={(event) => onPlan(event.target.value === "paid" ? "paid" : "free")}>
+            <option value="free">Free · 1 request/second</option>
+            <option value="paid">Paid / provider plan</option>
+          </select>
+          <label className="label" htmlFor={`${id}-expiry`}>Key expiry (optional)</label>
+          <input id={`${id}-expiry`} className="input" type="date" value={expiry} onChange={(event) => onExpiry(event.target.value)} />
+          <label className="label" htmlFor={`${id}-budget`}>Monthly budget in USD (optional)</label>
+          <input id={`${id}-budget`} className="input" type="number" min="0.01" step="0.01" value={budget} onChange={(event) => onBudget(event.target.value)} placeholder="5.00" />
+          <p className="hint">Set on the Brave dashboard. Used only for warnings.</p>
+        </div>
+      ) : null}
       {error ? (
         <p className="validation-err" role="alert">
           <Icon name="alert" size={12} /> {error}

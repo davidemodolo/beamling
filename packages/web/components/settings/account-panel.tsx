@@ -10,7 +10,7 @@ import { shortDate } from "@/lib/utils";
 
 export function AccountPanel() {
   const router = useRouter();
-  const { user, conversationCount, credentials, deleteAccount } = useStore();
+  const { user, conversationCount, credentials, deleteAccount, signOut } = useStore();
   const [confirm, setConfirm] = useState("");
   const [pending, setPending] = useState(false);
   const [toast, showToast] = useToast();
@@ -22,7 +22,7 @@ export function AccountPanel() {
       await deleteAccount();
       router.push("/");
     } catch (cause) {
-      showToast(errorMessage(cause, "Could not delete the workspace"));
+      showToast(errorMessage(cause, "Could not delete the account"));
       setPending(false);
     }
   };
@@ -31,14 +31,16 @@ export function AccountPanel() {
     <div className="settings-stack">
       <section className="settings-card">
         <div className="settings-card-body" style={{ display: "flex", gap: 14, alignItems: "center" }}>
-          <div className="avatar" style={{ width: 46, height: 46, fontSize: 15 }}>G</div>
+          <div className="avatar" style={{ width: 46, height: 46, fontSize: 15 }}>
+            {(user?.name || user?.email || "?").slice(0, 1).toUpperCase()}
+          </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 600 }}>Guest workspace</div>
+            <div style={{ fontWeight: 600 }}>{user?.name ?? "Google account"}</div>
             <div className="hint">
-              {user ? `Workspace ${user.id.slice(0, 8)} · started ${shortDate(user.createdAt)}` : "Loading…"}
+              {user ? `${user.email} · joined ${shortDate(user.createdAt)}` : "Loading…"}
             </div>
           </div>
-          <span className="badge badge-success">No billing</span>
+          <span className="badge badge-success">Google</span>
         </div>
       </section>
 
@@ -46,7 +48,7 @@ export function AccountPanel() {
         <div className="settings-card-head">
           <div style={{ flex: 1 }}>
             <h2>Session</h2>
-            <p>This browser is the account.</p>
+            <p>Signed in with Google.</p>
           </div>
         </div>
         <div className="settings-card-body tight">
@@ -60,9 +62,16 @@ export function AccountPanel() {
           </div>
           <div className="setting-row">
             <div className="grow">
+              <div className="row-title">Sign out</div>
+              <div className="row-hint">Revoke this session on this browser.</div>
+            </div>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => void signOut()}>Sign out</button>
+          </div>
+          <div className="setting-row">
+            <div className="grow">
               <div className="row-title">Cookie</div>
               <div className="row-hint">
-                HttpOnly, SameSite=Lax. Expires after 30 days without use, and the workspace is then deleted.
+                HttpOnly, SameSite=Lax. Expires after 30 days without use. Signing out revokes it immediately.
               </div>
             </div>
           </div>
@@ -72,8 +81,8 @@ export function AccountPanel() {
       <section className="settings-card" style={{ borderColor: "color-mix(in oklab, var(--error) 30%, var(--line))" }}>
         <div className="settings-card-head">
           <div style={{ flex: 1 }}>
-            <h2 style={{ color: "var(--error)" }}>Delete workspace</h2>
-            <p>Remove every conversation, source, and key.</p>
+            <h2 style={{ color: "var(--error)" }}>Delete account</h2>
+            <p>Remove every conversation, source, key and workspace data key.</p>
           </div>
         </div>
         <form
@@ -95,7 +104,7 @@ export function AccountPanel() {
             />
           </div>
           <button type="submit" className="btn btn-danger" disabled={confirm !== "DELETE" || pending}>
-            <Icon name="trash" size={14} /> Delete this workspace
+            <Icon name="trash" size={14} /> Delete my account
           </button>
         </form>
       </section>

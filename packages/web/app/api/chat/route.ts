@@ -7,7 +7,7 @@ import { apiRoute } from "@/lib/server/route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 120;
+export const maxDuration = 360;
 
 const CHATS_PER_USER_PER_HOUR = 30;
 const CHATS_PER_IP_PER_HOUR = 120;
@@ -29,7 +29,7 @@ const schema = z
     conversationId: z.string().uuid().optional(),
     question: question.optional(),
     retryOf: z.string().uuid().optional(),
-    mode: z.enum(["quick", "deep"]),
+    mode: z.enum(["quick", "deep", "deeper"]),
   })
   .refine((input) => (input.question === undefined) !== (input.retryOf === undefined), {
     message: "Send either a question or the answer to retry.",

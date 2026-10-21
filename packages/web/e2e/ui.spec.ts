@@ -1,9 +1,10 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
-import { answers, ask, composer, connectKeys, createConversation, sidebarItem, watchConsole, workingAnswer } from "./helpers";
+import { answers, ask, composer, connectKeys, createConversation, sidebarItem, signIn, watchConsole, workingAnswer } from "./helpers";
 
 test("onboarding connects keys and keeps the saved model and mode", async ({ page }) => {
   const problems = watchConsole(page);
+  await signIn(page.request);
   await page.goto("/onboarding");
   await page.locator("#llm-key").fill("test-openrouter-key");
   await page.locator("#search-key").fill("test-brave-key");
@@ -35,10 +36,70 @@ test("a Quick answer streams with citations, cost breakdown and sources", async 
   await expect(answer).toContainText("fixture answer", { timeout: 20_000 });
   await expect(answer).toContainText("actual");
   await expect(answer).toContainText("est. (1 search)");
+  await expect(answer.locator("summary").filter({ hasText: "Searches" })).toBeVisible();
+  await answer.locator("summary").filter({ hasText: "Searches" }).click();
+  await expect(answer.locator(".trace-query")).toContainText("What is Beamling?");
+  await answer.locator("summary").filter({ hasText: "Model reasoning" }).click();
+  await expect(answer).toContainText("checked the three fixture sources");
+  await expect(answer.locator("table")).toBeVisible();
+  await expect(answer.locator("th")).toContainText(["Source", "Finding"]);
   await expect(workingAnswer(page)).toHaveCount(0);
+
+  // The trace and reasoning survive a reload and start collapsed again.
+  await page.reload();
+  const reloaded = answers(page).last();
+  await expect(reloaded.locator("summary").filter({ hasText: "Searches" })).toBeVisible();
+  await expect(reloaded.locator("summary").filter({ hasText: "Model reasoning" })).toBeVisible();
+  await expect(reloaded.locator("details.trace").first()).not.toHaveAttribute("open");
   await expect(page.locator(".message-user .bubble")).toHaveText(["What is Beamling?"]);
   await expect(sidebarItem(page, "What is Beamling?")).toBeVisible();
   expect(problems).toEqual([]);
+});
+
+test("Deeper mode runs a research loop and persists the mode", async ({ page }) => {
+  const problems = watchConsole(page);
+  await connectKeys(page.request);
+  await page.goto("/chat");
+  await page.getByRole("button", { name: "Deeper" }).click();
+  await ask(page, "Research this question");
+  const answer = answers(page).last();
+  await expect(answer).toContainText("fixture answer", { timeout: 20_000 });
+  await expect(page.locator(".topbar-title span")).toContainText("Deeper");
+  await answer.locator("summary").filter({ hasText: "Searches" }).click();
+  await expect(answer.locator(".trace-query")).toHaveCount(3);
+  await expect(answer.locator(".trace-query").first()).toContainText("fixture deeper overview");
+  await page.reload();
+  await expect(page.locator(".topbar-title span")).toContainText("Deeper");
+  expect(problems).toEqual([]);
+});
+
+test("sidebar chats can be pinned and searched", async ({ page }) => {
+  await connectKeys(page.request);
+  await page.goto("/chat");
+  await ask(page, "Pinned chat");
+  await expect(answers(page).last()).toContainText("fixture answer", { timeout: 20_000 });
+
+  const item = sidebarItem(page, "Pinned chat");
+  await item.hover();
+  await item.getByRole("button", { name: "Pin Pinned chat" }).click();
+
+  const pinnedSection = page.locator('.sidebar section[aria-label="Pinned"]');
+  await expect(pinnedSection).toContainText("Pinned chat");
+  await page.reload();
+  await expect(pinnedSection).toContainText("Pinned chat");
+
+  const search = page.getByRole("searchbox", { name: "Search conversations" });
+  await search.fill("Pinned");
+  await expect(sidebarItem(page, "Pinned chat")).toBeVisible();
+  await search.fill("no such chat");
+  await expect(page.getByText(/No chats match/)).toBeVisible();
+  await page.getByRole("button", { name: "Clear search" }).click();
+  await expect(sidebarItem(page, "Pinned chat")).toBeVisible();
+
+  const pinnedItem = pinnedSection.locator(".history-item", { hasText: "Pinned chat" });
+  await pinnedItem.hover();
+  await pinnedItem.getByRole("button", { name: "Unpin Pinned chat" }).click();
+  await expect(page.locator('.sidebar section[aria-label="Pinned"]')).toHaveCount(0);
 });
 
 test("switching conversations mid-answer keeps each answer in its own conversation", async ({ page }) => {
@@ -90,7 +151,7 @@ test("stop keeps the partial answer, and Ask again replaces it without repeating
   await connectKeys(page.request);
   await page.goto("/chat");
   await ask(page, "Stop and retry me");
-  await expect(page.locator(".message-assistant .assistant-body")).toContainText("fixture", { timeout: 15_000 });
+  await expect(page.locator(".message-assistant .assistant-body").last()).toContainText("This is a fixture answer", { timeout: 15_000 });
   await page.getByRole("button", { name: "Stop generating" }).click();
 
   const stopped = answers(page).last();
@@ -111,15 +172,15 @@ test("a reload mid-answer shows the stored outcome, not a blank answer", async (
   await connectKeys(page.request);
   await page.goto("/chat");
   await ask(page, "Reload me");
-  await expect(page.locator(".message-assistant .assistant-body")).toContainText("fixture", { timeout: 15_000 });
+  await expect(page.locator(".message-assistant .assistant-body").last()).toContainText("This is a fixture answer", { timeout: 15_000 });
   await page.reload();
   const answer = answers(page).last();
   await expect(answer.locator(".badge").filter({ hasText: "Stopped" })).toBeVisible({ timeout: 15_000 });
-  await expect(answer.locator(".assistant-body")).toContainText("fixture");
+  await expect(answer).toContainText("fixture");
 });
 
 test("a failure before anything is stored can be retried as a new question", async ({ page }) => {
-  await page.request.get("/api/state");
+  await signIn(page.request);
   await page.goto("/chat");
   await ask(page, "No keys yet");
   const failed = answers(page).last();
@@ -132,7 +193,7 @@ test("a failure before anything is stored can be retried as a new question", asy
 });
 
 test("a new question clears an earlier failure that never reached the server", async ({ page }) => {
-  await page.request.get("/api/state");
+  await signIn(page.request);
   await page.goto("/chat");
   await ask(page, "Before keys");
   await expect(answers(page).last()).toContainText("Key needed");

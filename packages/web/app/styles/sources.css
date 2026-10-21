@@ -55,7 +55,7 @@
   border: 1px solid var(--line);
   border-radius: 11px;
   background: color-mix(in oklab, var(--surface) 70%, transparent);
-  transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
+  transition: border-color 0.16s ease, background 0.16s ease;
 }
 .source-card:hover {
   border-color: var(--line-strong);
@@ -64,7 +64,6 @@
 .source-card.is-active {
   border-color: color-mix(in oklab, var(--beam) 62%, var(--line));
   background: color-mix(in oklab, var(--beam) 6%, var(--surface));
-  box-shadow: 0 0 0 1px color-mix(in oklab, var(--beam) 30%, transparent), 0 12px 30px -20px var(--beam);
 }
 .source-top {
   display: flex;

@@ -60,6 +60,77 @@ function inline(text: string, key: string, citations: number): ReactNode[] {
   return nodes;
 }
 
+
+function tableCells(line: string): string[] {
+  let value = line.trim();
+  if (value.startsWith("|")) value = value.slice(1);
+  if (value.endsWith("|")) value = value.slice(0, -1);
+  const cells: string[] = [];
+  let current = "";
+  let escaped = false;
+  for (const char of value) {
+    if (escaped) {
+      current += char === "|" ? "|" : `\\${char}`;
+      escaped = false;
+    } else if (char === "\\") {
+      escaped = true;
+    } else if (char === "|") {
+      cells.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  cells.push(current.trim());
+  return cells;
+}
+
+function tableAlignments(line: string): ("left" | "center" | "right")[] | null {
+  const cells = tableCells(line);
+  if (!cells.length || !cells.every((cell) => /^:?-{3,}:?$/.test(cell))) return null;
+  return cells.map((cell) =>
+    cell.startsWith(":") && cell.endsWith(":") ? "center" : cell.endsWith(":") ? "right" : "left",
+  );
+}
+
+function tableBlock(lines: string[], start: number, key: number, citations: number): { node: ReactNode; next: number } | null {
+  const header = tableCells(lines[start]);
+  const alignments = tableAlignments(lines[start + 1] ?? "");
+  if (!alignments || header.length !== alignments.length) return null;
+  const body: string[][] = [];
+  let i = start + 2;
+  while (i < lines.length && lines[i].trim() && lines[i].includes("|")) {
+    const row = tableCells(lines[i]);
+    if (row.length !== header.length) break;
+    body.push(row);
+    i++;
+  }
+  const align = (index: number) => ({ textAlign: alignments[index] });
+  const node = (
+    <div className="answer-table-wrap" key={`k${key}`}>
+      <table>
+        <thead>
+          <tr>
+            {header.map((cell, index) => (
+              <th key={index} style={align(index)}>{inline(cell, `th${key}-${index}`, citations)}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {body.map((row, rowIndex) => (
+            <tr key={rowIndex}>
+              {row.map((cell, index) => (
+                <td key={index} style={align(index)}>{inline(cell, `td${key}-${rowIndex}-${index}`, citations)}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+  return { node, next: i };
+}
+
 function parse(text: string, citations: number): ReactNode[] {
   const lines = text.split("\n");
   const blocks: ReactNode[] = [];
@@ -84,6 +155,16 @@ function parse(text: string, citations: number): ReactNode[] {
         </pre>,
       );
       continue;
+    }
+
+    if (line.includes("|")) {
+      const table = tableBlock(lines, i, key, citations);
+      if (table) {
+        key++;
+        blocks.push(table.node);
+        i = table.next;
+        continue;
+      }
     }
 
     const heading = /^(#{2,4})\s+(.+)$/.exec(line);

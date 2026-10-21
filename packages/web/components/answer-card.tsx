@@ -6,7 +6,7 @@ import { copyText } from "@/lib/clipboard";
 import { useToast } from "@/lib/hooks/use-toast";
 import { llmModelName, SEARCH_PROVIDER_LABEL } from "@/lib/providers";
 import type { ThreadMessage } from "@/lib/store";
-import type { Source, Usage } from "@/lib/types";
+import type { SearchTrace, Source, Usage } from "@/lib/types";
 import { formatCost, formatNumber } from "@/lib/utils";
 import { useSidebar } from "./chat-shell";
 import { Markdown } from "./markdown";
@@ -84,6 +84,51 @@ function Notice({ icon, title, children, tone }: { icon: "alert" | "stop"; title
   );
 }
 
+
+export function SearchTraceDetails({ traces }: { traces?: SearchTrace[] }) {
+  if (!traces?.length) return null;
+  const done = traces.filter((trace) => trace.status === "done").length;
+  return (
+    <details className="trace">
+      <summary>
+        <span>Searches</span>
+        <span className="trace-count">
+          {done}/{traces.length}
+        </span>
+      </summary>
+      <ol className="trace-list">
+        {traces.map((trace, index) => (
+          <li key={`${trace.query}-${index}`} data-status={trace.status}>
+            <span className="trace-query">{trace.query}</span>
+            <span className="trace-status">
+              {trace.status === "searching"
+                ? "searching…"
+                : trace.status === "failed"
+                  ? "failed"
+                  : `${trace.results ?? 0} ${trace.results === 1 ? "result" : "results"}`}
+            </span>
+          </li>
+        ))}
+      </ol>
+    </details>
+  );
+}
+
+export function ReasoningDetails({ reasoning, streaming }: { reasoning?: string; streaming?: boolean }) {
+  if (!reasoning) return null;
+  return (
+    <details className="trace trace-reasoning">
+      <summary>
+        <span>Model reasoning</span>
+        <span className="trace-count">{streaming ? "live" : "provided by the model"}</span>
+      </summary>
+      <div className="reasoning-body">
+        <Markdown text={reasoning} citations={0} streaming={streaming} />
+      </div>
+    </details>
+  );
+}
+
 export const AnswerCard = memo(function AnswerCard({ message, onCitation, onOpenSources, onRetry }: AnswerCardProps) {
   const { openSettings } = useSidebar();
   const [toast, showToast] = useToast();
@@ -156,6 +201,9 @@ export const AnswerCard = memo(function AnswerCard({ message, onCitation, onOpen
             sources that were found.
           </Notice>
         ) : null}
+
+        <SearchTraceDetails traces={message.searches} />
+        <ReasoningDetails reasoning={message.reasoning} />
 
         {message.truncated ? (
           <Notice icon="alert" title="Cut short" tone="warn">

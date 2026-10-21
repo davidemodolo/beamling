@@ -5,7 +5,7 @@ import { useStore } from "@/lib/store";
 import { Mascot } from "./mascot";
 import { Icon } from "./ui/icon";
 
-/** Shown when the workspace could not be loaded; Retry re-fetches the guest state. */
+/** Shown when the account state could not be loaded; Retry re-fetches it. */
 export function WorkspaceError({ message }: { message: string }) {
   const { refresh } = useStore();
   const [pending, setPending] = useState(false);

@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useMemo, useState, type Ref } from "react";
+import { useDeferredValue, useMemo, useState, type Ref } from "react";
 import { useStore } from "@/lib/store";
 import type { ConversationSummary } from "@/lib/types";
 import { dayGroup } from "@/lib/utils";
+import { versionLabel } from "@/lib/version";
 import { useSidebar } from "./chat-shell";
 import { Icon } from "./ui/icon";
 import { Modal } from "./ui/modal";
@@ -17,13 +18,23 @@ interface SidebarProps {
 }
 
 function SidebarContent({ mobile, onNavigate }: SidebarProps) {
-  const { conversations, hasMoreConversations, loadMoreConversations, deleteConversation } = useStore();
+  const {
+    conversations,
+    hasMoreConversations,
+    loadMoreConversations,
+    deleteConversation,
+    setConversationPinned,
+    user,
+    signOut,
+  } = useStore();
   const { openSettings } = useSidebar();
   const pathname = usePathname();
   const router = useRouter();
   const [deleting, setDeleting] = useState<ConversationSummary | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreFailed, setLoadMoreFailed] = useState(false);
+  const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search);
 
   const loadMore = async () => {
     setLoadingMore(true);
@@ -39,15 +50,30 @@ function SidebarContent({ mobile, onNavigate }: SidebarProps) {
 
   const activeId = pathname.startsWith("/chat/") ? decodeURIComponent(pathname.slice(6)) : null;
 
+  const term = deferredSearch.trim().toLocaleLowerCase();
   const groups = useMemo(() => {
-    const filtered = conversations
+    const matched = term
+      ? conversations.filter((conversation) => conversation.title.toLocaleLowerCase().includes(term))
+      : conversations;
+    const sorted = matched
       .slice()
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+      .sort(
+        (a, b) =>
+          Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt),
+      );
+    if (term) return sorted.length ? [{ label: "Results" as const, items: sorted }] : [];
+
+    const pinned = sorted.filter((conversation) => conversation.pinned);
+    const recent = sorted.filter((conversation) => !conversation.pinned);
     const order: ("Today" | "Yesterday" | "Previous")[] = ["Today", "Yesterday", "Previous"];
-    return order
-      .map((label) => ({ label, items: filtered.filter((conversation) => dayGroup(conversation.updatedAt) === label) }))
-      .filter((group) => group.items.length);
-  }, [conversations]);
+    return [
+      { label: "Pinned" as const, items: pinned },
+      ...order.map((label) => ({
+        label,
+        items: recent.filter((conversation) => dayGroup(conversation.updatedAt) === label),
+      })),
+    ].filter((group) => group.items.length);
+  }, [conversations, term]);
 
   const close = () => onNavigate?.();
 
@@ -69,6 +95,29 @@ function SidebarContent({ mobile, onNavigate }: SidebarProps) {
         New question
       </Link>
 
+      <div className="sidebar-search-wrap">
+        <div className="sidebar-search">
+          <Icon name="search" size={14} />
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search chats"
+            aria-label="Search conversations"
+            autoComplete="off"
+            spellCheck={false}
+          />
+          {search ? (
+            <button type="button" onClick={() => setSearch("")} aria-label="Clear search">
+              <Icon name="x" size={12} />
+            </button>
+          ) : null}
+        </div>
+        {term && hasMoreConversations ? (
+          <p className="sidebar-search-note">Searching loaded chats. Load older chats to widen the search.</p>
+        ) : null}
+      </div>
+
       <div className="sidebar-scroll">
         {groups.length ? (
           groups.map((group) => (
@@ -77,13 +126,26 @@ function SidebarContent({ mobile, onNavigate }: SidebarProps) {
               {group.items.map((conversation) => (
                 <div
                   key={conversation.id}
-                  className="history-item"
+                  className={`history-item${conversation.pinned ? " is-pinned" : ""}`}
                   aria-current={activeId === conversation.id ? "page" : undefined}
                 >
+                  {conversation.pinned ? (
+                    <span className="history-pin-mark" title="Pinned" aria-hidden="true">
+                      <Icon name="pin" size={11} />
+                    </span>
+                  ) : null}
                   <Link href={`/chat/${conversation.id}`} className="history-title" onClick={close}>
                     {conversation.title}
                   </Link>
                   <div className="history-actions">
+                    <button
+                      type="button"
+                      aria-label={`${conversation.pinned ? "Unpin" : "Pin"} ${conversation.title}`}
+                      title={conversation.pinned ? "Unpin" : "Pin"}
+                      onClick={() => setConversationPinned(conversation.id, !conversation.pinned)}
+                    >
+                      <Icon name="pin" size={12} />
+                    </button>
                     <button
                       type="button"
                       aria-label={`Delete ${conversation.title}`}
@@ -97,7 +159,9 @@ function SidebarContent({ mobile, onNavigate }: SidebarProps) {
             </section>
           ))
         ) : (
-          <p className="history-empty">No conversations yet.</p>
+          <p className="history-empty">
+            {term ? `No chats match “${deferredSearch.trim()}”.` : "No conversations yet."}
+          </p>
         )}
         {hasMoreConversations ? (
           <button
@@ -107,7 +171,11 @@ function SidebarContent({ mobile, onNavigate }: SidebarProps) {
             disabled={loadingMore}
           >
             {loadingMore ? <Icon name="loader" size={13} className="spin" /> : null}
-            {loadMoreFailed ? "Could not load. Try again" : "Show older conversations"}
+            {loadMoreFailed
+              ? "Could not load. Try again"
+              : term
+                ? "Load older chats"
+                : "Show older conversations"}
           </button>
         ) : null}
       </div>
@@ -124,10 +192,19 @@ function SidebarContent({ mobile, onNavigate }: SidebarProps) {
         >
           <Icon name="settings" size={15} /> Settings
         </button>
+        <button
+          type="button"
+          className="side-link"
+          style={{ width: "100%", background: "none", border: 0, textAlign: "left" }}
+          onClick={() => void signOut()}
+        >
+          <Icon name="arrow-right" size={15} /> Sign out
+        </button>
         <div className="side-link" style={{ fontSize: 10.5, color: "var(--muted-2)", height: "auto", padding: "8px 9px 4px", lineHeight: 1.4 }}>
           <Icon name="lock" size={12} />
-          Guest workspace. Data is stored on the server.
+          {user?.email ?? "Signed in"} · keys stay on the server.
         </div>
+        <div className="sidebar-version">{versionLabel()}</div>
       </div>
 
       <Modal

@@ -13,6 +13,7 @@ import { useIsMobile } from "@/lib/hooks/use-is-mobile";
 import { useToast } from "@/lib/hooks/use-toast";
 import { llmModelName, SEARCH_PROVIDER_LABEL } from "@/lib/providers";
 import { useStore, type ThreadMessage } from "@/lib/store";
+import { MODE_LABELS } from "@/lib/modes";
 import type { Mode, Source } from "@/lib/types";
 import { collapseWhitespace } from "@/lib/utils";
 
@@ -278,7 +279,7 @@ function ChatPane({ conversationId }: ChatViewProps) {
         <div className="topbar-title">
           <strong>{summary?.title ?? (conversationId ? "Loading…" : "New question")}</strong>
           <span>
-            {mode === "deep" ? "Deep" : "Quick"} · {modelName} · {providerName}
+            {MODE_LABELS[mode]} · {modelName} · {providerName}
           </span>
         </div>
         <div className="topbar-actions">

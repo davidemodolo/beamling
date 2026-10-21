@@ -10,7 +10,9 @@ import type {
   ConversationSummary,
   Credential,
   CredentialKind,
-  GuestUser,
+  BravePlan,
+  BudgetPeriod,
+  User,
   Message,
   Mode,
   Settings,
@@ -33,7 +35,7 @@ export interface ThreadState {
 }
 
 interface StoreValue {
-  user: GuestUser | null;
+  user: User | null;
   conversations: ConversationSummary[];
   hasMoreConversations: boolean;
   conversationCount: number;
@@ -57,18 +59,32 @@ interface StoreValue {
   removeMessages: (conversationId: string, messageIds: string[]) => void;
   deleteConversation: (id: string) => void;
   setConversationMode: (id: string, mode: Mode) => void;
+  setConversationPinned: (id: string, pinned: boolean) => void;
   updateSettings: (patch: Partial<Settings>) => Promise<Settings>;
-  addCredential: (input: { kind: CredentialKind; provider: string; key: string }) => Promise<Credential>;
+  addCredential: (input: {
+    kind: CredentialKind;
+    provider: string;
+    key: string;
+    plan?: BravePlan;
+    expiresOn?: string | null;
+    budgetUsd?: number | null;
+    budgetPeriod?: BudgetPeriod | null;
+  }) => Promise<Credential>;
+  updateCredentialLimits: (
+    id: string,
+    patch: { plan?: BravePlan; expiresOn?: string | null; budgetUsd?: number | null; budgetPeriod?: BudgetPeriod | null },
+  ) => Promise<Credential>;
   removeCredential: (id: string) => Promise<void>;
   validateCredential: (id: string) => Promise<Credential | undefined>;
+  signOut: () => Promise<void>;
   deleteAccount: () => Promise<void>;
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
 
 function toSummary(conversation: Conversation): ConversationSummary {
-  const { id, title, mode, createdAt, updatedAt } = conversation;
-  return { id, title, mode, createdAt, updatedAt };
+  const { id, title, mode, pinned, createdAt, updatedAt } = conversation;
+  return { id, title, mode, pinned, createdAt, updatedAt };
 }
 
 export function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T> {
@@ -110,7 +126,7 @@ function mergeThread(previous: ThreadState | undefined, conversation: Conversati
 }
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<GuestUser | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [conversationCount, setConversationCount] = useState(0);
@@ -154,6 +170,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setSettings(state.settings);
       setError(null);
     } catch (cause) {
+      if (cause instanceof ApiRequestError && cause.code === "UNAUTHENTICATED") {
+        window.location.replace(`/login?next=${encodeURIComponent(window.location.pathname)}`);
+        return;
+      }
       if (seq === refreshSeq.current) setError(errorMessage(cause, "Could not load the workspace."));
     } finally {
       if (seq === refreshSeq.current) setReady(true);
@@ -344,6 +364,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [patchConversation, refresh],
   );
 
+  const setConversationPinned = useCallback(
+    (id: string, pinned: boolean) => {
+      patchConversation(id, { pinned });
+      void api(`/api/conversations/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ pinned }),
+      }).catch(() => void refresh());
+    },
+    [patchConversation, refresh],
+  );
+
   const updateSettings = useCallback(
     async (patch: Partial<Settings>) => {
       // Roll back only the keys this call changed, so a concurrent update is not clobbered.
@@ -367,7 +398,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [refresh],
   );
 
-  const addCredential = useCallback(async (input: { kind: CredentialKind; provider: string; key: string }) => {
+  const addCredential = useCallback(async (input: {
+    kind: CredentialKind;
+    provider: string;
+    key: string;
+    plan?: BravePlan;
+    expiresOn?: string | null;
+    budgetUsd?: number | null;
+    budgetPeriod?: BudgetPeriod | null;
+  }) => {
     const { credential } = await api<{ credential: Credential }>("/api/credentials", {
       method: "POST",
       body: JSON.stringify(input),
@@ -378,6 +417,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ...current.filter((item) => !(item.kind === credential.kind && item.provider === credential.provider)),
       credential,
     ]);
+    return credential;
+  }, []);
+
+  const updateCredentialLimits = useCallback(async (
+    id: string,
+    patch: { plan?: BravePlan; expiresOn?: string | null; budgetUsd?: number | null; budgetPeriod?: BudgetPeriod | null },
+  ) => {
+    const { credential } = await api<{ credential: Credential }>(`/api/credentials/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    });
+    setCredentials((current) => current.map((item) => (item.id === id ? credential : item)));
     return credential;
   }, []);
 
@@ -402,6 +453,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (stored) replace(stored);
       throw cause;
     }
+  }, []);
+
+  const signOut = useCallback(async () => {
+    await api("/api/auth/logout", { method: "POST" });
+    window.location.replace("/");
   }, []);
 
   const deleteAccount = useCallback(async () => {
@@ -439,10 +495,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       removeMessages,
       deleteConversation,
       setConversationMode,
+      setConversationPinned,
       updateSettings,
       addCredential,
       removeCredential,
       validateCredential,
+      updateCredentialLimits,
+      signOut,
       deleteAccount,
     }),
     [
@@ -468,10 +527,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       removeMessages,
       deleteConversation,
       setConversationMode,
+      setConversationPinned,
       updateSettings,
       addCredential,
       removeCredential,
       validateCredential,
+      updateCredentialLimits,
+      signOut,
       deleteAccount,
     ],
   );

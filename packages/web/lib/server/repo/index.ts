@@ -7,14 +7,16 @@ export {
   getConversation,
   getEarlierMessages,
   listConversationPage,
-  setConversationMode,
+  updateConversation,
 } from "./conversations";
 export {
   deleteCredential,
   getCredentialById,
   getCredentialRow,
   listCredentials,
+  recordCredentialUsage,
   saveCredential,
+  updateCredentialLimits,
   updateCredentialValidation,
 } from "./credentials";
 export { consumeRateLimit, reserveProviderSlot } from "./limits";

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z, type ZodType } from "zod";
-import { hashToken } from "./crypto";
-import { trustedProxyHops } from "./env";
+import { hmacToken } from "./crypto";
+import { appUrl, trustedProxyHops } from "./env";
 import { log } from "./log";
 
 export class ApiError extends Error {
@@ -24,6 +24,13 @@ export const PRIVATE_HEADERS = { "Cache-Control": "private, no-store", Vary: "Co
 
 export function json(data: unknown, init?: { status?: number }): NextResponse {
   return NextResponse.json(data, { status: init?.status, headers: PRIVATE_HEADERS });
+}
+
+/** Redirects that carry or affect a session must not be cached by browsers or intermediaries. */
+export function privateRedirect(url: string, status = 307): NextResponse {
+  const response = NextResponse.redirect(url, status);
+  for (const [name, value] of Object.entries(PRIVATE_HEADERS)) response.headers.set(name, value);
+  return response;
 }
 
 export function errorResponse(error: unknown): NextResponse {
@@ -112,10 +119,9 @@ export function isUuid(value: string): boolean {
 export function assertSameOrigin(request: Request): void {
   const origin = request.headers.get("origin");
   if (!origin) return;
-  const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
-  const host = forwardedHost || request.headers.get("host");
   try {
-    if (new URL(origin).host !== host) {
+    // Host headers and X-Forwarded-Host are proxy input; APP_URL is the only trusted origin.
+    if (new URL(origin).origin !== new URL(appUrl()).origin) {
       throw new ApiError("INVALID_ORIGIN", "Cross-origin request rejected.", 403);
     }
   } catch (error) {
@@ -137,7 +143,7 @@ export function clientIpKey(headers: Headers): string {
     .filter(Boolean);
   const hops = trustedProxyHops();
   const ip = hops > 0 && forwarded.length >= hops ? forwarded[forwarded.length - hops] : "unknown";
-  return hashToken(`ip:${ip}`).slice(0, 32);
+  return hmacToken(`ip:${ip}`);
 }
 
 /** Postgres error code, unwrapping drizzle's query error wrapper. */

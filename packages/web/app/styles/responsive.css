@@ -61,6 +61,15 @@
   }
 }
 
+@media (max-width: 430px) {
+  .composer-model {
+    display: none;
+  }
+  .segmented button {
+    padding: 0 7px;
+  }
+}
+
 .spin {
   animation: spin 0.9s linear infinite;
 }

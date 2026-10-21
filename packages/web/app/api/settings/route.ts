@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 const schema = z.object({
   llmModel: z.string().max(200).optional(),
-  defaultMode: z.enum(["quick", "deep"]).optional(),
+  defaultMode: z.enum(["quick", "deep", "deeper"]).optional(),
 });
 
 export const PATCH = apiRoute(async ({ request, user }) => {

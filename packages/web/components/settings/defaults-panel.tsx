@@ -5,7 +5,7 @@ import { errorMessage } from "@/lib/api";
 import { useToast } from "@/lib/hooks/use-toast";
 import { OPENROUTER_MODELS } from "@/lib/providers";
 import { useStore } from "@/lib/store";
-import type { Mode } from "@/lib/types";
+import { MODE_HINTS, MODE_LABELS, MODES } from "@/lib/modes";
 
 export function DefaultsPanel() {
   const { settings, updateSettings } = useStore();
@@ -30,19 +30,19 @@ export function DefaultsPanel() {
           <div className="field">
             <span className="label">Mode</span>
             <div className="segmented" style={{ width: "fit-content" }} role="group" aria-label="Default mode">
-              {(["quick", "deep"] as Mode[]).map((mode) => (
+              {MODES.map((mode) => (
                 <button
                   key={mode}
                   type="button"
                   aria-pressed={settings.defaultMode === mode}
-                  onClick={() => save({ defaultMode: mode }, `${mode === "quick" ? "Quick" : "Deep"} is now the default`)}
+                  onClick={() => save({ defaultMode: mode }, `${MODE_LABELS[mode]} is now the default`)}
                 >
-                  <Icon name={mode === "quick" ? "zap" : "layers"} size={12} />
-                  {mode === "quick" ? "Quick" : "Deep"}
+                  <Icon name={mode === "quick" ? "zap" : mode === "deep" ? "layers" : "sparkles"} size={12} />
+                  {MODE_LABELS[mode]}
                 </button>
               ))}
             </div>
-            <p className="hint">Quick runs one search pass. Deep plans sub-queries and writes a longer report.</p>
+            <p className="hint">{MODE_HINTS[settings.defaultMode]}</p>
           </div>
 
           <div className="field">

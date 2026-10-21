@@ -27,13 +27,18 @@ export default defineConfig({
     env: {
       DATABASE_URL: databaseUrl,
       CREDENTIAL_MASTER_KEY: randomBytes(32).toString("base64"),
+      AUTH_SECRET: randomBytes(32).toString("base64"),
+      OIDC_ISSUER: "https://accounts.google.com",
+      OIDC_CLIENT_ID: "e2e-client",
+      OIDC_CLIENT_SECRET: "e2e-secret",
+      OIDC_REDIRECT_URI: `http://localhost:${PORT}/api/auth/callback/google`,
+      KMS_PROVIDER: "env",
       APP_URL: `http://localhost:${PORT}`,
       BEAMLING_FAKE_PROVIDERS: "1",
+      BEAMLING_TEST_AUTH: "1",
       // Slow enough to stop, switch away from, or reload during an answer.
       BEAMLING_FAKE_DELAY_MS: "80",
       BRAVE_MIN_INTERVAL_MS: "0",
-      GUESTS_PER_IP_PER_HOUR: "10000",
-      MAX_GUESTS_PER_HOUR: "10000",
     },
   },
 });

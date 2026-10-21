@@ -11,8 +11,17 @@ CREATE TABLE "conversations" (
 	"user_id" uuid NOT NULL,
 	"title" text DEFAULT 'New conversation' NOT NULL,
 	"mode" text DEFAULT 'quick' NOT NULL,
+	"pinned" boolean DEFAULT false NOT NULL,
 	"created_at" timestamp (3) with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp (3) with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "credential_usage" (
+	"credential_id" uuid NOT NULL,
+	"day" date NOT NULL,
+	"requests" integer DEFAULT 0 NOT NULL,
+	"estimated_cost_usd" numeric(12, 6) DEFAULT '0' NOT NULL,
+	CONSTRAINT "credential_usage_credential_id_day_pk" PRIMARY KEY("credential_id","day")
 );
 --> statement-breakpoint
 CREATE TABLE "credentials" (
@@ -30,6 +39,11 @@ CREATE TABLE "credentials" (
 	"fingerprint" text NOT NULL,
 	"last4" text,
 	"status" text DEFAULT 'unverified' NOT NULL,
+	"plan" text,
+	"expires_on" date,
+	"budget_usd" numeric(12, 2),
+	"budget_period" text,
+	"budget_started_at" timestamp with time zone,
 	"last_validated_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
@@ -47,6 +61,8 @@ CREATE TABLE "messages" (
 	"no_sources" boolean DEFAULT false NOT NULL,
 	"truncated" boolean DEFAULT false NOT NULL,
 	"degraded" boolean DEFAULT false NOT NULL,
+	"searches" text,
+	"reasoning" text,
 	"llm_model" text,
 	"resolved_model" text,
 	"upstream_provider" text,
@@ -93,24 +109,42 @@ CREATE TABLE "sources" (
 	"published_at" timestamp with time zone
 );
 --> statement-breakpoint
+CREATE TABLE "user_data_keys" (
+	"user_id" uuid PRIMARY KEY NOT NULL,
+	"key_id" text NOT NULL,
+	"wrapped_key" text NOT NULL,
+	"wrap_nonce" text,
+	"wrap_tag" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"rotated_at" timestamp with time zone
+);
+--> statement-breakpoint
 CREATE TABLE "users" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"is_guest" boolean DEFAULT true NOT NULL,
+	"google_sub" text NOT NULL,
+	"email" text NOT NULL,
+	"email_verified" boolean DEFAULT false NOT NULL,
+	"name" text,
+	"avatar_url" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 ALTER TABLE "auth_sessions" ADD CONSTRAINT "auth_sessions_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "conversations" ADD CONSTRAINT "conversations_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "credential_usage" ADD CONSTRAINT "credential_usage_credential_id_credentials_id_fk" FOREIGN KEY ("credential_id") REFERENCES "public"."credentials"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "credentials" ADD CONSTRAINT "credentials_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "messages" ADD CONSTRAINT "messages_conversation_id_conversations_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "public"."conversations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "messages" ADD CONSTRAINT "messages_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "settings" ADD CONSTRAINT "settings_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "sources" ADD CONSTRAINT "sources_message_id_messages_id_fk" FOREIGN KEY ("message_id") REFERENCES "public"."messages"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "user_data_keys" ADD CONSTRAINT "user_data_keys_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "auth_sessions_token_hash_idx" ON "auth_sessions" USING btree ("token_hash");--> statement-breakpoint
 CREATE INDEX "auth_sessions_user_idx" ON "auth_sessions" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "auth_sessions_expires_idx" ON "auth_sessions" USING btree ("expires_at");--> statement-breakpoint
 CREATE INDEX "conversations_user_updated_idx" ON "conversations" USING btree ("user_id","updated_at","id");--> statement-breakpoint
+CREATE INDEX "conversations_user_pinned_updated_idx" ON "conversations" USING btree ("user_id","pinned","updated_at","id");--> statement-breakpoint
+CREATE INDEX "credential_usage_day_idx" ON "credential_usage" USING btree ("day");--> statement-breakpoint
 CREATE UNIQUE INDEX "credentials_user_kind_provider_idx" ON "credentials" USING btree ("user_id","kind","provider");--> statement-breakpoint
 CREATE INDEX "credentials_user_idx" ON "credentials" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "messages_conversation_created_idx" ON "messages" USING btree ("conversation_id","created_at","id");--> statement-breakpoint
@@ -120,4 +154,4 @@ CREATE INDEX "messages_streaming_created_idx" ON "messages" USING btree ("create
 CREATE INDEX "provider_slots_next_at_idx" ON "provider_slots" USING btree ("next_at");--> statement-breakpoint
 CREATE INDEX "rate_limits_expires_idx" ON "rate_limits" USING btree ("expires_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "sources_message_position_idx" ON "sources" USING btree ("message_id","position");--> statement-breakpoint
-CREATE INDEX "users_guest_created_idx" ON "users" USING btree ("created_at") WHERE "is_guest";
+CREATE UNIQUE INDEX "users_google_sub_idx" ON "users" USING btree ("google_sub");

@@ -17,6 +17,11 @@ export function credentialAad(userId, credentialId, kind, provider) {
   return Buffer.from(`beamling:v1:${userId}:${credentialId}:${kind}:${provider}`, "utf8");
 }
 
+// Must match the AAD used by the environment KMS adapter in lib/server/kms.ts.
+export function wrapAad(userId, credentialId, kind, provider) {
+  return Buffer.from(`beamling:credential:v1:${userId}:${credentialId}:${kind}:${provider}`, "utf8");
+}
+
 function decodeKey(name, raw) {
   const key = Buffer.from(raw, "base64");
   if (key.length !== 32) throw new Error(`${name} must be exactly 32 bytes, base64 encoded.`);
@@ -41,16 +46,16 @@ export function loadKeys(env = process.env) {
 export function rewrapRow(row, keys) {
   const oldKey = keys.byId.get(row.key_id);
   if (!oldKey) throw new Error(`No master key with id "${row.key_id}" is configured (credential ${row.id}).`);
-  const aad = credentialAad(row.user_id, row.id, row.kind, row.provider);
+  const wrapAadValue = wrapAad(row.user_id, row.id, row.kind, row.provider);
 
   const decipher = createDecipheriv(ALGORITHM, oldKey, Buffer.from(row.dek_nonce, "base64"));
-  decipher.setAAD(aad);
+  decipher.setAAD(wrapAadValue);
   decipher.setAuthTag(Buffer.from(row.dek_tag, "base64"));
   const dek = Buffer.concat([decipher.update(Buffer.from(row.wrapped_dek, "base64")), decipher.final()]);
 
   const nonce = randomBytes(12);
   const cipher = createCipheriv(ALGORITHM, keys.current.key, nonce);
-  cipher.setAAD(aad);
+  cipher.setAAD(wrapAadValue);
   const wrapped = Buffer.concat([cipher.update(dek), cipher.final()]);
   return {
     key_id: keys.current.id,
@@ -69,7 +74,7 @@ async function main() {
     process.env.DATABASE_SSL === "true"
       ? {
           rejectUnauthorized: process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== "false",
-          ca: process.env.DATABASE_SSL_CA?.replace(/\\n/g, "\n") || undefined,
+          ca: process.env.DATABASE_SSL_CA?.replace(/\\n/g, "\n") || (process.env.DATABASE_SSL_CA_FILE ? (await import("node:fs")).readFileSync(process.env.DATABASE_SSL_CA_FILE, "utf8") : undefined),
         }
       : undefined;
   const client = new pg.Client({ connectionString: process.env.DATABASE_URL, ssl });

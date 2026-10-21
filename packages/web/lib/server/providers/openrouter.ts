@@ -19,6 +19,7 @@ interface ChatUsage {
 
 export interface ChatResult {
   content: string;
+  reasoning?: string;
   model: string;
   provider?: string;
   finishReason?: string;
@@ -43,9 +44,10 @@ function headers(key: string): HeadersInit {
 
 /** Maps an OpenRouter HTTP status (or a mid-stream error code) to a stable Beamling error. */
 export function openRouterError(status: number, providerMessage = ""): ApiError {
+  const detail = providerMessage.slice(0, 500);
   const error = (code: string, message: string, httpStatus: number) =>
     new ApiError(code, message, httpStatus, "openrouter");
-  if (status === 400 && CONTEXT_TOO_LARGE_RE.test(providerMessage)) {
+  if (status === 400 && CONTEXT_TOO_LARGE_RE.test(detail)) {
     return error("CONTEXT_TOO_LARGE", "The question and sources are too long for this model.", 400);
   }
   if (status === 401 || status === 403) return error("CREDENTIAL_INVALID", "OpenRouter rejected this key.", 400);
@@ -59,7 +61,7 @@ export function openRouterError(status: number, providerMessage = ""): ApiError 
   if (status === 408 || status >= 500) {
     return unavailable("openrouter", "No OpenRouter provider is available for this model right now.");
   }
-  return error("PROVIDER_ERROR", providerMessage || `OpenRouter returned HTTP ${status}.`, 502);
+  return error("PROVIDER_ERROR", detail || `OpenRouter returned HTTP ${status}.`, 502);
 }
 
 async function readError(response: Response): Promise<ApiError> {
@@ -89,18 +91,39 @@ interface ChatOptions {
   temperature?: number;
   signal?: AbortSignal;
   onDelta?: (text: string) => void;
+  onReasoning?: (text: string) => void;
+}
+
+interface ReasoningDetail {
+  type?: string;
+  text?: string;
+  summary?: string;
 }
 
 interface StreamChunk {
   model?: string;
   provider?: string;
   error?: { code?: string | number; message?: string };
-  choices?: { delta?: { content?: string }; finish_reason?: string }[];
+  choices?: {
+    delta?: { content?: string; reasoning?: string; reasoning_details?: ReasoningDetail[] };
+    finish_reason?: string;
+  }[];
   usage?: {
     prompt_tokens?: number;
     completion_tokens?: number;
     cost?: number;
   };
+}
+
+function reasoningText(delta: NonNullable<StreamChunk["choices"]>[number]["delta"] | undefined): string {
+  if (!delta) return "";
+  if (Array.isArray(delta.reasoning_details)) {
+    return delta.reasoning_details
+      .map((detail) => detail.text ?? detail.summary ?? "")
+      .filter(Boolean)
+      .join("");
+  }
+  return typeof delta.reasoning === "string" ? delta.reasoning : "";
 }
 
 export async function openRouterChat(options: ChatOptions): Promise<ChatResult> {
@@ -126,6 +149,7 @@ export async function openRouterChat(options: ChatOptions): Promise<ChatResult> 
   if (!response.body) throw unavailable("openrouter", "OpenRouter returned an empty stream.");
 
   let content = "";
+  let reasoning = "";
   let model = options.model;
   let provider: string | undefined;
   let finishReason: string | undefined;
@@ -150,10 +174,15 @@ export async function openRouterChat(options: ChatOptions): Promise<ChatResult> 
       }
       if (chunk.model) model = chunk.model;
       if (chunk.provider) provider = chunk.provider;
-      const delta = chunk.choices?.[0]?.delta?.content;
-      if (delta) {
-        content += delta;
-        options.onDelta?.(delta);
+      const delta = chunk.choices?.[0]?.delta;
+      const reasoningDelta = reasoningText(delta);
+      if (reasoningDelta) {
+        reasoning += reasoningDelta;
+        options.onReasoning?.(reasoningDelta);
+      }
+      if (delta?.content) {
+        content += delta.content;
+        options.onDelta?.(delta.content);
       }
       if (chunk.choices?.[0]?.finish_reason) finishReason = chunk.choices[0].finish_reason;
       if (chunk.usage) {
@@ -186,5 +215,5 @@ export async function openRouterChat(options: ChatOptions): Promise<ChatResult> 
     reader.releaseLock();
   }
   if (streamError) throw streamError;
-  return { content, model, provider, finishReason, usage };
+  return { content, reasoning: reasoning || undefined, model, provider, finishReason, usage };
 }

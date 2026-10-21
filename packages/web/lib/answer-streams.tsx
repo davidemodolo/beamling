@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { streamAnswer, type StreamError, type StreamHandle } from "./api";
 import { useStore, withoutKey, type ThreadMessage } from "./store";
-import type { ChatStage, DoneEvent, Mode, Source } from "./types";
+import type { ChatStage, DoneEvent, Mode, SearchTrace, Source } from "./types";
 import { createId } from "./utils";
 
 export const STAGE_LABEL: Record<ChatStage, string> = {
@@ -30,6 +30,8 @@ export interface LiveAnswer {
   replaces?: string;
   mode: Mode;
   content: string;
+  reasoning: string;
+  searches: SearchTrace[];
   sources: Source[];
   stage: ChatStage;
   detail: string;
@@ -105,6 +107,8 @@ export function AnswerStreamsProvider({ children }: { children: ReactNode }) {
       let userMessageId: string | null = null;
       const knownIds = new Set(latest.current.threads[conversationId]?.messages.map((message) => message.id));
       let content = "";
+      let reasoning = "";
+      let searches: SearchTrace[] = [];
       let sources: Source[] = [];
       let finished = false;
 
@@ -118,6 +122,8 @@ export function AnswerStreamsProvider({ children }: { children: ReactNode }) {
           replaces: input.retryOf,
           mode,
           content: "",
+          reasoning: "",
+          searches: [],
           sources: [],
           stage: "queued",
           detail: "",
@@ -210,6 +216,8 @@ export function AnswerStreamsProvider({ children }: { children: ReactNode }) {
               mode,
               sources,
               llmModel,
+              searches,
+              reasoning: reasoning || undefined,
               errorCode: error?.code,
               errorMessage: error?.message,
               local: "provisional",
@@ -235,11 +243,23 @@ export function AnswerStreamsProvider({ children }: { children: ReactNode }) {
             announce(`${STAGE_LABEL[stage]}${detail ? `: ${detail}` : ""}.`);
           },
           onPlan: (queries) => patch((current) => ({ ...current, detail: `${queries.length} searches planned` })),
+          onSearch: (trace) => {
+            const replace = (items: SearchTrace[]) => {
+              const index = items.findIndex((item) => item.query === trace.query);
+              return index < 0 ? [...items, trace] : items.map((item, i) => (i === index ? trace : item));
+            };
+            searches = replace(searches);
+            patch((current) => ({ ...current, searches: replace(current.searches) }));
+          },
           onProgress: ({ completed, total }) =>
             patch((current) => ({ ...current, detail: `${completed} of ${total} searches complete` })),
           onSources: (next) => {
             sources = next;
             patch((current) => ({ ...current, sources: next }));
+          },
+          onReasoning: (text) => {
+            reasoning += text;
+            patch((current) => ({ ...current, reasoning: current.reasoning + text }));
           },
           onDelta: (text) => {
             content += text;

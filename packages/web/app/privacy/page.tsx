@@ -16,48 +16,64 @@ export default function PrivacyPage() {
       </header>
       <main className="legal">
         <h1>Privacy</h1>
-        <p className="updated">Draft · last updated 21 October 2026</p>
+        <p className="updated">Alpha · last updated 21 October 2026</p>
         <p>
           Beamling is a hosted answer engine with bring-your-own-key credentials. We keep the product small, and we keep the
-          data we hold small too. This page describes what the Alpha guest workspace collects and stores.
+          data we hold small too. This page describes what Beamling collects when you sign in with Google and use the
+          service.
         </p>
 
         <h2>What we collect</h2>
         <ul>
-          <li>Workspace data: a random guest identifier and a hashed session token. No email, name or OAuth identity.</li>
+          <li>
+            Account data from Google: the stable Google account identifier, verified email address, and any name or profile
+            picture Google returns.
+          </li>
+          <li>Session data: a random session token in an HttpOnly cookie. Only its SHA-256 hash is stored on the server.</li>
           <li>Content: conversations, messages and retrieved sources.</li>
-          <li>Credentials: encrypted provider keys, a masked fingerprint, and the last validation time. Plaintext keys are never stored or returned.</li>
+          <li>
+            Credentials: encrypted provider keys, a short fingerprint, the last four characters, and the last validation time.
+            Plaintext keys are never stored or returned to the browser.
+          </li>
           <li>Usage: token counts, model, recorded cost and latency. Retained with your conversations until deleted.</li>
           <li>
-            Logs: error logs without keys, session tokens, request bodies or message text, kept for at most 30 days.
+            Logs: structured error and security logs without keys, session tokens, request bodies or message text, kept for
+            at most 30 days.
           </li>
         </ul>
 
         <h2>Your keys</h2>
         <p>
           Model and search traffic goes directly from Beamling to the provider you chose, using your key. We do not route it
-          through a shared account, sell it, or use it to train models. Keys are encrypted with envelope encryption and
-          decrypted only inside the request that needs them.
+          through a shared account, sell it, or use it to train models. Keys are encrypted with envelope encryption using a
+          managed KMS master key and decrypted only inside the request that needs them.
+        </p>
+
+        <h2>Cookies</h2>
+        <p>
+          Beamling uses two essential cookies: a session cookie and a short-lived sign-in transaction cookie. Both are
+          HttpOnly, SameSite=Lax, Secure in production, and are not used for advertising or analytics.
         </p>
 
         <h2>Retention and deletion</h2>
         <p>
-          Conversations stay until you delete them or the workspace expires. A guest workspace has no login: it lives in
-          this browser&apos;s session cookie, which expires after 30 days without use. Once it expires nobody can open the
-          workspace again, so it is deleted automatically with everything in it. Deleting the workspace yourself
-          hard-deletes conversations, messages, sources, credentials and usage records immediately. Database backups
-          expire within 30 days.
+          Your account and conversations stay until you delete them. Signing in again does not create a new workspace.
+          Sessions expire after 30 days without use; expired sessions are deleted, but the account and its content remain
+          so that you can sign in again. Deleting your account hard-deletes the account, conversations, messages, sources,
+          credentials, usage records and workspace encryption key immediately. When database backups are enabled, they expire within 30 days.
         </p>
 
         <h2>Subprocessors</h2>
         <p>
-          A production deployment uses a hosting platform, a managed Postgres database, OpenRouter, Brave Search, a
-          master-key provider and optional error tracking. There is no email provider in Alpha 1.
+          A production deployment uses Google for sign-in, a hosting platform, a managed Postgres database, OpenRouter,
+          Brave Search, a managed KMS master-key provider and optional error tracking. There is no email provider or
+          advertising network in Alpha 1.
         </p>
 
         <h2>Contact</h2>
         <p>
-          Privacy questions and data requests: the monitored alpha contact published with the beta invite.
+          Privacy questions and data requests: the monitored contact published with your Beamling invitation or on the
+          deployment&apos;s sign-in page.
         </p>
       </main>
     </div>

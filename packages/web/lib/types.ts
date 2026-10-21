@@ -1,4 +1,4 @@
-export type Mode = "quick" | "deep";
+export type Mode = "quick" | "deep" | "deeper";
 type Role = "user" | "assistant";
 type MessageStatus = "pending" | "streaming" | "complete" | "stopped" | "error";
 export type ChatStage =
@@ -11,6 +11,14 @@ export type ChatStage =
   | "stopped"
   | "no-sources"
   | "error";
+export type SearchStatus = "searching" | "done" | "failed";
+
+export interface SearchTrace {
+  query: string;
+  status: SearchStatus;
+  results?: number;
+}
+
 export type CredentialKind = "llm" | "search";
 export type CredentialStatus = "active" | "invalid" | "rate_limited" | "unverified";
 
@@ -55,12 +63,15 @@ export interface Message {
   truncated?: boolean;
   degraded?: boolean;
   searchFailures?: number;
+  searches?: SearchTrace[];
+  reasoning?: string;
 }
 
 export interface ConversationSummary {
   id: string;
   title: string;
   mode: Mode;
+  pinned: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -76,12 +87,23 @@ export interface ConversationPage {
   nextCursor: string | null;
 }
 
+export type BravePlan = "free" | "paid";
+export type BudgetPeriod = "month" | "total";
+
 export interface Credential {
   id: string;
   kind: CredentialKind;
   provider: string;
   last4: string;
   status: CredentialStatus;
+  plan?: BravePlan;
+  expiresOn?: string;
+  budgetUsd?: number;
+  budgetPeriod?: BudgetPeriod;
+  budgetStartedAt?: string;
+  spentUsd?: number;
+  requests?: number;
+  warning?: "budget_80" | "budget_100" | "expiry_14" | "expiry_7" | "expiry_1";
   lastValidatedAt: string;
 }
 
@@ -90,14 +112,16 @@ export interface Settings {
   defaultMode: Mode;
 }
 
-export interface GuestUser {
+export interface User {
   id: string;
-  isGuest: boolean;
+  email: string;
+  name: string | null;
+  avatarUrl: string | null;
   createdAt: string;
 }
 
 export interface AppState extends ConversationPage {
-  user: GuestUser;
+  user: User;
   conversationCount: number;
   credentials: Credential[];
   settings: Settings;

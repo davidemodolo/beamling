@@ -19,6 +19,7 @@ export function CredentialRow({
   deleting,
   onValidate,
   onDelete,
+  onLimits,
 }: {
   credential: Credential;
   label: string;
@@ -26,6 +27,7 @@ export function CredentialRow({
   deleting: boolean;
   onValidate: () => void;
   onDelete: () => void;
+  onLimits?: () => void;
 }) {
   const [confirming, setConfirming] = useState(false);
 
@@ -41,6 +43,20 @@ export function CredentialRow({
         <span style={{ color: credential.status === "invalid" ? "var(--error)" : "var(--muted)" }}>
           {STATUS_LABEL[credential.status]} · checked {shortDate(credential.lastValidatedAt)}
         </span>
+        {credential.provider === "brave" ? (
+          <span style={{ color: "var(--muted)" }}>
+            {credential.plan === "paid" ? "Paid plan" : "Free · 1 req/s"}
+            {credential.expiresOn ? ` · expires ${credential.expiresOn}` : ""}
+            {credential.budgetUsd != null
+              ? ` · est. $${(credential.spentUsd ?? 0).toFixed(2)} of $${credential.budgetUsd.toFixed(2)}`
+              : ""}
+          </span>
+        ) : null}
+        {credential.warning ? (
+          <span className="badge badge-error">
+            {credential.warning.startsWith("budget") ? "Budget warning" : "Expiry warning"}
+          </span>
+        ) : null}
       </div>
       <div className="key-actions">
         {confirming ? (
@@ -55,6 +71,11 @@ export function CredentialRow({
           </>
         ) : (
           <>
+            {onLimits ? (
+              <button type="button" className="btn btn-ghost btn-sm" onClick={onLimits}>
+                Limits
+              </button>
+            ) : null}
             <button
               type="button"
               className="btn btn-ghost btn-icon btn-sm"

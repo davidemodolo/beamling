@@ -13,11 +13,27 @@ COPY packages/mascot/package.json packages/mascot/package.json
 RUN pnpm install --frozen-lockfile --ignore-scripts
 
 FROM deps AS build
+ARG APP_VERSION=0.0.0
+ARG GIT_COMMIT=local
+ARG BUILD_TIME
+ENV APP_VERSION=$APP_VERSION GIT_COMMIT=$GIT_COMMIT BUILD_TIME=$BUILD_TIME
 COPY . .
 RUN pnpm mascot:build && pnpm --filter @beamling/web build
 
 FROM node:24-alpine AS runner
-RUN addgroup -S beamling && adduser -S beamling -G beamling
+ARG APP_VERSION=0.0.0
+ARG GIT_COMMIT=local
+ARG BUILD_TIME
+LABEL org.opencontainers.image.title="Beamling" \
+      org.opencontainers.image.version="$APP_VERSION" \
+      org.opencontainers.image.revision="$GIT_COMMIT" \
+      org.opencontainers.image.created="$BUILD_TIME"
+# The runtime only needs node. Removing npm/corepack also removes their bundled dependency trees,
+# which are not part of the application and have their own vulnerability surface.
+RUN apk upgrade --no-cache \
+    && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
+       /usr/local/lib/node_modules/corepack /usr/local/bin/corepack \
+    && addgroup -S beamling && adduser -S beamling -G beamling
 WORKDIR /app
 # NEXT_MANUAL_SIG_HANDLE hands SIGTERM to lib/server/startup.ts, which stores running answers before exiting.
 ENV NODE_ENV=production \

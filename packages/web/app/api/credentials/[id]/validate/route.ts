@@ -17,7 +17,7 @@ export const POST = apiRoute<{ params: Promise<{ id: string }> }>(async ({ conte
 
   let key: string;
   try {
-    key = decryptCredential(user.id, row);
+    key = await decryptCredential(user.id, row);
   } catch {
     const credential = await updateCredentialValidation(user.id, id, "invalid");
     throw new ApiError("CREDENTIAL_UNREADABLE", "This saved key can no longer be read. Replace it.", 400, provider, {
@@ -26,7 +26,7 @@ export const POST = apiRoute<{ params: Promise<{ id: string }> }>(async ({ conte
   }
 
   try {
-    await validateProviderKey(provider, key);
+    await validateProviderKey(provider, key, row.plan === "paid" ? "paid" : "free");
   } catch (error) {
     const status = credentialStatusFor(error);
     // The response carries the stored credential, so the UI shows the status the server recorded.

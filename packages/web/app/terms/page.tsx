@@ -16,17 +16,16 @@ export default function TermsPage() {
       </header>
       <main className="legal">
         <h1>Terms</h1>
-        <p className="updated">Draft · last updated 20 October 2026</p>
+        <p className="updated">Alpha · last updated 21 October 2026</p>
         <p>
-          These terms describe the Alpha guest-workspace service. Use of a later production Beamling deployment is governed
-          by the final published terms.
+          These terms describe the Alpha Beamling service and apply to this deployment.
         </p>
 
         <h2>The service</h2>
         <p>
           Beamling provides an interface and pipeline for asking questions against language models and search providers that
-          you connect with your own credentials. You are responsible for your provider accounts, their terms, and the costs
-          they charge.
+          you connect with your own credentials. Access requires a Google account. You are responsible for your provider
+          accounts, their terms, and the costs they charge.
         </p>
 
         <h2>Acceptable use</h2>
@@ -45,7 +44,8 @@ export default function TermsPage() {
 
         <h2>Your data</h2>
         <p>
-          You can delete the guest workspace and all of its conversations at any time. See the{" "}
+          You can delete individual conversations or your whole account at any time. Deleting your account removes its
+          conversations, sources, credentials, usage records and workspace encryption key. See the{" "}
           <Link href="/privacy">privacy policy</Link> for details.
         </p>
 

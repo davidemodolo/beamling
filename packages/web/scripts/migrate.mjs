@@ -18,7 +18,7 @@ const ssl =
   process.env.DATABASE_SSL === "true"
     ? {
         rejectUnauthorized: process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== "false",
-        ca: process.env.DATABASE_SSL_CA?.replace(/\\n/g, "\n") || undefined,
+        ca: process.env.DATABASE_SSL_CA?.replace(/\\n/g, "\n") || (process.env.DATABASE_SSL_CA_FILE ? (await import("node:fs")).readFileSync(process.env.DATABASE_SSL_CA_FILE, "utf8") : undefined),
       }
     : undefined;
 const client = new pg.Client({ connectionString, ssl });

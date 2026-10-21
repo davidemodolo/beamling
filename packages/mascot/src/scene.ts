@@ -212,8 +212,8 @@ export interface SceneOptions {
 
 /**
  * Static SVG markup; the animation engine updates the same nodes in place.
- * With beams, eye and light are one flat shape. The small mark (no beams)
- * keeps a soft glow so the eyes read as lights.
+ * With beams, eye and light are one flat shape; the small mark keeps the same
+ * flat fill, with no blur or glow.
  */
 export function sceneMarkup(id: string, f: Frame, o: SceneOptions): string {
   const g = scenePaths(f, o.beams);
@@ -223,16 +223,12 @@ export function sceneMarkup(id: string, f: Frame, o: SceneOptions): string {
     o.beams && o.room
       ? `<path d="${roomEdges()}" style="stroke:var(--beamling-room,rgba(244,241,234,.08));stroke-width:.6;fill:none"/>`
       : "";
-  const glow = o.beams
-    ? ""
-    : `<defs><filter id="${id}-glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2.5"/></filter></defs>` +
-      `<g filter="url(#${id}-glow)" opacity=".75">${paths("glow")}</g>`;
   return (
     `<svg data-beamling data-beams="${o.beams}" data-room="${o.beams && o.room}" xmlns="http://www.w3.org/2000/svg" viewBox="${o.beams ? VIEWBOX_FULL : VIEWBOX_MARK}" ` +
     `role="img"${o.label ? "" : ' aria-hidden="true"'} style="display:block;width:100%;height:auto;overflow:hidden">` +
     title +
     room +
-    `<g data-part="light" opacity="${g.opacity.toFixed(2)}" style="fill:var(--beamling-light,#FFD98A)">${glow}${paths("light")}</g>` +
+    `<g data-part="light" opacity="${g.opacity.toFixed(2)}" style="fill:var(--beamling-light,#FFD98A)">${paths("light")}</g>` +
     `</svg>`
   );
 }

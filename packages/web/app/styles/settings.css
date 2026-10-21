@@ -69,7 +69,6 @@
 }
 .status-dot.active {
   background: var(--success);
-  box-shadow: 0 0 8px color-mix(in oklab, var(--success) 60%, transparent);
 }
 .status-dot.invalid {
   background: var(--error);

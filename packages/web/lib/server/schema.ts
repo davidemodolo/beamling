@@ -1,10 +1,12 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  date,
   index,
   integer,
   numeric,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -20,11 +22,15 @@ export const users = pgTable(
   "users",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    isGuest: boolean("is_guest").notNull().default(true),
+    googleSub: text("google_sub").notNull(),
+    email: text("email").notNull(),
+    emailVerified: boolean("email_verified").notNull().default(false),
+    name: text("name"),
+    avatarUrl: text("avatar_url"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("users_guest_created_idx").on(table.createdAt).where(sql`"is_guest"`)],
+  (table) => [uniqueIndex("users_google_sub_idx").on(table.googleSub)],
 );
 
 export const authSessions = pgTable(
@@ -65,6 +71,11 @@ export const credentials = pgTable(
     fingerprint: text("fingerprint").notNull(),
     last4: text("last4"),
     status: text("status").notNull().default("unverified"),
+    plan: text("plan"),
+    expiresOn: date("expires_on", { mode: "string" }),
+    budgetUsd: numeric("budget_usd", { precision: 12, scale: 2 }),
+    budgetPeriod: text("budget_period"),
+    budgetStartedAt: timestamp("budget_started_at", { withTimezone: true }),
     lastValidatedAt: timestamp("last_validated_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -72,6 +83,35 @@ export const credentials = pgTable(
   (table) => [
     uniqueIndex("credentials_user_kind_provider_idx").on(table.userId, table.kind, table.provider),
     index("credentials_user_idx").on(table.userId),
+  ],
+);
+
+
+export const userDataKeys = pgTable("user_data_keys", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  keyId: text("key_id").notNull(),
+  wrappedKey: text("wrapped_key").notNull(),
+  wrapNonce: text("wrap_nonce"),
+  wrapTag: text("wrap_tag"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  rotatedAt: timestamp("rotated_at", { withTimezone: true }),
+});
+
+export const credentialUsage = pgTable(
+  "credential_usage",
+  {
+    credentialId: uuid("credential_id")
+      .notNull()
+      .references(() => credentials.id, { onDelete: "cascade" }),
+    day: date("day", { mode: "string" }).notNull(),
+    requests: integer("requests").notNull().default(0),
+    estimatedCostUsd: numeric("estimated_cost_usd", { precision: 12, scale: 6 }).notNull().default("0"),
+  },
+  (table) => [
+    primaryKey({ columns: [table.credentialId, table.day] }),
+    index("credential_usage_day_idx").on(table.day),
   ],
 );
 
@@ -93,10 +133,15 @@ export const conversations = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     title: text("title").notNull().default(DEFAULT_CONVERSATION_TITLE),
     mode: text("mode").notNull().default("quick"),
+    pinned: boolean("pinned").notNull().default(false),
     createdAt: timestampMs("created_at").notNull().defaultNow(),
     updatedAt: timestampMs("updated_at").notNull().defaultNow(),
   },
-  (table) => [index("conversations_user_updated_idx").on(table.userId, table.updatedAt, table.id)],
+  (table) => [
+    index("conversations_user_updated_idx").on(table.userId, table.updatedAt, table.id),
+    // Pinned chats sort first, so the sidebar page order is (pinned, updated_at, id).
+    index("conversations_user_pinned_updated_idx").on(table.userId, table.pinned, table.updatedAt, table.id),
+  ],
 );
 
 export const messages = pgTable(
@@ -118,6 +163,9 @@ export const messages = pgTable(
     truncated: boolean("truncated").notNull().default(false),
     // Deep planner output was unusable, so the run searched the question directly.
     degraded: boolean("degraded").notNull().default(false),
+    // Encrypted JSON search trace and model-provided reasoning.
+    searches: text("searches"),
+    reasoning: text("reasoning"),
     // The model the user selected; OpenRouter may resolve it to a specific model and upstream provider.
     llmModel: text("llm_model"),
     resolvedModel: text("resolved_model"),

@@ -16,10 +16,16 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@aws-sdk/client-kms": "3.1154.0",
     "@beamling/mascot": "workspace:*",
+    "@google-cloud/kms": "6.3.0",
+    "@openrouter/ai-sdk-provider": "3.1.0",
+    "ai": "7.0.148",
     "drizzle-orm": "0.45.4",
     "eventsource-parser": "4.1.2",
+    "jose": "6.2.13",
     "next": "16.4.2",
+    "openid-client": "6.8.8",
     "pg": "8.23.1",
     "react": "19.3.1",
     "react-dom": "19.3.1",

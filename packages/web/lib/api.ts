@@ -1,7 +1,7 @@
 "use client";
 
 import { createParser } from "eventsource-parser";
-import type { ChatStage, DoneEvent, Mode, Source, Usage } from "./types";
+import type { ChatStage, DoneEvent, Mode, SearchTrace, Source, Usage } from "./types";
 
 export class ApiRequestError extends Error {
   constructor(
@@ -22,14 +22,14 @@ export interface StreamError {
   provider?: string;
 }
 
-const SESSION_EXPIRED = "Your session expired. Reload the page to start a new workspace.";
+const SESSION_EXPIRED = "Your session expired. Sign in again to continue.";
 const REQUEST_TIMEOUT_MS = 20_000;
 /** How long a stopped answer gets to confirm before the connection is dropped. */
 const STOP_GRACE_MS = 6_000;
 
 /** Copy for errors that mean the same thing wherever they surface. */
 const GENERIC_COPY: Record<string, string> = {
-  GUEST_SESSION_FAILED: SESSION_EXPIRED,
+  UNAUTHENTICATED: SESSION_EXPIRED,
   RATE_LIMITED: "Too many requests. Wait a minute and try again.",
   SERVER_BUSY: "Beamling is busy right now. Try again in a moment.",
   NETWORK: "The connection was interrupted. Check your network and try again.",
@@ -59,7 +59,7 @@ export function describeAnswerError(code: string | undefined, message?: string):
     action: "settings",
   });
   switch (code) {
-    case "GUEST_SESSION_FAILED":
+    case "UNAUTHENTICATED":
       return { title: "Session expired", message: SESSION_EXPIRED, action: "reload" };
     case "CREDENTIAL_MISSING":
       return settings("Key needed", "Add your OpenRouter and Brave Search keys in Settings.");
@@ -158,9 +158,11 @@ export interface StreamEvents {
   onMeta?: (meta: StreamMeta) => void;
   onStage?: (stage: ChatStage, detail?: string) => void;
   onPlan?: (queries: string[]) => void;
+  onSearch?: (trace: SearchTrace) => void;
   onProgress?: (progress: { completed: number; total: number }) => void;
   onSources?: (sources: Source[]) => void;
   onDelta?: (text: string) => void;
+  onReasoning?: (text: string) => void;
   onCitation?: (position: number) => void;
   onUsage?: (usage: Usage) => void;
   onDone?: (result: DoneEvent) => void;
@@ -242,6 +244,9 @@ export function streamAnswer(input: StreamInput, events: StreamEvents): StreamHa
             case "plan":
               events.onPlan?.((data as { queries: string[] }).queries);
               break;
+            case "search":
+              events.onSearch?.(data as SearchTrace);
+              break;
             case "progress":
               events.onProgress?.(data as { completed: number; total: number });
               break;
@@ -250,6 +255,9 @@ export function streamAnswer(input: StreamInput, events: StreamEvents): StreamHa
               break;
             case "delta":
               events.onDelta?.((data as { text: string }).text);
+              break;
+            case "reasoning":
+              events.onReasoning?.((data as { text: string }).text);
               break;
             case "citation":
               events.onCitation?.((data as { position: number }).position);

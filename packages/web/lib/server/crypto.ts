@@ -1,11 +1,6 @@
-import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  randomBytes,
-  randomUUID,
-} from "node:crypto";
-import { currentMasterKey, masterKeyById } from "./env";
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
+import { authSecret } from "./env";
+import { unwrapKey, wrapKey } from "./kms";
 
 const ALGORITHM = "aes-256-gcm";
 
@@ -55,24 +50,23 @@ export function credentialAad(userId: string, credentialId: string, kind: string
   return Buffer.from(`beamling:v1:${userId}:${credentialId}:${kind}:${provider}`, "utf8");
 }
 
-export function encryptCredential(
+export async function encryptCredential(
   userId: string,
   kind: string,
   provider: string,
   plaintext: string,
-): EncryptedSecret {
-  const credentialId = randomUUID();
+  credentialId: string = randomUUID(),
+): Promise<EncryptedSecret> {
   const aad = credentialAad(userId, credentialId, kind, provider);
   const dek = randomBytes(32);
   const secret = seal(dek, Buffer.from(plaintext, "utf8"), aad);
-  const master = currentMasterKey();
-  const wrapped = seal(master.key, dek, aad);
+  const wrapped = await wrapKey(dek, `beamling:credential:v1:${userId}:${credentialId}:${kind}:${provider}`);
   return {
     id: credentialId,
-    keyId: master.id,
-    wrappedDek: wrapped.ciphertext,
-    dekNonce: wrapped.nonce,
-    dekTag: wrapped.tag,
+    keyId: wrapped.keyId,
+    wrappedDek: wrapped.wrappedKey,
+    dekNonce: wrapped.nonce ?? "",
+    dekTag: wrapped.tag ?? "",
     nonce: secret.nonce,
     ciphertext: secret.ciphertext,
     tag: secret.tag,
@@ -81,15 +75,19 @@ export function encryptCredential(
   };
 }
 
-export function decryptCredential(
+export async function decryptCredential(
   userId: string,
   credential: StoredSecret & { kind: string; provider: string },
-): string {
+): Promise<string> {
   const aad = credentialAad(userId, credential.id, credential.kind, credential.provider);
-  const dek = open(
-    masterKeyById(credential.keyId),
-    { nonce: credential.dekNonce, ciphertext: credential.wrappedDek, tag: credential.dekTag },
-    aad,
+  const dek = await unwrapKey(
+    {
+      keyId: credential.keyId,
+      wrappedKey: credential.wrappedDek,
+      nonce: credential.dekNonce || undefined,
+      tag: credential.dekTag || undefined,
+    },
+    `beamling:credential:v1:${userId}:${credential.id}:${credential.kind}:${credential.provider}`,
   );
   return open(dek, { nonce: credential.nonce, ciphertext: credential.ciphertext, tag: credential.tag }, aad).toString(
     "utf8",
@@ -98,6 +96,14 @@ export function decryptCredential(
 
 export function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
+}
+
+/** Keyed hash for low-entropy identifiers such as IP addresses; a DB dump cannot brute-force them. */
+export function hmacToken(value: string): string {
+  // Production startup requires AUTH_SECRET. A keyless development hash keeps `web:dev` usable
+  // before the first secret is configured; it is never accepted in production.
+  if (!process.env.AUTH_SECRET) return hashToken(value).slice(0, 32);
+  return createHmac("sha256", authSecret()).update(value).digest("hex").slice(0, 32);
 }
 
 export function newSessionToken(): string {

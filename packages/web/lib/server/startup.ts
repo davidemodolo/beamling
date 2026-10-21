@@ -3,6 +3,7 @@ import { pool } from "./db";
 import { productionConfigErrors, productionConfigWarnings } from "./env";
 import { log } from "./log";
 import { cleanupExpired, interruptStaleAnswers } from "./repo";
+import { APP_VERSION, BUILD_TIME, GIT_COMMIT } from "../version";
 
 const CLEANUP_INTERVAL_MS = 15 * 60_000;
 /** Time running answers get to store their outcome before the process exits. */
@@ -36,6 +37,7 @@ export async function startServer(): Promise<void> {
     console.error(`Beamling cannot start:\n- ${errors.join("\n- ")}`);
     process.exit(1);
   }
+  log.info("Beamling starting", { version: APP_VERSION, commit: GIT_COMMIT, builtAt: BUILD_TIME });
   for (const warning of productionConfigWarnings()) log.warn(warning);
 
   if (process.env.NEXT_MANUAL_SIG_HANDLE) {
@@ -45,8 +47,7 @@ export async function startServer(): Promise<void> {
 
   const cleanup = () =>
     cleanupExpired()
-      .then(({ orphanedGuests, failures }) => {
-        if (orphanedGuests) log.info("Deleted expired guest workspaces", { count: orphanedGuests });
+      .then(({ failures }) => {
         for (const failure of failures) log.error("Cleanup step failed", failure);
       })
       .catch((error) => log.error("Cleanup failed", error));

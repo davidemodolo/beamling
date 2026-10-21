@@ -29,7 +29,7 @@ export const STEPS = [
   },
   {
     title: "Ask anything",
-    body: "Quick mode runs one search pass and writes a concise answer. Deep mode plans sub-queries and builds a longer report.",
+    body: "Quick runs one search pass. Deep plans sub-queries. Deeper gives the model a search tool and lets it research in rounds, up to 60 searches, before writing the report.",
   },
   {
     title: "Check the sources",

@@ -8,6 +8,8 @@ import { searchBrave, validateBraveKey } from "../lib/server/providers/brave";
 import { DEFAULT_LLM_MODEL, OPENROUTER_MODEL_IDS, isAllowedModel } from "../lib/providers";
 
 process.env.CREDENTIAL_MASTER_KEY = randomBytes(32).toString("base64");
+process.env.AUTH_SECRET = randomBytes(32).toString("base64");
+process.env.KMS_PROVIDER = "env";
 // Request spacing reserves slots in the database; unit tests run without one.
 process.env.BRAVE_MIN_INTERVAL_MS = "0";
 
@@ -54,25 +56,25 @@ test("DeepSeek V4.1 Flash is the default and is allowlisted", () => {
   assert.equal(OPENROUTER_MODEL_IDS.length, 5);
 });
 
-test("credential envelope encryption round-trips", () => {
+test("credential envelope encryption round-trips", async () => {
   const userId = "6d1f2a8e-3fd5-4e42-9969-4c18f3da0f32";
-  const encrypted = encryptCredential(userId, "llm", "openrouter", "sk-or-v1-secret-1234");
+  const encrypted = await encryptCredential(userId, "llm", "openrouter", "sk-or-v1-secret-1234");
   assert.equal(encrypted.last4, "1234");
   assert.equal(encrypted.keyId, "k1");
   assert.notEqual(encrypted.ciphertext, "sk-or-v1-secret-1234");
-  assert.equal(decryptCredential(userId, { ...encrypted, kind: "llm", provider: "openrouter" }), "sk-or-v1-secret-1234");
+  assert.equal(await decryptCredential(userId, { ...encrypted, kind: "llm", provider: "openrouter" }), "sk-or-v1-secret-1234");
 });
 
-test("credential envelope is bound to its owner", () => {
-  const encrypted = encryptCredential("user-a", "search", "brave", "BSA-secret-9999");
-  assert.throws(() => decryptCredential("user-b", { ...encrypted, kind: "search", provider: "brave" }));
+test("credential envelope is bound to its owner", async () => {
+  const encrypted = await encryptCredential("user-a", "search", "brave", "BSA-secret-9999");
+  await assert.rejects(decryptCredential("user-b", { ...encrypted, kind: "search", provider: "brave" }));
 });
 
 test("credentials survive a master key rotation and re-wrap", async (t) => {
   const { loadKeys, rewrapRow } = await import("../scripts/rewrap-credentials.mjs");
   const oldKey = process.env.CREDENTIAL_MASTER_KEY as string;
   const userId = "0f2b6a50-58a3-4d8c-8a52-7d7a4c8ab001";
-  const encrypted = encryptCredential(userId, "llm", "openrouter", "sk-or-v1-rotate-me");
+  const encrypted = await encryptCredential(userId, "llm", "openrouter", "sk-or-v1-rotate-me");
 
   const newKey = randomBytes(32).toString("base64");
   withEnv(t, {
@@ -81,7 +83,7 @@ test("credentials survive a master key rotation and re-wrap", async (t) => {
     CREDENTIAL_PREVIOUS_MASTER_KEYS: `k1:${oldKey}`,
   });
   // Before the re-wrap, the retired key still decrypts.
-  assert.equal(decryptCredential(userId, { ...encrypted, kind: "llm", provider: "openrouter" }), "sk-or-v1-rotate-me");
+  assert.equal(await decryptCredential(userId, { ...encrypted, kind: "llm", provider: "openrouter" }), "sk-or-v1-rotate-me");
 
   const next = rewrapRow(
     {
@@ -108,8 +110,8 @@ test("credentials survive a master key rotation and re-wrap", async (t) => {
   };
   // Without the retired key, only the re-wrapped row decrypts.
   process.env.CREDENTIAL_PREVIOUS_MASTER_KEYS = "";
-  assert.equal(decryptCredential(userId, rewrapped), "sk-or-v1-rotate-me");
-  assert.throws(() => decryptCredential(userId, { ...encrypted, kind: "llm", provider: "openrouter" }));
+  assert.equal(await decryptCredential(userId, rewrapped), "sk-or-v1-rotate-me");
+  await assert.rejects(decryptCredential(userId, { ...encrypted, kind: "llm", provider: "openrouter" }));
 });
 
 test("Brave validates and searches only the base Web Search endpoint", async (t) => {
@@ -291,6 +293,7 @@ test("Brave drops unsafe URLs and results without a snippet", async (t) => {
           { title: "Script", url: "javascript:alert(1)", description: "Looks fine." },
           { title: "Data", url: "data:text/html,hi", description: "Looks fine." },
           { title: "Malformed", url: "not a url", description: "Looks fine." },
+          { title: "Credentials", url: "https://user:pass@example.org/private", description: "Looks fine." },
           { title: "Empty", url: "https://example.org/empty", description: "<b></b>" },
           { title: "Good", url: "https://example.org/good", description: "Real snippet." },
         ],
@@ -426,6 +429,29 @@ test("the client IP comes only from the trusted proxy's X-Forwarded-For entry", 
 
   withEnv(t, { TRUSTED_PROXY_HOPS: "0" });
   assert.equal(key("6.6.6.6"), key("7.7.7.7"));
+
+  const before = key("6.6.6.6, 10.0.0.1");
+  withEnv(t, { AUTH_SECRET: randomBytes(32).toString("base64") });
+  assert.notEqual(key("6.6.6.6, 10.0.0.1"), before, "IP hashes are keyed, not reversible by enumeration");
+});
+
+test("same-origin checks trust only APP_URL, not proxy or host headers", async (t) => {
+  const { assertSameOrigin } = await import("../lib/server/http");
+  withEnv(t, { APP_URL: "https://beamling.example" });
+  const request = (origin: string | undefined, extra: Record<string, string> = {}) =>
+    new Request("https://beamling.example/api/conversations", {
+      method: "POST",
+      headers: { ...(origin ? { Origin: origin } : {}), ...extra },
+    });
+  assert.doesNotThrow(() => assertSameOrigin(request(undefined)));
+  assert.doesNotThrow(() => assertSameOrigin(request("https://beamling.example")));
+  assert.throws(() => assertSameOrigin(request("http://beamling.example")), isApiError("INVALID_ORIGIN"));
+  assert.throws(
+    () => assertSameOrigin(request("https://evil.example", { "x-forwarded-host": "evil.example", Host: "evil.example" })),
+    isApiError("INVALID_ORIGIN"),
+    "a client-supplied forwarded host must not become the expected origin",
+  );
+  assert.throws(() => assertSameOrigin(request("not a URL")), isApiError("INVALID_ORIGIN"));
 });
 
 test("production refuses unsafe configuration", async (t) => {
@@ -442,6 +468,12 @@ test("production refuses unsafe configuration", async (t) => {
     COOKIE_SECURE: undefined,
     BEAMLING_FAKE_PROVIDERS: undefined,
     DATABASE_SSL: "true",
+    AUTH_SECRET: randomBytes(32).toString("base64"),
+    OIDC_CLIENT_ID: "client-id",
+    OIDC_CLIENT_SECRET: "client-secret",
+    OIDC_ISSUER: "https://accounts.google.com",
+    KMS_PROVIDER: "gcp",
+    KMS_KEY_NAME: "projects/p/locations/l/keyRings/r/cryptoKeys/k",
   };
   withEnv(t, base);
   assert.deepEqual(productionConfigErrors(), []);
@@ -463,11 +495,23 @@ test("production refuses unsafe configuration", async (t) => {
     }
   };
   assert.match(errorsWith({ APP_URL: undefined }), /APP_URL is required/);
+  assert.match(
+    errorsWith({ APP_URL: undefined, OPENROUTER_APP_URL: "https://alias.example" }),
+    /APP_URL is required/,
+    "provider-specific aliases cannot replace APP_URL in production",
+  );
   assert.match(errorsWith({ APP_URL: "http://beamling.example" }), /https/);
+  assert.match(errorsWith({ APP_URL: "https://beamling.example/app" }), /origin only/);
+  assert.match(
+    errorsWith({ OIDC_REDIRECT_URI: "https://evil.example/api/auth/callback/google" }),
+    /same origin as APP_URL/,
+  );
+  assert.match(errorsWith({ OIDC_REDIRECT_URI: "https://beamling.example/callback" }), /callback\/google/);
   assert.match(errorsWith({ TRUSTED_PROXY_HOPS: undefined }), /TRUSTED_PROXY_HOPS/);
   assert.match(errorsWith({ COOKIE_SECURE: "false" }), /COOKIE_SECURE/);
   assert.match(errorsWith({ BEAMLING_FAKE_PROVIDERS: "1" }), /BEAMLING_FAKE_PROVIDERS/);
-  assert.match(errorsWith({ CREDENTIAL_MASTER_KEY: "short" }), /32 bytes/);
+  assert.match(errorsWith({ AUTH_SECRET: "short" }), /32 bytes/);
+  assert.match(errorsWith({ KMS_PROVIDER: "env" }), /KMS_PROVIDER=env/);
   // A local Docker run is allowed, without Secure cookies.
   assert.equal(errorsWith({ APP_URL: "http://localhost:3000", TRUSTED_PROXY_HOPS: undefined }), "");
 
@@ -516,6 +560,26 @@ test("logs never include query parameters", async (t) => {
   const entry = JSON.parse(lines[0]);
   assert.equal(entry.error.query, "insert into messages");
   assert.equal(entry.error.cause.code, "22021");
+});
+
+test("logs redact provider keys and response bodies", async (t) => {
+  const { log } = await import("../lib/server/log");
+  const lines: string[] = [];
+  const original = console.error;
+  console.error = (line: string) => lines.push(line);
+  t.after(() => {
+    console.error = original;
+  });
+  const key = "sk-or-v1-abcdefghijklmnopqrstuvwxyz";
+  const top = new Error(`Provider failed: responseBody: {"answer":"private model text"} Authorization: Bearer ${key}`);
+  log.error("Provider error", top);
+  const nested = Object.assign(new Error("APICallError"), {
+    cause: new Error('JSON parsing failed: Text: data: {"answer":"private model text"}'),
+  });
+  log.error("Provider parse error", nested);
+  assert.equal(lines.length, 2);
+  assert.doesNotMatch(lines.join("\n"), /private model text|sk-or-v1-abcdefghijklmnopqrstuvwxyz/);
+  assert.match(lines.join("\n"), /body omitted/);
 });
 
 test("only answers about the key change its stored status", async () => {

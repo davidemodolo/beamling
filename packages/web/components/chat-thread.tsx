@@ -6,7 +6,7 @@ import type { BeamlingHandle } from "@beamling/mascot/react";
 import { STAGE_LABEL, type LiveAnswer } from "@/lib/answer-streams";
 import type { ThreadMessage } from "@/lib/store";
 import type { ChatStage, Source } from "@/lib/types";
-import { AnswerCard } from "./answer-card";
+import { AnswerCard, ReasoningDetails, SearchTraceDetails } from "./answer-card";
 import { Markdown } from "./markdown";
 import { Mascot } from "./mascot";
 import { Icon } from "./ui/icon";
@@ -99,6 +99,10 @@ export function WorkingAnswer({
           <Icon name="stop" size={11} /> {live.stopping ? "Stopping…" : "Stop"}
         </button>
       </div>
+      <div className="assistant-body">
+        <SearchTraceDetails traces={live.searches} />
+        <ReasoningDetails reasoning={live.reasoning} streaming />
+      </div>
       {live.content ? (
         <div className="assistant-body">
           <Markdown text={live.content} citations={live.sources.length} onCitation={onCitation} streaming />
@@ -130,7 +134,7 @@ export function NotFoundState() {
           <Mascot expression="confused" beams={false} label="" style={{ width: 90 }} />
         </div>
         <h1 style={{ color: "var(--text)", fontSize: 22, marginBottom: 6 }}>Conversation not found</h1>
-        <p style={{ marginBottom: 18 }}>It may have been deleted, or it belongs to another guest session.</p>
+        <p style={{ marginBottom: 18 }}>It may have been deleted, or it belongs to another account.</p>
         <Link href="/chat" className="btn btn-secondary btn-sm">
           <Icon name="plus" size={14} /> New question
         </Link>

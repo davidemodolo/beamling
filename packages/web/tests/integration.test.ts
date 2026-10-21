@@ -3,6 +3,8 @@ import { randomBytes } from "node:crypto";
 import { test, type TestContext } from "node:test";
 
 process.env.CREDENTIAL_MASTER_KEY = randomBytes(32).toString("base64");
+process.env.AUTH_SECRET = randomBytes(32).toString("base64");
+process.env.KMS_PROVIDER = "env";
 process.env.BEAMLING_FAKE_PROVIDERS = "1";
 process.env.BEAMLING_FAKE_DELAY_MS = "1";
 process.env.BRAVE_MIN_INTERVAL_MS = "0";
@@ -27,17 +29,30 @@ function withEnv(t: TestContext, values: Record<string, string>) {
 async function saveKey(userId: string, kind: "llm" | "search", provider: string, plaintext: string) {
   const { encryptCredential } = await import("../lib/server/crypto");
   const { saveCredential } = await import("../lib/server/repo");
-  return saveCredential({ userId, kind, provider, encrypted: encryptCredential(userId, kind, provider, plaintext), status: "active" });
+  return saveCredential({
+    userId,
+    kind,
+    provider,
+    encrypted: await encryptCredential(userId, kind, provider, plaintext),
+    status: "active",
+    plan: provider === "brave" ? "free" : null,
+  });
 }
 
-/** Creates a guest with fixture keys and deletes it when the test ends. */
-async function createGuest(t: TestContext, options: { keys?: boolean } = {}): Promise<string> {
+/** Creates an account with fixture keys and deletes it when the test ends. */
+async function createAccount(t: TestContext, options: { keys?: boolean } = {}): Promise<string> {
   const { db } = await import("../lib/server/db");
   const { users } = await import("../lib/server/schema");
   const { deleteAccount, ensureSettings } = await import("../lib/server/repo");
-  const [user] = await db.insert(users).values({ isGuest: true }).returning();
+  const { ensureWorkspaceKey } = await import("../lib/server/workspace-key");
+  const suffix = randomBytes(8).toString("hex");
+  const [user] = await db
+    .insert(users)
+    .values({ googleSub: `test-${suffix}`, email: `${suffix}@example.test`, emailVerified: true })
+    .returning();
   t.after(() => deleteAccount(user.id));
   await ensureSettings(user.id);
+  await ensureWorkspaceKey(user.id);
   if (options.keys !== false) {
     await saveKey(user.id, "llm", "openrouter", "test-openrouter");
     await saveKey(user.id, "search", "brave", "test-brave");
@@ -47,7 +62,7 @@ async function createGuest(t: TestContext, options: { keys?: boolean } = {}): Pr
 
 async function ask(
   userId: string,
-  input: { question?: string; retryOf?: string; conversationId?: string; mode: "quick" | "deep" },
+  input: { question?: string; retryOf?: string; conversationId?: string; mode: "quick" | "deep" | "deeper" },
   signal = new AbortController().signal,
 ) {
   const { prepareChat, runChat } = await import("../lib/server/chat");
@@ -68,8 +83,8 @@ async function storedAnswer(userId: string, conversationId: string) {
   return { conversation, answer: conversation.messages.findLast((message) => message.role === "assistant") };
 }
 
-test("guest chat persists a cited Quick answer with its cost breakdown", { skip }, async (t) => {
-  const userId = await createGuest(t);
+test("account chat persists a cited Quick answer with its cost breakdown", { skip }, async (t) => {
+  const userId = await createAccount(t);
   const { events, prepared } = await ask(userId, { question: "What is Beamling?", mode: "quick" });
 
   const names = events.map((event) => event.name);
@@ -99,7 +114,7 @@ test("guest chat persists a cited Quick answer with its cost breakdown", { skip 
 });
 
 test("Deep mode plans sub-queries and emits progress", { skip }, async (t) => {
-  const userId = await createGuest(t);
+  const userId = await createAccount(t);
   const { events } = await ask(userId, { question: "Compare the evidence", mode: "deep" });
 
   assert.equal(eventData<{ queries: string[] }>(events, "plan").queries.length, 3);
@@ -108,8 +123,98 @@ test("Deep mode plans sub-queries and emits progress", { skip }, async (t) => {
   assert.equal(eventData<{ degraded: boolean }>(events, "done").degraded, false);
 });
 
+test("Deeper mode runs the research loop and keeps every search trace", { skip }, async (t) => {
+  const userId = await createAccount(t);
+  const { events, prepared } = await ask(userId, { question: "Map the evidence", mode: "deeper" });
+
+  const searches = events.filter((event) => event.name === "search").map((event) => event.data as { status: string });
+  assert.ok(searches.length >= 6, "each search emits a searching and a done event");
+  assert.equal(eventData<{ truncated: boolean }>(events, "done").truncated, false);
+  const { conversation, answer } = await storedAnswer(userId, prepared.conversationId);
+  assert.equal(conversation.mode, "deeper");
+  assert.equal(answer?.mode, "deeper");
+  assert.ok((answer?.searches?.length ?? 0) >= 3);
+  assert.equal(answer?.status, "complete");
+});
+
+test("Deeper's agent loop calls the search tool and sums step cost", { skip }, async (t) => {
+  const userId = await createAccount(t);
+  withEnv(t, { BEAMLING_FAKE_PROVIDERS: "0", BRAVE_MIN_INTERVAL_MS: "0" });
+  const originalFetch = globalThis.fetch;
+  const calls: string[] = [];
+  const sse = (lines: unknown[]) =>
+    new Response(lines.map((line) => `data: ${JSON.stringify(line)}\n\n`).join("") + "data: [DONE]\n\n", {
+      headers: { "Content-Type": "text/event-stream" },
+    });
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    calls.push(url);
+    if (url.startsWith("https://api.search.brave.com")) {
+      return new Response(
+        JSON.stringify({
+          web: { results: [{ title: "Alpha source", url: "https://example.org/alpha", description: "Alpha evidence." }] },
+        }),
+        { headers: { "Content-Type": "application/json" } },
+      );
+    }
+    const body = JSON.parse(String(init?.body ?? "{}")) as {
+      stream?: boolean;
+      tools?: unknown[];
+      messages?: { role: string }[];
+    };
+    const base = { id: "gen-test", object: "chat.completion.chunk", created: 1, model: "deepseek/deepseek-v4.1-flash" };
+    const json = (message: unknown, finishReason: string, cost: number, prompt: number, completion: number) =>
+      new Response(
+        JSON.stringify({
+          id: "gen-test",
+          object: "chat.completion",
+          created: 1,
+          model: "deepseek/deepseek-v4.1-flash",
+          provider: "MockProvider",
+          choices: [{ index: 0, message, finish_reason: finishReason }],
+          usage: { prompt_tokens: prompt, completion_tokens: completion, total_tokens: prompt + completion, cost },
+        }),
+        { headers: { "Content-Type": "application/json" } },
+      );
+    if (body.tools?.length && !body.messages?.some((message) => message.role === "tool")) {
+      return json(
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [{ id: "call-1", type: "function", function: { name: "search", arguments: JSON.stringify({ queries: ["alpha evidence"] }) } }],
+        },
+        "tool_calls",
+        0.0001,
+        20,
+        5,
+      );
+    }
+    if (body.tools?.length) {
+      return json({ role: "assistant", content: "Research complete. Alpha evidence is covered." }, "stop", 0.0001, 30, 8);
+    }
+    return sse([
+      { ...base, provider: "MockProvider", choices: [{ index: 0, delta: { content: "Mock deeper answer with evidence [1]." }, finish_reason: null }] },
+      { ...base, choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 40, completion_tokens: 10, total_tokens: 50, cost: 0.0002 } },
+    ]);
+  }) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const { events, prepared } = await ask(userId, { question: "Prove the agent loop", mode: "deeper" });
+  assert.equal(calls.filter((url) => url.startsWith("https://api.search.brave.com")).length, 1);
+  const search = eventData<{ query: string; status: string }>(events, "search");
+  assert.equal(search.query, "alpha evidence");
+  assert.equal(eventData<{ upstreamProvider: string }>(events, "usage").upstreamProvider, "MockProvider");
+  const { answer } = await storedAnswer(userId, prepared.conversationId);
+  assert.equal(answer?.status, "complete");
+  assert.match(answer?.content ?? "", /Mock deeper answer/);
+  assert.equal(answer?.sources?.length, 1);
+  assert.ok((answer?.usage?.costUsd ?? 0) >= 0.0004, "agent steps and synthesis are summed");
+});
+
 test("an invalid plan is repaired once, then the run degrades instead of failing", { skip }, async (t) => {
-  const userId = await createGuest(t);
+  const userId = await createAccount(t);
   const repaired = await ask(userId, { question: "Plan this [fixture:bad-plan]", mode: "deep" });
   assert.equal(eventData<{ queries: string[] }>(repaired.events, "plan").queries.length, 3);
   assert.equal(eventData<{ degraded: boolean }>(repaired.events, "done").degraded, false);
@@ -123,7 +228,7 @@ test("an invalid plan is repaired once, then the run degrades instead of failing
 });
 
 test("a failed sub-query is reported as a partial search", { skip }, async (t) => {
-  const userId = await createGuest(t);
+  const userId = await createAccount(t);
   const { events, prepared } = await ask(userId, { question: "Partial [fixture:partial-search]", mode: "deep" });
   assert.equal(eventData<{ searchFailures: number }>(events, "done").searchFailures, 1);
   const { answer } = await storedAnswer(userId, prepared.conversationId);
@@ -134,7 +239,7 @@ test("a failed sub-query is reported as a partial search", { skip }, async (t) =
 
 test("missing keys use the stable CREDENTIAL_MISSING code", { skip }, async (t) => {
   const { ApiError } = await import("../lib/server/http");
-  const userId = await createGuest(t, { keys: false });
+  const userId = await createAccount(t, { keys: false });
   await assert.rejects(
     ask(userId, { question: "Hi", mode: "quick" }),
     (error) => error instanceof ApiError && error.code === "CREDENTIAL_MISSING" && error.provider === "openrouter",
@@ -144,7 +249,7 @@ test("missing keys use the stable CREDENTIAL_MISSING code", { skip }, async (t) 
 test("a conversation accepts only one streaming answer at a time", { skip }, async (t) => {
   const { createConversation, createExchange } = await import("../lib/server/repo");
   const { ApiError } = await import("../lib/server/http");
-  const userId = await createGuest(t);
+  const userId = await createAccount(t);
   const conversation = await createConversation(userId, "quick");
   const exchange = { userId, conversationId: conversation.id, question: "First", mode: "quick" as const, llmModel: "m" };
 
@@ -165,7 +270,7 @@ test("the global concurrency cap holds under concurrent requests", { skip }, asy
     sql`select count(*)::int as n from messages where status = 'streaming' and created_at > now() - interval '3 minutes'`,
   );
   withEnv(t, { MAX_CONCURRENT_CHATS: String(rows[0].n + 1) });
-  const userId = await createGuest(t);
+  const userId = await createAccount(t);
   const conversations = await Promise.all(Array.from({ length: 8 }, () => createConversation(userId, "quick")));
 
   const results = await Promise.allSettled(
@@ -183,7 +288,7 @@ test("waiting too long for the concurrency lock reads as busy, not as a crash", 
   const { createConversation, createExchange } = await import("../lib/server/repo");
   const { ApiError } = await import("../lib/server/http");
   const { pool } = await import("../lib/server/db");
-  const userId = await createGuest(t);
+  const userId = await createAccount(t);
   const conversation = await createConversation(userId, "quick");
   const holder = await pool.connect();
   try {
@@ -201,7 +306,7 @@ test("waiting too long for the concurrency lock reads as busy, not as a crash", 
 
 test("a stop request reaches the answer through the database", { skip }, async (t) => {
   const { createConversation, createExchange, isStopRequested, requestStop } = await import("../lib/server/repo");
-  const userId = await createGuest(t);
+  const userId = await createAccount(t);
   const conversation = await createConversation(userId, "quick");
   const { assistantMessage } = await createExchange({
     userId,
@@ -222,7 +327,7 @@ test("deleting a conversation mid-answer stops it without a database error", { s
   const { prepareChat, runChat } = await import("../lib/server/chat");
   const { completeAssistant, deleteConversation, isStopRequested } = await import("../lib/server/repo");
   withEnv(t, { BEAMLING_FAKE_DELAY_MS: "30" });
-  const userId = await createGuest(t);
+  const userId = await createAccount(t);
   const prepared = await prepareChat({ userId, question: "Long answer", mode: "quick" });
 
   const controller = new AbortController();
@@ -264,7 +369,7 @@ test("deleting a conversation mid-answer stops it without a database error", { s
 
 test("the time limit keeps partial text and records GENERATION_TIMEOUT", { skip }, async (t) => {
   withEnv(t, { BEAMLING_FAKE_DELAY_MS: "40" });
-  const userId = await createGuest(t);
+  const userId = await createAccount(t);
   const { events, prepared } = await ask(userId, { question: "Slow", mode: "quick" }, AbortSignal.timeout(400));
   assert.equal(events.at(-1)?.name, "stage");
   const { answer } = await storedAnswer(userId, prepared.conversationId);
@@ -274,22 +379,27 @@ test("the time limit keeps partial text and records GENERATION_TIMEOUT", { skip 
 
 test("NUL characters never reach Postgres", { skip }, async (t) => {
   const { createConversation, createExchange } = await import("../lib/server/repo");
-  const userId = await createGuest(t);
+  const userId = await createAccount(t);
   const conversation = await createConversation(userId, "quick");
-  const { userMessage } = await createExchange({
+  const { questionText } = await createExchange({
     userId,
     conversationId: conversation.id,
     question: "a\u0000b",
     mode: "quick",
     llmModel: "m",
   });
-  assert.equal(userMessage.content, "ab");
+  assert.equal(questionText, "ab");
+  const { db } = await import("../lib/server/db");
+  const { messages } = await import("../lib/server/schema");
+  const { eq } = await import("drizzle-orm");
+  const [stored] = await db.select({ content: messages.content }).from(messages).where(eq(messages.conversationId, conversation.id));
+  assert.match(stored.content, /^enc:v1:/, "message content is encrypted at rest");
 });
 
 test("retrying a failed answer replaces it and reuses the question", { skip }, async (t) => {
   const { completeAssistant, createConversation, createExchange, getConversation } = await import("../lib/server/repo");
   const { ApiError } = await import("../lib/server/http");
-  const userId = await createGuest(t);
+  const userId = await createAccount(t);
   const conversation = await createConversation(userId, "quick");
   const first = await createExchange({ userId, conversationId: conversation.id, question: "Retry me", mode: "quick", llmModel: "m" });
   await completeAssistant({ userId, messageId: first.assistantMessage.id, content: "", status: "error", errorCode: "PROVIDER_UNAVAILABLE" });
@@ -325,9 +435,17 @@ test("an answer abandoned by a crashed instance reads as interrupted", { skip },
   const { messages } = await import("../lib/server/schema");
   const { createConversation, createExchange } = await import("../lib/server/repo");
   const { eq } = await import("drizzle-orm");
-  const userId = await createGuest(t);
+  const userId = await createAccount(t);
   const conversation = await createConversation(userId, "quick");
   const { assistantMessage } = await createExchange({ userId, conversationId: conversation.id, question: "Q", mode: "quick", llmModel: "m" });
+  // Deeper has a six-minute route limit, so a five-minute answer is still healthy.
+  await db
+    .update(messages)
+    .set({ createdAt: new Date(Date.now() - 5 * 60_000) })
+    .where(eq(messages.id, assistantMessage.id));
+  const running = await storedAnswer(userId, conversation.id);
+  assert.equal(running.answer?.status, "streaming");
+
   await db
     .update(messages)
     .set({ createdAt: new Date(Date.now() - 10 * 60_000) })
@@ -338,12 +456,38 @@ test("an answer abandoned by a crashed instance reads as interrupted", { skip },
   assert.equal(answer?.errorCode, "INTERRUPTED");
 });
 
+test("a pinned chat sorts ahead of newer chats across pages", { skip }, async (t) => {
+  const { createConversation, listConversationPage, updateConversation } = await import("../lib/server/repo");
+  const userId = await createAccount(t);
+  const pinned = await createConversation(userId, "quick");
+  for (let i = 0; i < 50; i++) await createConversation(userId, "quick");
+
+  const updated = await updateConversation(userId, pinned.id, { pinned: true });
+  assert.equal(updated?.pinned, true);
+
+  const first = await listConversationPage(userId);
+  assert.equal(first.conversations.length, 50);
+  assert.equal(first.conversations[0].id, pinned.id);
+  assert.equal(first.conversations[0].pinned, true);
+  assert.equal(first.conversations.filter((conversation) => conversation.pinned).length, 1);
+  assert.ok(first.nextCursor);
+
+  const second = await listConversationPage(userId, first.nextCursor);
+  assert.equal(second.conversations.length, 1);
+  assert.equal(second.conversations[0].pinned, false);
+
+  const unpinned = await updateConversation(userId, pinned.id, { pinned: false });
+  assert.equal(unpinned?.pinned, false);
+  const after = await listConversationPage(userId);
+  assert.equal(after.conversations.filter((conversation) => conversation.pinned).length, 0);
+});
+
 test("conversations and messages are paginated", { skip }, async (t) => {
   const { db } = await import("../lib/server/db");
   const { conversations, messages } = await import("../lib/server/schema");
   const { getConversation, getEarlierMessages, getState, listConversationPage } = await import("../lib/server/repo");
   const { CONVERSATION_PAGE_SIZE, MESSAGE_PAGE_SIZE } = await import("../lib/data");
-  const userId = await createGuest(t);
+  const userId = await createAccount(t);
 
   // Same updated_at for many rows, to exercise the id tiebreaker in the cursor.
   const base = Date.now();
@@ -360,7 +504,7 @@ test("conversations and messages are paginated", { skip }, async (t) => {
   const ids = [...first.conversations, ...second.conversations].map((item) => item.id);
   assert.equal(new Set(ids).size, rows.length, "no conversation is skipped or repeated");
 
-  const state = await getState({ id: userId, isGuest: true, createdAt: new Date() });
+  const state = await getState({ id: userId, email: "test@example.test", name: null, avatarUrl: null, createdAt: new Date() });
   assert.equal(state.conversations.length, CONVERSATION_PAGE_SIZE);
   assert.equal(state.conversationCount, rows.length);
   assert.equal("messages" in state.conversations[0], false, "the list carries no messages");
@@ -388,32 +532,18 @@ test("conversations and messages are paginated", { skip }, async (t) => {
   assert.equal(await getEarlierMessages(OTHER_USER_ID, conversationId, conversation?.messages[0].id as string), null);
 });
 
-test("cleanup deletes guest workspaces that no session can reach", { skip }, async (t) => {
+test("cleanup removes expired sessions but keeps accounts", { skip }, async (t) => {
   const { db } = await import("../lib/server/db");
   const { authSessions, users } = await import("../lib/server/schema");
   const { cleanupExpired } = await import("../lib/server/repo");
   const { inArray } = await import("drizzle-orm");
-  const old = new Date(Date.now() - 2 * 3600_000);
-  const [orphan, expired, active, fresh] = await db
-    .insert(users)
-    .values([{ createdAt: old }, { createdAt: old }, { createdAt: old }, {}])
-    .returning();
-  t.after(() => db.delete(users).where(inArray(users.id, [orphan.id, expired.id, active.id, fresh.id])));
-  await db.insert(authSessions).values([
-    { userId: expired.id, tokenHash: randomBytes(16).toString("hex"), expiresAt: new Date(Date.now() - 1000) },
-    { userId: active.id, tokenHash: randomBytes(16).toString("hex"), expiresAt: new Date(Date.now() + 3600_000) },
-  ]);
-
+  const suffix = randomBytes(8).toString("hex");
+  const [account] = await db.insert(users).values({ googleSub: `cleanup-${suffix}`, email: `${suffix}@example.test`, emailVerified: true }).returning();
+  t.after(() => db.delete(users).where(inArray(users.id, [account.id])));
+  await db.insert(authSessions).values({ userId: account.id, tokenHash: randomBytes(16).toString("hex"), expiresAt: new Date(Date.now() - 1000) });
   await cleanupExpired();
-  const remaining = new Set(
-    (await db.select({ id: users.id }).from(users).where(inArray(users.id, [orphan.id, expired.id, active.id, fresh.id]))).map(
-      (row) => row.id,
-    ),
-  );
-  assert.equal(remaining.has(orphan.id), false);
-  assert.equal(remaining.has(expired.id), false);
-  assert.equal(remaining.has(active.id), true);
-  assert.equal(remaining.has(fresh.id), true, "a workspace being created right now is kept");
+  const [remaining] = await db.select({ id: users.id }).from(users).where(inArray(users.id, [account.id]));
+  assert.equal(remaining.id, account.id);
 });
 
 test("concurrent requests cannot exceed the rate limit", { skip }, async () => {
@@ -453,7 +583,7 @@ test("Brave requests for one key are spaced across instances", { skip }, async (
 test("replacing a key keeps it decryptable", { skip }, async (t) => {
   const { decryptCredential } = await import("../lib/server/crypto");
   const { getCredentialRow } = await import("../lib/server/repo");
-  const userId = await createGuest(t);
+  const userId = await createAccount(t);
 
   await Promise.all([
     saveKey(userId, "llm", "openrouter", "test-replacement-a"),
@@ -461,7 +591,7 @@ test("replacing a key keeps it decryptable", { skip }, async (t) => {
   ]);
   const row = await getCredentialRow(userId, "llm", "openrouter");
   assert.ok(row);
-  assert.match(decryptCredential(userId, row), /^test-replacement-[ab]$/);
+  assert.match(await decryptCredential(userId, row), /^test-replacement-[ab]$/);
 });
 
 test.after(async () => {

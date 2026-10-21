@@ -1,13 +1,27 @@
-import { expect, type APIRequestContext, type Page } from "@playwright/test";
+import { expect, type APIRequestContext, type APIResponse, type Page } from "@playwright/test";
 
-/** Creates a guest workspace with fixture keys for this browser context. */
+/** Signs in through the test-only auth route and creates fixture keys. */
+export async function signIn(request: APIRequestContext): Promise<APIResponse> {
+  const response = await request.post("/api/auth/test-login");
+  expect(response.ok()).toBe(true);
+  return response;
+}
+
 export async function connectKeys(request: APIRequestContext): Promise<void> {
+  await signIn(request);
   expect((await request.get("/api/state")).ok()).toBe(true);
   for (const [kind, provider] of [
     ["llm", "openrouter"],
     ["search", "brave"],
   ]) {
-    const response = await request.post("/api/credentials", { data: { kind, provider, key: `test-${provider}-key` } });
+    const response = await request.post("/api/credentials", {
+      data: {
+        kind,
+        provider,
+        key: `test-${provider}-key`,
+        ...(provider === "brave" ? { plan: "free" } : {}),
+      },
+    });
     expect(response.status()).toBe(201);
   }
 }

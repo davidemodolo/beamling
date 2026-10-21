@@ -1,0 +1,19 @@
+issuer: http://auth.localhost:5556
+storage:
+  type: memory
+web:
+  http: 0.0.0.0:5556
+oauth2:
+  skipApprovalScreen: true
+staticClients:
+  - id: beamling
+    name: Beamling Local
+    secret: local-dex-secret
+    redirectURIs:
+      - https://localhost/api/auth/callback/google
+enablePasswordDB: true
+staticPasswords:
+  - email: test@beamling.local
+    hash: "$2b$10$QSmFZGZYqWOXh62r/nTJLOe4z1LmFJUou1.wxlre1hYR7Z4ozTLIi"
+    username: test
+    userID: local-test-user

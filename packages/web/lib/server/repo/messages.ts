@@ -1,10 +1,12 @@
+import { randomUUID } from "node:crypto";
 import { and, count, desc, eq, gt, inArray, lt, lte, sql } from "drizzle-orm";
 import { DEFAULT_CONVERSATION_TITLE, titleFromQuestion } from "../../data";
-import type { Message, Mode, Source, Usage } from "../../types";
+import type { Message, Mode, SearchTrace, Source, Usage } from "../../types";
 import { db } from "../db";
 import { maxConcurrentChats } from "../env";
 import { ApiError, pgErrorCode, storableText } from "../http";
 import { conversations, messages, sources } from "../schema";
+import { decryptText, encryptText } from "../workspace-key";
 import { interruptedFields, mapMessage, staleBefore, type MessageRow } from "./shared";
 
 const UNIQUE_VIOLATION = "23505";
@@ -27,7 +29,7 @@ export async function getHistory(userId: string, conversationId: string, before:
     )
     .orderBy(desc(messages.createdAt), desc(messages.id))
     .limit(HISTORY_MESSAGES);
-  return rows.reverse().map((row) => mapMessage(row, []));
+  return Promise.all(rows.reverse().map((row) => mapMessage(userId, row, [])));
 }
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -47,8 +49,9 @@ async function retryTarget(tx: Tx, input: { userId: string; conversationId: stri
     )
     .limit(1);
   if (!target) throw new ApiError("MESSAGE_NOT_FOUND", "That answer no longer exists.", 404);
+  const stale = target.status === "streaming" && target.createdAt.getTime() <= staleBefore().getTime();
   // A stale streaming row reads as interrupted, so it can be retried too.
-  if (mapMessage(target, []).status !== "error" && target.status !== "stopped") {
+  if (target.status !== "error" && target.status !== "stopped" && !stale) {
     throw new ApiError("RETRY_NOT_ALLOWED", "Only a failed or stopped answer can be retried.", 409);
   }
   const [newer] = await tx
@@ -71,7 +74,7 @@ async function retryTarget(tx: Tx, input: { userId: string; conversationId: stri
     .orderBy(desc(messages.createdAt), desc(messages.id))
     .limit(1);
   if (!question) throw new ApiError("MESSAGE_NOT_FOUND", "The question for that answer no longer exists.", 404);
-  return { target, question };
+  return { target, question, questionText: await decryptText(input.userId, "messages", question.id, "content", question.content) };
 }
 
 /**
@@ -86,7 +89,7 @@ export async function createExchange(input: {
   llmModel: string;
   question?: string;
   retryOf?: string;
-}): Promise<{ userMessage: MessageRow; assistantMessage: MessageRow }> {
+}): Promise<{ userMessage: MessageRow; assistantMessage: MessageRow; questionText: string }> {
   try {
     return await db.transaction(async (tx) => {
       // Taken first so every exchange acquires its locks in the same order.
@@ -123,23 +126,27 @@ export async function createExchange(input: {
 
       const now = new Date();
       let userMessage: MessageRow;
+      let questionText: string;
       if (input.retryOf) {
-        const { target, question } = await retryTarget(tx, {
+        const { target, question, questionText: storedQuestion } = await retryTarget(tx, {
           userId: input.userId,
           conversationId: conversation.id,
           messageId: input.retryOf,
         });
         await tx.delete(messages).where(eq(messages.id, target.id));
         userMessage = question;
+        questionText = storedQuestion;
       } else {
-        const question = storableText(input.question ?? "");
+        questionText = storableText(input.question ?? "");
+        const id = randomUUID();
         [userMessage] = await tx
           .insert(messages)
           .values({
+            id,
             conversationId: conversation.id,
             userId: input.userId,
             role: "user",
-            content: question,
+            content: await encryptText(input.userId, "messages", id, "content", questionText),
             status: "complete",
             mode: input.mode,
             createdAt: now,
@@ -147,13 +154,15 @@ export async function createExchange(input: {
           .returning();
       }
 
+      const assistantId = randomUUID();
       const [assistantMessage] = await tx
         .insert(messages)
         .values({
+          id: assistantId,
           conversationId: conversation.id,
           userId: input.userId,
           role: "assistant",
-          content: "",
+          content: await encryptText(input.userId, "messages", assistantId, "content", ""),
           status: "streaming",
           mode: input.mode,
           llmModel: input.llmModel,
@@ -162,15 +171,21 @@ export async function createExchange(input: {
         })
         .returning();
 
-      const title =
-        conversation.title === DEFAULT_CONVERSATION_TITLE ? titleFromQuestion(userMessage.content) : conversation.title;
-
+      const currentTitle = await decryptText(input.userId, "conversations", conversation.id, "title", conversation.title);
+      const nextTitle =
+        currentTitle === DEFAULT_CONVERSATION_TITLE ? titleFromQuestion(questionText) : currentTitle;
       await tx
         .update(conversations)
-        .set({ title, mode: input.mode, updatedAt: now })
+        .set({
+          title: nextTitle === currentTitle
+            ? conversation.title
+            : await encryptText(input.userId, "conversations", conversation.id, "title", nextTitle),
+          mode: input.mode,
+          updatedAt: now,
+        })
         .where(eq(conversations.id, conversation.id));
 
-      return { userMessage, assistantMessage };
+      return { userMessage, assistantMessage, questionText };
     });
   } catch (error) {
     // Waiting too long for the concurrency lock means a burst of answers is starting.
@@ -200,6 +215,8 @@ export interface AssistantOutcome {
   truncated?: boolean;
   degraded?: boolean;
   searchFailures?: number;
+  searches?: SearchTrace[];
+  reasoning?: string;
   errorCode?: string;
   errorMessage?: string;
 }
@@ -209,11 +226,42 @@ export interface AssistantOutcome {
  * conversation was deleted while the answer was being written.
  */
 export async function completeAssistant(input: AssistantOutcome): Promise<boolean> {
+  const content = await encryptText(
+    input.userId,
+    "messages",
+    input.messageId,
+    "content",
+    storableText(input.content),
+  );
+  const errorMessage = input.errorMessage
+    ? await encryptText(input.userId, "messages", input.messageId, "error_message", storableText(input.errorMessage))
+    : null;
+  const searches = input.searches?.length
+    ? await encryptText(input.userId, "messages", input.messageId, "searches", JSON.stringify(input.searches))
+    : null;
+  const reasoning = input.reasoning
+    ? await encryptText(input.userId, "messages", input.messageId, "reasoning", storableText(input.reasoning))
+    : null;
+  const encryptedSources = await Promise.all(
+    (input.sources ?? []).map(async (source) => {
+      const id = randomUUID();
+      return {
+        id,
+        messageId: input.messageId,
+        position: source.position,
+        url: await encryptText(input.userId, "sources", id, "url", storableText(source.url)),
+        title: source.title ? await encryptText(input.userId, "sources", id, "title", storableText(source.title)) : null,
+        domain: source.domain ? await encryptText(input.userId, "sources", id, "domain", storableText(source.domain)) : null,
+        snippet: source.snippet ? await encryptText(input.userId, "sources", id, "snippet", storableText(source.snippet)) : null,
+        publishedAt: parseDate(source.publishedAt),
+      };
+    }),
+  );
   return db.transaction(async (tx) => {
     const updated = await tx
       .update(messages)
       .set({
-        content: storableText(input.content),
+        content,
         status: input.status,
         noSources: input.noSources ?? false,
         uncited: input.uncited ?? false,
@@ -229,26 +277,18 @@ export async function completeAssistant(input: AssistantOutcome): Promise<boolea
         upstreamProvider: input.usage?.upstreamProvider ?? null,
         latencyMs: input.usage?.latencyMs ?? null,
         errorCode: input.errorCode ?? null,
-        errorMessage: input.errorMessage ?? null,
+        errorMessage,
+        searches,
+        reasoning,
       })
       .where(and(eq(messages.id, input.messageId), eq(messages.userId, input.userId)))
       .returning({ id: messages.id });
     // The update holds the row lock, so a concurrent delete cannot remove it before the sources land.
     if (!updated.length) return false;
 
-    if (input.sources?.length) {
+    if (encryptedSources.length) {
       await tx.delete(sources).where(eq(sources.messageId, input.messageId));
-      await tx.insert(sources).values(
-        input.sources.map((source) => ({
-          messageId: input.messageId,
-          position: source.position,
-          url: storableText(source.url),
-          title: storableText(source.title),
-          domain: storableText(source.domain),
-          snippet: storableText(source.snippet),
-          publishedAt: parseDate(source.publishedAt),
-        })),
-      );
+      await tx.insert(sources).values(encryptedSources);
     }
     return true;
   });

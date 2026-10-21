@@ -1,9 +1,11 @@
 import { DEFAULT_SETTINGS } from "../../data";
+import { decryptText } from "../workspace-key";
 import type {
   ConversationSummary,
   Credential,
   CredentialStatus,
   Message,
+  SearchTrace,
   Settings,
   Source,
   Usage,
@@ -16,8 +18,12 @@ export type SourceRow = typeof sources.$inferSelect;
 export type CredentialRow = typeof credentials.$inferSelect;
 type SettingsRow = typeof settings.$inferSelect;
 
-/** A streaming answer older than this outlived the route's maxDuration and was interrupted. */
-const STALE_STREAMING_MS = 3 * 60_000;
+/**
+ * A streaming answer older than this outlived the longest route (Deeper, 6 minutes) plus a grace
+ * period, so it belongs to a crashed or restarted instance. The old 3-minute value matched Quick/Deep
+ * but cut off a healthy Deeper run.
+ */
+const STALE_STREAMING_MS = 8 * 60_000;
 const CREDENTIAL_STATUSES: CredentialStatus[] = ["active", "invalid", "rate_limited", "unverified"];
 
 export function iso(value: Date | string): string {
@@ -50,18 +56,22 @@ export function mapSettings(row: SettingsRow | undefined): Settings {
   if (!row) return { ...DEFAULT_SETTINGS };
   return {
     llmModel: row.llmModel,
-    defaultMode: row.defaultMode === "deep" ? "deep" : "quick",
+    defaultMode: row.defaultMode === "deeper" ? "deeper" : row.defaultMode === "deep" ? "deep" : "quick",
   };
 }
 
-function mapSource(row: SourceRow): Source {
+async function mapSource(userId: string, row: SourceRow): Promise<Source> {
+  const url = await decryptText(userId, "sources", row.id, "url", row.url);
+  const title = row.title ? await decryptText(userId, "sources", row.id, "title", row.title) : null;
+  const domain = row.domain ? await decryptText(userId, "sources", row.id, "domain", row.domain) : null;
+  const snippet = row.snippet ? await decryptText(userId, "sources", row.id, "snippet", row.snippet) : null;
   return {
     id: row.id,
     position: row.position,
-    title: row.title ?? row.domain ?? "Untitled source",
-    url: row.url,
-    domain: row.domain ?? "",
-    snippet: row.snippet ?? "",
+    title: title ?? domain ?? "Untitled source",
+    url,
+    domain: domain ?? "",
+    snippet: snippet ?? "",
     publishedAt: row.publishedAt ? iso(row.publishedAt) : undefined,
   };
 }
@@ -70,7 +80,7 @@ function money(value: string | null): number | undefined {
   return value == null ? undefined : Number(value);
 }
 
-export function mapMessage(row: MessageRow, sourceRows: SourceRow[]): Message {
+export async function mapMessage(userId: string, row: MessageRow, sourceRows: SourceRow[]): Promise<Message> {
   const hasUsage = row.tokensIn != null || row.tokensOut != null || row.costUsd != null || row.searchCostUsd != null;
   const usage: Usage | undefined = hasUsage
     ? {
@@ -94,37 +104,79 @@ export function mapMessage(row: MessageRow, sourceRows: SourceRow[]): Message {
   return {
     id: row.id,
     role: row.role === "assistant" ? "assistant" : "user",
-    content: row.content,
+    content: await decryptText(userId, "messages", row.id, "content", row.content),
     status:
       status === "pending" || status === "streaming" || status === "stopped" || status === "error"
         ? status
         : "complete",
     createdAt: iso(row.createdAt),
-    mode: row.mode === "deep" ? "deep" : row.mode === "quick" ? "quick" : undefined,
-    sources: sourceRows.map(mapSource),
+    mode: row.mode === "deeper" ? "deeper" : row.mode === "deep" ? "deep" : row.mode === "quick" ? "quick" : undefined,
+    sources: await Promise.all(sourceRows.map((source) => mapSource(userId, source))),
     llmModel: row.llmModel ?? undefined,
     usage,
     errorCode: interrupted?.errorCode ?? row.errorCode ?? undefined,
-    errorMessage: interrupted?.errorMessage ?? row.errorMessage ?? undefined,
+    errorMessage: interrupted?.errorMessage ?? (row.errorMessage ? await decryptText(userId, "messages", row.id, "error_message", row.errorMessage) : undefined),
     noSources: row.noSources,
     uncited: row.uncited,
     truncated: row.truncated,
     degraded: row.degraded,
     searchFailures: row.searchFailures,
+    searches: await readSearches(userId, row),
+    reasoning: row.reasoning
+      ? await decryptText(userId, "messages", row.id, "reasoning", row.reasoning)
+      : undefined,
   };
 }
 
-export function mapSummary(row: ConversationRow): ConversationSummary {
+async function readSearches(userId: string, row: MessageRow): Promise<SearchTrace[] | undefined> {
+  if (!row.searches) return undefined;
+  try {
+    const value = JSON.parse(await decryptText(userId, "messages", row.id, "searches", row.searches)) as unknown;
+    if (!Array.isArray(value)) return undefined;
+    return value.filter(
+      (item): item is SearchTrace =>
+        !!item &&
+        typeof item === "object" &&
+        typeof (item as SearchTrace).query === "string" &&
+        ["searching", "done", "failed"].includes(String((item as SearchTrace).status)),
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+export async function mapSummary(userId: string, row: ConversationRow): Promise<ConversationSummary> {
   return {
     id: row.id,
-    title: row.title,
-    mode: row.mode === "deep" ? "deep" : "quick",
+    title: await decryptText(userId, "conversations", row.id, "title", row.title),
+    mode: row.mode === "deeper" ? "deeper" : row.mode === "deep" ? "deep" : "quick",
+    pinned: row.pinned,
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),
   };
 }
 
-export function mapCredential(row: CredentialRow): Credential {
+export interface CredentialUsageSummary {
+  requests: number;
+  spentUsd: number;
+}
+
+function warningFor(row: CredentialRow, usage: CredentialUsageSummary | undefined): Credential["warning"] {
+  const now = Date.now();
+  const expiryDays = row.expiresOn ? Math.ceil((new Date(`${row.expiresOn}T23:59:59Z`).getTime() - now) / 86_400_000) : null;
+  const budget = row.budgetUsd == null ? null : Number(row.budgetUsd);
+  const spent = usage?.spentUsd ?? 0;
+  const ratio = budget && budget > 0 ? spent / budget : null;
+
+  if (ratio != null && ratio >= 1) return "budget_100";
+  if (expiryDays != null && expiryDays <= 1) return "expiry_1";
+  if (ratio != null && ratio >= 0.8) return "budget_80";
+  if (expiryDays != null && expiryDays <= 7) return "expiry_7";
+  if (expiryDays != null && expiryDays <= 14) return "expiry_14";
+  return undefined;
+}
+
+export function mapCredential(row: CredentialRow, usage?: CredentialUsageSummary): Credential {
   return {
     id: row.id,
     kind: row.kind === "search" ? "search" : "llm",
@@ -133,6 +185,14 @@ export function mapCredential(row: CredentialRow): Credential {
     status: CREDENTIAL_STATUSES.includes(row.status as CredentialStatus)
       ? (row.status as CredentialStatus)
       : "unverified",
+    plan: row.provider === "brave" ? (row.plan === "paid" ? "paid" : "free") : undefined,
+    expiresOn: row.expiresOn ?? undefined,
+    budgetUsd: row.budgetUsd == null ? undefined : Number(row.budgetUsd),
+    budgetPeriod: row.budgetPeriod === "total" ? "total" : row.budgetPeriod === "month" ? "month" : undefined,
+    budgetStartedAt: row.budgetStartedAt ? iso(row.budgetStartedAt) : undefined,
+    spentUsd: usage?.spentUsd,
+    requests: usage?.requests,
+    warning: warningFor(row, usage),
     lastValidatedAt: row.lastValidatedAt ? iso(row.lastValidatedAt) : iso(row.createdAt),
   };
 }
