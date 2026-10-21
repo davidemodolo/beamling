@@ -1,8 +1,8 @@
-import { and, asc, eq, gte, inArray, sql } from "drizzle-orm";
-import type { Credential, CredentialStatus } from "../../types";
-import type { EncryptedSecret } from "../crypto";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import type { Credential, CredentialKind, CredentialProvider, CredentialStatus } from "../../types";
+import { decryptCredential, providerSlotKey, type EncryptedSecret } from "../crypto";
 import { db } from "../db";
-import { credentialUsage, credentials } from "../schema";
+import { credentialUsage, credentials, providerSlots } from "../schema";
 import { mapCredential, type CredentialUsageSummary } from "./shared";
 
 async function usageFor(rows: { id: string; budgetPeriod: string | null; budgetStartedAt: Date | null; createdAt: Date }[]) {
@@ -10,17 +10,26 @@ async function usageFor(rows: { id: string; budgetPeriod: string | null; budgetS
   const monthStart = new Date();
   monthStart.setUTCDate(1);
   monthStart.setUTCHours(0, 0, 0, 0);
+  // One aggregate query for every credential; no per-credential N+1.
   const usageRows = await db
     .select({
       credentialId: credentialUsage.credentialId,
-      requests: sql<number>`sum(${credentialUsage.requests})::int`,
-      spentUsd: sql<number>`sum(${credentialUsage.estimatedCostUsd})::float8`,
-      day: sql<string>`min(${credentialUsage.day})`,
+      day: credentialUsage.day,
+      requests: credentialUsage.requests,
+      estimatedCostUsd: credentialUsage.estimatedCostUsd,
     })
     .from(credentialUsage)
-    .where(inArray(credentialUsage.credentialId, rows.map((row) => row.id)))
-    .groupBy(credentialUsage.credentialId);
-  const byId = new Map(usageRows.map((row) => [row.credentialId, row]));
+    .where(inArray(credentialUsage.credentialId, rows.map((row) => row.id)));
+  const byId = new Map<string, { requests: number; spentUsd: number; monthlyRequests: number; monthlySpentUsd: number }>();
+  for (const usage of usageRows) {
+    let total = byId.get(usage.credentialId);
+    if (!total) {
+      total = { requests: 0, spentUsd: 0, monthlyRequests: 0, monthlySpentUsd: 0 };
+      byId.set(usage.credentialId, total);
+    }
+    total.requests += usage.requests;
+    total.spentUsd += Number(usage.estimatedCostUsd);
+  }
   const out = new Map<string, CredentialUsageSummary>();
   for (const row of rows) {
     const usage = byId.get(row.id);
@@ -30,19 +39,13 @@ async function usageFor(rows: { id: string; budgetPeriod: string | null; budgetS
     }
     if (row.budgetPeriod === "month" || !row.budgetPeriod) {
       const start = row.budgetStartedAt && row.budgetStartedAt > monthStart ? row.budgetStartedAt : monthStart;
-      const [monthly] = await db
-        .select({
-          requests: sql<number>`coalesce(sum(${credentialUsage.requests}), 0)::int`,
-          spentUsd: sql<number>`coalesce(sum(${credentialUsage.estimatedCostUsd}), 0)::float8`,
-        })
-        .from(credentialUsage)
-        .where(
-          and(
-            eq(credentialUsage.credentialId, row.id),
-            gte(credentialUsage.day, start.toISOString().slice(0, 10)),
-          ),
-        );
-      out.set(row.id, { requests: monthly.requests, spentUsd: monthly.spentUsd });
+      const startDay = start.toISOString().slice(0, 10);
+      for (const entry of usageRows) {
+        if (entry.credentialId !== row.id || entry.day < startDay) continue;
+        usage.monthlyRequests += entry.requests;
+        usage.monthlySpentUsd += Number(entry.estimatedCostUsd);
+      }
+      out.set(row.id, { requests: usage.monthlyRequests, spentUsd: usage.monthlySpentUsd });
     } else {
       out.set(row.id, { requests: usage.requests, spentUsd: usage.spentUsd });
     }
@@ -60,7 +63,7 @@ export async function listCredentials(userId: string): Promise<Credential[]> {
   return rows.map((row) => mapCredential(row, usage.get(row.id)));
 }
 
-export async function getCredentialRow(userId: string, kind: string, provider: string) {
+export async function getCredentialRow(userId: string, kind: CredentialKind, provider: CredentialProvider) {
   const [row] = await db
     .select()
     .from(credentials)
@@ -78,12 +81,10 @@ export async function getCredentialById(userId: string, id: string) {
   return row ?? null;
 }
 
-type CredentialKindValue = "llm" | "search";
-
 export async function saveCredential(input: {
   userId: string;
-  kind: CredentialKindValue;
-  provider: string;
+  kind: CredentialKind;
+  provider: CredentialProvider;
   encrypted: EncryptedSecret;
   status: CredentialStatus;
   plan?: "free" | "paid" | null;
@@ -94,9 +95,9 @@ export async function saveCredential(input: {
 }): Promise<Credential> {
   const now = new Date();
   const existing = await getCredentialRow(input.userId, input.kind, input.provider);
-  const values = {
-    ...input.encrypted,
-    id: input.encrypted.id,
+  const { id, ...mutable } = input.encrypted;
+  const updateValues = {
+    ...mutable,
     status: input.status,
     plan: input.plan ?? null,
     expiresOn: input.expiresOn ?? null,
@@ -106,14 +107,38 @@ export async function saveCredential(input: {
     lastValidatedAt: input.status === "unverified" ? null : now,
     updatedAt: now,
   };
-  const [row] = await db
+  let [row] = await db
     .insert(credentials)
-    .values({ ...values, userId: input.userId, kind: input.kind, provider: input.provider })
+    .values({
+      ...updateValues,
+      id,
+      userId: input.userId,
+      kind: input.kind,
+      provider: input.provider,
+      createdAt: input.preserveUsage && existing ? existing.createdAt : now,
+    })
     .onConflictDoUpdate({
       target: [credentials.userId, credentials.kind, credentials.provider],
-      set: { ...values, createdAt: input.preserveUsage && existing ? existing.createdAt : now },
+      // Only the row whose id matches the encrypted envelope may be overwritten. A racing
+      // different-key insert owns a different id, so its ciphertext must not land on this row.
+      setWhere: eq(credentials.id, id),
+      set: { ...updateValues, ...(input.preserveUsage && existing ? { createdAt: existing.createdAt } : {}) },
     })
     .returning();
+  if (!row) {
+    [row] = await db
+      .select()
+      .from(credentials)
+      .where(
+        and(
+          eq(credentials.userId, input.userId),
+          eq(credentials.kind, input.kind),
+          eq(credentials.provider, input.provider),
+        ),
+      )
+      .limit(1);
+  }
+  if (!row) throw new Error("Credential could not be saved.");
   const usage = await usageFor([row]);
   return mapCredential(row, usage.get(row.id));
 }
@@ -180,6 +205,21 @@ export async function recordCredentialUsage(credentialId: string, costUsd: numbe
 }
 
 export async function deleteCredential(userId: string, id: string): Promise<boolean> {
+  const [row] = await db
+    .select()
+    .from(credentials)
+    .where(and(eq(credentials.id, id), eq(credentials.userId, userId)))
+    .limit(1);
+  if (!row) return false;
+  // The Brave slot key is derived from the plaintext key, so release it before the ciphertext goes.
+  if (row.kind === "search" && row.provider === "brave") {
+    try {
+      const plaintext = await decryptCredential(userId, row);
+      await db.delete(providerSlots).where(eq(providerSlots.key, providerSlotKey("brave", plaintext)));
+    } catch {
+      // The age-based cleanup remains the fallback; credential removal must still succeed.
+    }
+  }
   const rows = await db
     .delete(credentials)
     .where(and(eq(credentials.id, id), eq(credentials.userId, userId)))

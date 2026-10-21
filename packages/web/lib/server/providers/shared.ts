@@ -1,3 +1,5 @@
+import { isSafeHttpUrl } from "../../url";
+
 export interface RetrievedSource {
   position: number;
   title: string;
@@ -5,6 +7,13 @@ export interface RetrievedSource {
   domain: string;
   snippet: string;
   publishedAt?: string;
+}
+
+export interface SearchResultFields {
+  url?: unknown;
+  title?: unknown;
+  snippet?: unknown;
+  publishedAt?: unknown;
 }
 
 export interface SearchOptions {
@@ -77,4 +86,37 @@ export function retryWaitMs(headers: Headers, now = Date.now()): number {
     if (!Number.isNaN(date)) return Math.max(0, date - now);
   }
   return DEFAULT_RETRY_WAIT_MS;
+}
+
+
+/** One shared 429 policy: read the body, wait, then retry once. */
+export async function retryOnceOn429(
+  response: Response,
+  send: () => Promise<Response>,
+  signal: AbortSignal | undefined,
+  waitMs = retryWaitMs(response.headers),
+): Promise<Response> {
+  if (response.status !== 429) return response;
+  if (waitMs > MAX_RETRY_WAIT_MS) return response;
+  await response.arrayBuffer().catch(() => {});
+  await sleep(waitMs, signal);
+  return send();
+}
+
+/** Shared URL safety, title/snippet limits and domain normalization. */
+export function normalizedSource(fields: SearchResultFields, position: number): RetrievedSource | null {
+  const url = typeof fields.url === "string" ? fields.url : "";
+  if (!url || !isSafeHttpUrl(url) || url.length > 2048) return null;
+  const snippet = plainText(typeof fields.snippet === "string" ? fields.snippet : "").slice(0, 1800);
+  if (!snippet) return null;
+  const domain = new URL(url).hostname.replace(/^www\./, "").slice(0, 255);
+  return {
+    position,
+    title: (plainText(typeof fields.title === "string" ? fields.title : "") || domain).slice(0, 300),
+    url,
+    domain,
+    snippet,
+    publishedAt:
+      typeof fields.publishedAt === "string" ? normalizedDate(fields.publishedAt)?.slice(0, 40) : undefined,
+  };
 }

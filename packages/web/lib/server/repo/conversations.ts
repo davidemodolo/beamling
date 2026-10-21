@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, count, desc, eq, inArray, lt, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
 import { CONVERSATION_PAGE_SIZE, DEFAULT_CONVERSATION_TITLE, MESSAGE_PAGE_SIZE } from "../../data";
 import type { Conversation, ConversationPage, ConversationSummary, Message, Mode } from "../../types";
 import { db } from "../db";
-import { ApiError } from "../http";
+import { ApiError, isUuid } from "../http";
 import { conversations, messages, sources } from "../schema";
-import { decryptText, encryptText } from "../workspace-key";
+import { encryptText } from "../workspace-key";
 import { groupBy, mapMessage, mapSummary, type ConversationRow, type MessageRow } from "./shared";
 
 /** Opaque keyset cursor over (pinned, updated_at, id). */
@@ -24,7 +24,7 @@ function decodeCursor(cursor: string): { pinned: boolean; updatedAt: Date; id: s
     if (
       typeof pinned !== "boolean" ||
       typeof id !== "string" ||
-      !/^[0-9a-f-]{36}$/i.test(id) ||
+      !isUuid(id) ||
       Number.isNaN(date.getTime())
     ) {
       throw new Error();
@@ -82,10 +82,6 @@ async function getConversationRow(userId: string, id: string): Promise<Conversat
 
 export async function conversationExists(userId: string, id: string): Promise<boolean> {
   return (await getConversationRow(userId, id)) !== null;
-}
-
-export async function conversationTitle(userId: string, row: ConversationRow): Promise<string> {
-  return decryptText(userId, "conversations", row.id, "title", row.title);
 }
 
 /** Attaches sources to a bounded page of messages (at most MESSAGE_PAGE_SIZE ids per query). */
@@ -186,6 +182,25 @@ export async function updateConversation(
     .where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
     .returning();
   return row ? mapSummary(userId, row) : null;
+}
+
+/** Reclaims an empty conversation left behind by a failed first question. */
+export async function deleteConversationIfEmpty(userId: string, id: string): Promise<boolean> {
+  const [row] = await db
+    .select({ value: count() })
+    .from(messages)
+    .where(and(eq(messages.conversationId, id), eq(messages.userId, userId)));
+  if (Number(row?.value ?? 0) > 0) return false;
+  return deleteConversation(userId, id);
+}
+
+/** Removes abandoned empty conversations after an hour, without breaking an immediate retry. */
+export async function cleanupEmptyConversations(): Promise<void> {
+  await db.execute(sql`
+    delete from conversations c
+    where c.updated_at < clock_timestamp() - interval '1 hour'
+      and not exists (select 1 from messages m where m.conversation_id = c.id)
+  `);
 }
 
 export async function deleteConversation(userId: string, id: string): Promise<boolean> {

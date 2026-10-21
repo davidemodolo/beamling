@@ -1,8 +1,7 @@
-import { isSafeHttpUrl } from "../../url";
 import { ApiError } from "../http";
 import { log } from "../log";
 import { providerFetch, unavailable } from "./errors";
-import { clampQuery, MAX_RETRY_WAIT_MS, normalizedDate, plainText, requestSignal, retryWaitMs, sleep, type RetrievedSource, type SearchOptions } from "./shared";
+import { clampQuery, normalizedSource, requestSignal, retryOnceOn429, type RetrievedSource, type SearchOptions } from "./shared";
 
 interface TavilyResponse {
   results?: {
@@ -16,16 +15,28 @@ interface TavilyResponse {
 }
 
 interface TavilyErrorBody {
-  detail?: { error?: string } | string;
-  error?: string;
+  detail?: { error?: unknown } | unknown;
+  error?: unknown;
 }
 
-function detailOf(body: TavilyErrorBody | undefined): string {
-  if (typeof body?.detail === "string") return body.detail.slice(0, 500);
-  return (body?.detail?.error ?? body?.error ?? "").slice(0, 500);
+function text(value: unknown): string {
+  return typeof value === "string" ? value.slice(0, 500) : "";
 }
 
-export function tavilyError(status: number, body: TavilyErrorBody = {}): ApiError {
+function errorBody(value: unknown): TavilyErrorBody {
+  return value !== null && typeof value === "object" ? (value as TavilyErrorBody) : {};
+}
+
+function detailOf(body: TavilyErrorBody): string {
+  if (typeof body.detail === "string") return body.detail.slice(0, 500);
+  if (body.detail !== null && typeof body.detail === "object") {
+    return text((body.detail as { error?: unknown }).error);
+  }
+  return text(body.error);
+}
+
+export function tavilyError(status: number, value: unknown = {}): ApiError {
+  const body = errorBody(value);
   const detail = detailOf(body);
   const error = (code: string, message: string, httpStatus: number) => new ApiError(code, message, httpStatus, "tavily");
   if (status === 401) return error("CREDENTIAL_INVALID", "Tavily rejected this key.", 400);
@@ -43,8 +54,8 @@ async function readError(response: Response): Promise<ApiError> {
   try {
     body = (await response.json()) as TavilyErrorBody;
   } catch {}
-  const detail = detailOf(body);
-  if (detail) log.warn("Tavily request failed", { status: response.status, detail: detail.slice(0, 300) });
+  // Provider text can contain the query or a credential; keep only the stable status in logs.
+  log.warn("Tavily request failed", { status: response.status });
   return tavilyError(response.status, body);
 }
 
@@ -87,12 +98,7 @@ async function requestSearch(key: string, query: string, options: SearchOptions)
     );
 
   const response = await send();
-  if (response.status !== 429) return response;
-  const wait = retryWaitMs(response.headers);
-  if (wait > MAX_RETRY_WAIT_MS) return response;
-  await response.arrayBuffer().catch(() => {});
-  await sleep(wait, options.signal);
-  return send();
+  return retryOnceOn429(response, send, options.signal);
 }
 
 interface TavilyUsageResponse {
@@ -119,27 +125,26 @@ export async function searchTavily(key: string, query: string, options: SearchOp
   if (!response.ok) throw await readError(response);
   let body: TavilyResponse;
   try {
-    body = (await response.json()) as TavilyResponse;
+    const parsed = (await response.json()) as unknown;
+    if (parsed === null || typeof parsed !== "object") {
+      throw new Error("Tavily returned a non-object body.");
+    }
+    body = parsed as TavilyResponse;
   } catch (error) {
     if (options.signal?.aborted) throw error;
     throw unavailable("tavily", "Tavily returned an unreadable response.");
   }
   const seen = new Set<string>();
   const out: RetrievedSource[] = [];
-  for (const item of body.results ?? []) {
-    if (!item.url || seen.has(item.url) || !isSafeHttpUrl(item.url) || item.url.length > 2048) continue;
-    const snippet = plainText(item.content).slice(0, 1800);
-    if (!snippet) continue;
+  for (const item of Array.isArray(body.results) ? body.results : []) {
+    if (!item.url || seen.has(item.url)) continue;
+    const source = normalizedSource(
+      { url: item.url, title: item.title, snippet: item.content, publishedAt: item.published_date },
+      out.length + 1,
+    );
+    if (!source) continue;
     seen.add(item.url);
-    const domain = new URL(item.url).hostname.replace(/^www\./, "").slice(0, 255);
-    out.push({
-      position: out.length + 1,
-      title: (plainText(item.title) || domain).slice(0, 300),
-      url: item.url,
-      domain,
-      snippet,
-      publishedAt: normalizedDate(item.published_date)?.slice(0, 40),
-    });
+    out.push(source);
   }
   return out;
 }

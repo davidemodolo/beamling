@@ -13,7 +13,7 @@ export function proxy(request: NextRequest) {
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}`,
     // Inline style attributes are used throughout; a style nonce would disable 'unsafe-inline'.
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob:",
+    "img-src 'self' data: blob: https://*.googleusercontent.com",
     "font-src 'self'",
     `connect-src 'self'${isDev ? " ws: wss:" : ""}`,
     "object-src 'none'",

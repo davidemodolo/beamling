@@ -19,6 +19,24 @@ export interface EncryptedSecret {
 
 export type StoredSecret = Omit<EncryptedSecret, "fingerprint" | "last4">;
 
+/** Keyed fingerprint: a database reader cannot test candidate provider keys offline. */
+export function credentialFingerprint(plaintext: string): string {
+  return createHmac("sha256", authSubkey("credential-fingerprint")).update(plaintext).digest("hex").slice(0, 16);
+}
+
+/** Accepts legacy unkeyed fingerprints so replacing the same key still preserves its usage row. */
+export function sameCredentialFingerprint(stored: string, plaintext: string): boolean {
+  return (
+    stored === credentialFingerprint(plaintext) ||
+    stored === createHash("sha256").update(plaintext).digest("hex").slice(0, 16)
+  );
+}
+
+/** Shared slot key; only the provider prefix and a keyed digest are persisted. */
+export function providerSlotKey(provider: "brave", key: string): string {
+  return `${provider}:${createHmac("sha256", authSubkey("provider-slot")).update(key).digest("hex").slice(0, 32)}`;
+}
+
 function seal(key: Buffer, plaintext: Buffer, aad: Buffer): { nonce: string; ciphertext: string; tag: string } {
   const nonce = randomBytes(12);
   const cipher = createCipheriv(ALGORITHM, key, nonce);
@@ -70,7 +88,7 @@ export async function encryptCredential(
     nonce: secret.nonce,
     ciphertext: secret.ciphertext,
     tag: secret.tag,
-    fingerprint: createHash("sha256").update(plaintext).digest("hex").slice(0, 16),
+    fingerprint: credentialFingerprint(plaintext),
     last4: plaintext.slice(-4) || "0000",
   };
 }

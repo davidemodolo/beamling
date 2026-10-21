@@ -1,8 +1,7 @@
-import { isSafeHttpUrl } from "../../url";
 import { ApiError } from "../http";
 import { log } from "../log";
 import { providerFetch, unavailable } from "./errors";
-import { clampQuery, MAX_RETRY_WAIT_MS, normalizedDate, plainText, requestSignal, retryWaitMs, sleep, type RetrievedSource, type SearchOptions } from "./shared";
+import { clampQuery, normalizedSource, requestSignal, retryOnceOn429, type RetrievedSource, type SearchOptions } from "./shared";
 
 interface ExaResponse {
   results?: {
@@ -15,12 +14,21 @@ interface ExaResponse {
 }
 
 interface ExaErrorBody {
-  error?: string;
-  tag?: string;
+  error?: unknown;
+  tag?: unknown;
 }
 
-export function exaError(status: number, body: ExaErrorBody = {}): ApiError {
-  const detail = (body.error ?? "").slice(0, 500);
+function text(value: unknown): string {
+  return typeof value === "string" ? value.slice(0, 500) : "";
+}
+
+function errorBody(value: unknown): ExaErrorBody {
+  return value !== null && typeof value === "object" ? (value as ExaErrorBody) : {};
+}
+
+export function exaError(status: number, value: unknown = {}): ApiError {
+  const body = errorBody(value);
+  const detail = text(body.error);
   const error = (code: string, message: string, httpStatus: number) => new ApiError(code, message, httpStatus, "exa");
   if (status === 401 || status === 403) return error("CREDENTIAL_INVALID", "Exa rejected this key.", 400);
   if (status === 402) return error("INSUFFICIENT_CREDITS", "Exa has no remaining credits for this key.", 402);
@@ -34,7 +42,8 @@ async function readError(response: Response): Promise<ApiError> {
   try {
     body = (await response.json()) as ExaErrorBody;
   } catch {}
-  if (body?.error) log.warn("Exa request failed", { status: response.status, detail: body.error.slice(0, 300) });
+  // Provider text can contain the query or a credential; keep only the stable status in logs.
+  log.warn("Exa request failed", { status: response.status });
   return exaError(response.status, body);
 }
 
@@ -69,12 +78,7 @@ async function requestSearch(key: string, query: string, options: SearchOptions)
     );
 
   const response = await send();
-  if (response.status !== 429) return response;
-  const wait = retryWaitMs(response.headers);
-  if (wait > MAX_RETRY_WAIT_MS) return response;
-  await response.arrayBuffer().catch(() => {});
-  await sleep(wait, options.signal);
-  return send();
+  return retryOnceOn429(response, send, options.signal);
 }
 
 export async function validateExaKey(key: string): Promise<void> {
@@ -88,27 +92,31 @@ export async function searchExa(key: string, query: string, options: SearchOptio
   if (!response.ok) throw await readError(response);
   let body: ExaResponse;
   try {
-    body = (await response.json()) as ExaResponse;
+    const parsed = (await response.json()) as unknown;
+    if (parsed === null || typeof parsed !== "object") {
+      throw new Error("Exa returned a non-object body.");
+    }
+    body = parsed as ExaResponse;
   } catch (error) {
     if (options.signal?.aborted) throw error;
     throw unavailable("exa", "Exa returned an unreadable response.");
   }
   const seen = new Set<string>();
   const out: RetrievedSource[] = [];
-  for (const item of body.results ?? []) {
-    if (!item.url || seen.has(item.url) || !isSafeHttpUrl(item.url) || item.url.length > 2048) continue;
-    const snippet = plainText((item.highlights ?? []).join(" ")).slice(0, 1800);
-    if (!snippet) continue;
+  for (const item of Array.isArray(body.results) ? body.results : []) {
+    if (!item.url || seen.has(item.url)) continue;
+    const source = normalizedSource(
+      {
+        url: item.url,
+        title: item.title,
+        snippet: (item.highlights ?? []).join(" "),
+        publishedAt: item.publishedDate,
+      },
+      out.length + 1,
+    );
+    if (!source) continue;
     seen.add(item.url);
-    const domain = new URL(item.url).hostname.replace(/^www\./, "").slice(0, 255);
-    out.push({
-      position: out.length + 1,
-      title: (plainText(item.title) || domain).slice(0, 300),
-      url: item.url,
-      domain,
-      snippet,
-      publishedAt: normalizedDate(item.publishedDate)?.slice(0, 40),
-    });
+    out.push(source);
   }
   return out;
 }

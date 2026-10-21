@@ -9,18 +9,22 @@ export async function consumeRateLimit(
   limit: number,
   windowSeconds: number,
 ): Promise<void> {
-  const now = new Date();
-  const expiresAt = new Date(now.getTime() + windowSeconds * 1000);
-  const expired = sql`${rateLimits.expiresAt} <= ${now}`;
+  const window = sql`make_interval(secs => ${windowSeconds})`;
+  const expired = sql`${rateLimits.expiresAt} <= clock_timestamp()`;
   const [row] = await db
     .insert(rateLimits)
-    .values({ key, windowStart: now, count: 1, expiresAt })
+    .values({
+      key,
+      windowStart: sql`clock_timestamp()`,
+      count: 1,
+      expiresAt: sql`clock_timestamp() + ${window}`,
+    })
     .onConflictDoUpdate({
       target: rateLimits.key,
       set: {
         count: sql`case when ${expired} then 1 else ${rateLimits.count} + 1 end`,
-        windowStart: sql`case when ${expired} then ${now} else ${rateLimits.windowStart} end`,
-        expiresAt: sql`case when ${expired} then ${expiresAt} else ${rateLimits.expiresAt} end`,
+        windowStart: sql`case when ${expired} then clock_timestamp() else ${rateLimits.windowStart} end`,
+        expiresAt: sql`case when ${expired} then clock_timestamp() + ${window} else ${rateLimits.expiresAt} end`,
       },
     })
     .returning({ count: rateLimits.count });

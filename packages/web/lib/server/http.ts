@@ -35,15 +35,18 @@ export function privateRedirect(url: string, status = 307): NextResponse {
   return response;
 }
 
-export function errorResponse(error: unknown): NextResponse {
+export function errorResponse(error: unknown, requestId?: string): NextResponse {
   if (error instanceof ApiError) {
     return json(
       { ...error.extra, error: { code: error.code, message: error.message, provider: error.provider } },
-      { status: error.status },
+      { status: error.status, headers: requestId ? { "x-request-id": requestId } : undefined },
     );
   }
-  log.error("Unhandled API error", error);
-  return json({ error: { code: "INTERNAL", message: INTERNAL_ERROR_MESSAGE } }, { status: 500 });
+  log.error("Unhandled API error", error, requestId ? { requestId } : undefined);
+  return json(
+    { error: { code: "INTERNAL", message: INTERNAL_ERROR_MESSAGE } },
+    { status: 500, headers: requestId ? { "x-request-id": requestId } : undefined },
+  );
 }
 
 export function notFound(message: string, code = "NOT_FOUND"): ApiError {

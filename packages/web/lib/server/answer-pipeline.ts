@@ -2,9 +2,9 @@ import { randomUUID } from "node:crypto";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { APICallError, ToolLoopAgent, isStepCount, tool } from "ai";
 import { z } from "zod";
-import { DEFAULT_LLM_MODEL, isAllowedModel, isSearchProvider, searchProviderName } from "../providers";
-import type { DoneEvent, Message, Mode, SearchProvider, SearchTrace, Source, Usage } from "../types";
-import { isShutdown } from "./active-chats";
+import { DEFAULT_LLM_MODEL, isAllowedModel, isSearchProvider, searchProviderName } from "../provider-catalog";
+import type { Message, Mode, SearchProvider, SearchTrace, Source, Usage } from "../types";
+import { isClientDisconnect, isShutdown, isUserStop } from "./active-chats";
 import { analytics } from "./analytics";
 import { hasValidCitation, newCitations, sanitizeCitations } from "./citations";
 import { decryptCredential } from "./crypto";
@@ -31,6 +31,7 @@ import {
   conversationExists,
   createConversation,
   createExchange,
+  deleteConversationIfEmpty,
   ensureSettings,
   getCredentialRow,
   getHistory,
@@ -58,19 +59,7 @@ const DEEPER_AGENT_MAX_TOKENS = 4000;
 /** Hard caps from the spec; on timeout the partial answer is kept and stored as stopped. */
 export const TIMEOUT_MS: Record<Mode, number> = { quick: 60_000, deep: 90_000, deeper: 360_000 };
 
-type ChatEvent =
-  | { event: "meta"; data: { conversationId: string; messageId: string; userMessageId: string } }
-  | { event: "stage"; data: { stage: string; detail?: string } }
-  | { event: "plan"; data: { queries: string[] } }
-  | { event: "search"; data: SearchTrace }
-  | { event: "progress"; data: { completed: number; total: number } }
-  | { event: "sources"; data: Source[] }
-  | { event: "delta"; data: { text: string } }
-  | { event: "reasoning"; data: { text: string } }
-  | { event: "citation"; data: { position: number } }
-  | { event: "usage"; data: Usage }
-  | { event: "done"; data: DoneEvent }
-  | { event: "error"; data: { code: string; message: string; provider?: string } };
+type ChatEvent = import("../stream-events").StreamEvent;
 
 export type ChatEmit = <T extends ChatEvent>(event: T["event"], data: T["data"]) => void;
 
@@ -107,6 +96,7 @@ interface RunState {
   searchFailures: number;
   sources: Source[];
   searches: SearchTrace[];
+  searchesReserved: number;
   content: string;
   reasoning: string;
   degraded: boolean;
@@ -247,70 +237,79 @@ export async function prepareChat(input: {
   const searchProvider =
     input.searchProvider && isSearchProvider(input.searchProvider) ? input.searchProvider : settings.defaultSearchProvider;
 
-  const [llmCredential, searchCredential] = await Promise.all([
-    getCredentialRow(input.userId, "llm", "openrouter"),
-    getCredentialRow(input.userId, "search", searchProvider),
-  ]);
-  if (!llmCredential) throw credentialMissing("openrouter");
-  if (!searchCredential) throw credentialMissing(searchProvider);
-  const llmKey = await readKey(input.userId, llmCredential, "openrouter");
-  const searchKey = await readKey(input.userId, searchCredential, searchProvider);
-  for (const [key, provider] of [[llmKey, "openrouter"], [searchKey, searchProvider]] as const) {
-    if (key === null) {
-      throw new ApiError("CREDENTIAL_UNREADABLE", "Your saved key can no longer be read. Replace it in Settings.", 400, provider);
-    }
-  }
-
   let conversationId = input.conversationId;
+  let createdHere = false;
   if (conversationId) {
     if (!(await conversationExists(input.userId, conversationId))) {
       throw new ApiError("CONVERSATION_NOT_FOUND", "Conversation not found.", 404);
     }
   } else {
     conversationId = (await createConversation(input.userId, input.mode)).id;
+    createdHere = true;
   }
 
-  const { userMessage, assistantMessage, questionText } = await createExchange({
-    userId: input.userId,
-    conversationId,
-    mode: input.mode,
-    llmModel: model,
-    searchProvider,
-    question: input.question,
-    retryOf: input.retryOf,
-  });
-  let history: Message[];
   try {
-    history = await getHistory(input.userId, conversationId, userMessage.createdAt);
-  } catch (error) {
-    // The exchange is stored but will never run: close it now, or it blocks the conversation for minutes.
-    await completeAssistant({
+    const [llmCredential, searchCredential] = await Promise.all([
+      getCredentialRow(input.userId, "llm", "openrouter"),
+      getCredentialRow(input.userId, "search", searchProvider),
+    ]);
+    if (!llmCredential) throw credentialMissing("openrouter");
+    if (!searchCredential) throw credentialMissing(searchProvider);
+    const llmKey = await readKey(input.userId, llmCredential, "openrouter");
+    const searchKey = await readKey(input.userId, searchCredential, searchProvider);
+    for (const [key, provider] of [[llmKey, "openrouter"], [searchKey, searchProvider]] as const) {
+      if (key === null) {
+        throw new ApiError("CREDENTIAL_UNREADABLE", "Your saved key can no longer be read. Replace it in Settings.", 400, provider);
+      }
+    }
+
+    const { userMessage, assistantMessage, questionText } = await createExchange({
       userId: input.userId,
+      conversationId,
+      mode: input.mode,
+      llmModel: model,
+      searchProvider,
+      question: input.question,
+      retryOf: input.retryOf,
+    });
+    let history: Message[];
+    try {
+      history = await getHistory(input.userId, conversationId, userMessage.createdAt);
+    } catch (error) {
+      // The exchange is stored but will never run: close it now, or it blocks the conversation for minutes.
+      await completeAssistant({
+        userId: input.userId,
+        messageId: assistantMessage.id,
+        content: "",
+        status: "error",
+        errorCode: "INTERNAL",
+        errorMessage: "The answer could not be started.",
+      }).catch(() => {});
+      throw error;
+    }
+
+    return {
+      userId: input.userId,
+      conversationId,
       messageId: assistantMessage.id,
-      content: "",
-      status: "error",
-      errorCode: "INTERNAL",
-      errorMessage: "The answer could not be started.",
-    }).catch(() => {});
+      userMessageId: userMessage.id,
+      question: questionText,
+      mode: input.mode,
+      model,
+      llmKey: llmKey as string,
+      searchProvider,
+      searchKey: searchKey as string,
+      searchCredentialId: searchCredential.id,
+      searchPlan: searchCredential.provider === "brave" && searchCredential.plan === "paid" ? "paid" : "free",
+      history,
+      startedAt,
+    };
+  } catch (error) {
+    // Server-created conversations are safe to reclaim immediately. A browser-created row stays so
+    // the user can retry; the cleanup job removes abandoned empty rows after an hour.
+    if (createdHere) await deleteConversationIfEmpty(input.userId, conversationId).catch(() => {});
     throw error;
   }
-
-  return {
-    userId: input.userId,
-    conversationId,
-    messageId: assistantMessage.id,
-    userMessageId: userMessage.id,
-    question: questionText,
-    mode: input.mode,
-    model,
-    llmKey: llmKey as string,
-    searchProvider,
-    searchKey: searchKey as string,
-    searchCredentialId: searchCredential.id,
-    searchPlan: searchCredential.provider === "brave" && searchCredential.plan === "paid" ? "paid" : "free",
-    history,
-    startedAt,
-  };
 }
 
 async function searchSources(ctx: RunContext, query: string, count: number): Promise<Omit<Source, "position">[]> {
@@ -365,6 +364,24 @@ function isSearchOutage(error: unknown): boolean {
   return !(error instanceof ApiError) || error.code === "PROVIDER_UNAVAILABLE" || error.code === "PROVIDER_ERROR";
 }
 
+function beginSearchTrace(state: RunState, emit: ChatEmit, query: string): number {
+  const index = state.searches.push({ query, status: "searching" }) - 1;
+  emit("search", state.searches[index]);
+  return index;
+}
+
+function finishSearchTrace(state: RunState, emit: ChatEmit, index: number, results: number): void {
+  state.searchRequests += 1;
+  state.searches[index] = { query: state.searches[index].query, status: "done", results };
+  emit("search", state.searches[index]);
+}
+
+function failSearchTrace(state: RunState, emit: ChatEmit, index: number): void {
+  state.searchFailures += 1;
+  state.searches[index] = { query: state.searches[index].query, status: "failed", results: 0 };
+  emit("search", state.searches[index]);
+}
+
 /** Searches every query (two at a time) and ranks the results. Fails only if every search failed. */
 async function retrieveSources(
   ctx: RunContext,
@@ -381,18 +398,13 @@ async function retrieveSources(
   let completed = 0;
   let firstError: unknown;
   await runBounded(queries, SEARCH_CONCURRENCY, ctx.signal, async (query, index) => {
-    const traceIndex = state.searches.push({ query, status: "searching" }) - 1;
-    ctx.emit("search", state.searches[traceIndex]);
+    const traceIndex = beginSearchTrace(state, ctx.emit, query);
     try {
       batches[index] = await searchSources(ctx, query, report ? DEEP_RESULTS_PER_QUERY : QUICK_SOURCE_LIMIT);
-      state.searchRequests += 1;
-      state.searches[traceIndex] = { query, status: "done", results: batches[index].length };
-      ctx.emit("search", state.searches[traceIndex]);
+      finishSearchTrace(state, ctx.emit, traceIndex, batches[index].length);
     } catch (error) {
       if (ctx.signal.aborted) return;
-      state.searchFailures += 1;
-      state.searches[traceIndex] = { query, status: "failed", results: 0 };
-      ctx.emit("search", state.searches[traceIndex]);
+      failSearchTrace(state, ctx.emit, traceIndex);
       firstError ??= error;
       batches[index] = [];
     }
@@ -422,6 +434,7 @@ async function retrieveSources(
 async function fillEvidenceGaps(ctx: RunContext, state: RunState, queries: string[]): Promise<void> {
   const { prepared, signal } = ctx;
   if (prepared.mode !== "deep" || state.sources.length >= 4) return;
+  let terminalSearchError: unknown;
   try {
     const review = await chat({
       purpose: "gap",
@@ -434,21 +447,18 @@ async function fillEvidenceGaps(ctx: RunContext, state: RunState, queries: strin
     addUsage(state, review);
     const batches: Omit<Source, "position">[][] = [];
     for (const query of parseGapQueries(review.content)) {
-      const traceIndex = state.searches.push({ query, status: "searching" }) - 1;
-      ctx.emit("search", state.searches[traceIndex]);
+      const traceIndex = beginSearchTrace(state, ctx.emit, query);
       try {
         const found = await searchSources(ctx, query, DEEP_RESULTS_PER_QUERY);
         batches.push(found);
-        state.searchRequests += 1;
-        state.searches[traceIndex] = { query, status: "done", results: found.length };
-        ctx.emit("search", state.searches[traceIndex]);
+        finishSearchTrace(state, ctx.emit, traceIndex, found.length);
       } catch (error) {
         if (signal.aborted) throw error;
-        state.searches[traceIndex] = { query, status: "failed", results: 0 };
-        ctx.emit("search", state.searches[traceIndex]);
-        state.searchFailures += 1;
+        if (!isSearchOutage(error)) terminalSearchError ??= error;
+        failSearchTrace(state, ctx.emit, traceIndex);
       }
     }
+    if (terminalSearchError) throw terminalSearchError;
     const added = rankSources(batches, {
       limit: DEEP_SOURCE_LIMIT - state.sources.length,
       perSite: 3,
@@ -457,7 +467,7 @@ async function fillEvidenceGaps(ctx: RunContext, state: RunState, queries: strin
     });
     state.sources = [...state.sources, ...added];
   } catch (error) {
-    if (signal.aborted) throw error;
+    if (signal.aborted || terminalSearchError) throw error;
   }
 }
 
@@ -477,6 +487,7 @@ async function runDeeperResearch(ctx: RunContext, state: RunState): Promise<void
     return;
   }
   const asked = new Set<string>();
+  let terminalError: unknown;
   const openrouter = createOpenRouter({
     apiKey: prepared.llmKey,
     appName: "Beamling",
@@ -491,20 +502,24 @@ async function runDeeperResearch(ctx: RunContext, state: RunState): Promise<void
       queries: z.array(z.string().min(2).max(180)).min(1).max(DEEPER_QUERIES_PER_CALL).describe("1–4 distinct search queries"),
     }),
     execute: async ({ queries }) => {
-      const remaining = DEEPER_SEARCH_LIMIT - state.searches.length;
+      const remaining = DEEPER_SEARCH_LIMIT - state.searchesReserved;
       if (remaining <= 0) {
         return { queries: [], results: [], totalSources: state.sources.length, searchesRemaining: 0, message: "Search budget exhausted." };
       }
       const unique: string[] = [];
       const skipped: string[] = [];
-      for (const raw of queries.slice(0, remaining)) {
+      for (const raw of queries) {
+        if (state.searchesReserved >= DEEPER_SEARCH_LIMIT) break;
         const query = normalizeQuery(raw);
         const key = query.toLowerCase();
         if (!query) continue;
-        if (asked.has(key)) skipped.push(query);
-        else {
+        if (asked.has(key)) {
+          skipped.push(query);
+        } else {
           asked.add(key);
           unique.push(query);
+          // Reserve synchronously before any await, so parallel tool calls cannot exceed the cap.
+          state.searchesReserved += 1;
         }
       }
       if (!unique.length) {
@@ -526,21 +541,17 @@ async function runDeeperResearch(ctx: RunContext, state: RunState): Promise<void
       const traceIndexes: number[] = [];
       let completed = 0;
       await runBounded(unique, SEARCH_CONCURRENCY, signal, async (query, index) => {
-        const traceIndex = state.searches.push({ query, status: "searching" }) - 1;
+        const traceIndex = beginSearchTrace(state, emit, query);
         traceIndexes.push(traceIndex);
-        emit("search", state.searches[traceIndex]);
         try {
           const found = await searchSources(ctx, query, DEEP_RESULTS_PER_QUERY);
           batches[index] = found;
-          state.searchRequests += 1;
-          state.searches[traceIndex] = { query, status: "done", results: found.length };
-          emit("search", state.searches[traceIndex]);
+          finishSearchTrace(state, emit, traceIndex, found.length);
         } catch (error) {
           if (signal.aborted) return;
-          state.searchFailures += 1;
+          if (!isSearchOutage(error)) terminalError ??= error;
+          failSearchTrace(state, emit, traceIndex);
           batches[index] = [];
-          state.searches[traceIndex] = { query, status: "failed", results: 0 };
-          emit("search", state.searches[traceIndex]);
           log.warn("Deeper search failed", { code: error instanceof ApiError ? error.code : "INTERNAL" });
         }
         completed += 1;
@@ -595,7 +606,7 @@ async function runDeeperResearch(ctx: RunContext, state: RunState): Promise<void
       stepNumber === 0 ? { toolChoice: { type: "tool", toolName: "search" } } : {},
     stopWhen: [
       isStepCount(DEEPER_MAX_STEPS),
-      () => state.searches.length >= DEEPER_SEARCH_LIMIT || state.sources.length >= DEEPER_SOURCE_LIMIT,
+      () => Boolean(terminalError) || state.searchesReserved >= DEEPER_SEARCH_LIMIT || state.sources.length >= DEEPER_SOURCE_LIMIT,
     ],
     providerOptions: { openrouter: { usage: { include: true } } },
   });
@@ -612,6 +623,7 @@ async function runDeeperResearch(ctx: RunContext, state: RunState): Promise<void
     throw error;
   }
 
+  if (terminalError) throw terminalError;
   for (const step of result.steps) {
     state.promptTokens += step.usage.inputTokens ?? 0;
     state.completionTokens += step.usage.outputTokens ?? 0;
@@ -684,6 +696,15 @@ function abortOutcome(signal: AbortSignal, mode: Mode) {
       errorMessage: `The answer reached the ${TIMEOUT_MS[mode] / 1000}-second limit.`,
     };
   }
+  if (isClientDisconnect(reason)) {
+    // Keep the partial answer in the "stopped" presentation, but record it as a failure in analytics.
+    return {
+      status: "stopped" as const,
+      errorCode: "CLIENT_DISCONNECT",
+      errorMessage: "The connection closed before the answer finished.",
+    };
+  }
+  if (isUserStop(reason)) return { status: "stopped" as const };
   return { status: "stopped" as const };
 }
 
@@ -698,6 +719,7 @@ export async function runChat(prepared: PreparedChat, options: { signal: AbortSi
     searchFailures: 0,
     sources: [],
     searches: [],
+    searchesReserved: 0,
     content: "",
     reasoning: "",
     degraded: false,
@@ -706,7 +728,7 @@ export async function runChat(prepared: PreparedChat, options: { signal: AbortSi
 
   const complete = async (fields: Omit<AssistantOutcome, "userId" | "messageId" | "usage" | "searches" | "reasoning">) => {
     const usage = finalUsage(state, prepared.startedAt, prepared.searchProvider);
-    await completeAssistant({
+    const stored = await completeAssistant({
       degraded: state.degraded,
       searchFailures: state.searchFailures,
       searches: state.searches,
@@ -716,7 +738,7 @@ export async function runChat(prepared: PreparedChat, options: { signal: AbortSi
       messageId: prepared.messageId,
       usage,
     });
-    return usage;
+    return { usage, stored };
   };
 
   const answerProperties = (usage: Usage) => ({
@@ -788,8 +810,9 @@ export async function runChat(prepared: PreparedChat, options: { signal: AbortSi
       state.content = NO_SOURCES_ANSWER;
       emit("stage", { stage: "no-sources", detail: "No usable sources found" });
       emit("delta", { text: state.content });
-      const usage = await complete({ content: state.content, status: "complete", noSources: true });
+      const { usage, stored } = await complete({ content: state.content, status: "complete", noSources: true });
       finished = true;
+      if (!stored) return;
       emit("usage", usage);
       emit("done", { noSources: true, degraded: state.degraded, searchFailures: state.searchFailures });
       analytics.capture(prepared.userId, "answer_completed", {
@@ -803,10 +826,14 @@ export async function runChat(prepared: PreparedChat, options: { signal: AbortSi
 
     const result = await streamSynthesis(ctx, state, queries);
     const content = sanitizeCitations(result.content || state.content, state.sources.length);
+    if (!content.trim()) {
+      throw new ApiError("EMPTY_RESPONSE", "The model returned an empty answer. Try again.", 502);
+    }
     const truncated = result.finishReason === "length";
     const uncited = !hasValidCitation(content, state.sources.length);
-    const usage = await complete({ content, status: "complete", sources: state.sources, uncited, truncated });
+    const { usage, stored } = await complete({ content, status: "complete", sources: state.sources, uncited, truncated });
     finished = true;
+    if (!stored) return;
     emit("usage", usage);
     emit("done", { noSources: false, truncated, degraded: state.degraded, searchFailures: state.searchFailures });
     analytics.capture(prepared.userId, "answer_completed", {
@@ -820,7 +847,7 @@ export async function runChat(prepared: PreparedChat, options: { signal: AbortSi
     const aborted = signal.aborted || (error instanceof Error && error.name === "AbortError");
     if (aborted) {
       const outcome = abortOutcome(signal, prepared.mode);
-      const usage = await complete({
+      const { usage, stored } = await complete({
         content: sanitizeCitations(state.content, state.sources.length),
         sources: state.sources,
         ...outcome,
@@ -830,15 +857,17 @@ export async function runChat(prepared: PreparedChat, options: { signal: AbortSi
       } else {
         emit("error", { code: outcome.errorCode, message: outcome.errorMessage });
       }
-      if (outcome.errorCode) trackAnswerFailure(usage, outcome.errorCode);
-      else trackAnswerStopped(usage);
+      if (stored) {
+        if (outcome.errorCode) trackAnswerFailure(usage, outcome.errorCode);
+        else trackAnswerStopped(usage);
+      }
       return;
     }
 
     const code = error instanceof ApiError ? error.code : "INTERNAL";
     const message = error instanceof ApiError ? error.message : "The answer could not be completed.";
     if (!(error instanceof ApiError)) log.error("Answer failed", error);
-    const usage = await complete({
+    const { usage, stored } = await complete({
       content: sanitizeCitations(state.content, state.sources.length),
       status: "error",
       sources: state.sources,
@@ -846,7 +875,7 @@ export async function runChat(prepared: PreparedChat, options: { signal: AbortSi
       errorMessage: message,
     });
     emit("error", { code, message, provider: error instanceof ApiError ? error.provider : undefined });
-    trackAnswerFailure(usage, code);
+    if (stored) trackAnswerFailure(usage, code);
   }
 }
 

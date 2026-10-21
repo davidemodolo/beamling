@@ -18,7 +18,7 @@ interface ErrorSummary {
 const MAX_DEPTH = 4;
 const MAX_MESSAGE = 300;
 const BEARER = /(Bearer\s+)[^\s"']+/gi;
-const PROVIDER_KEY = /\b(?:sk-or-v1-|BSA)[A-Za-z0-9_-]{8,}/g;
+const PROVIDER_KEY = /\b(?:sk-or-v1-|BSA|tvly-|exa-|phx_)[A-Za-z0-9_-]{8,}/g;
 const BODY_START = /\b(?:Text|responseBody|requestBodyValues|body|response):\s/i;
 
 /** Provider errors can embed request or response bodies; never let message content reach logs. */

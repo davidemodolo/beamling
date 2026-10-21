@@ -1,10 +1,12 @@
 import { z } from "zod";
-import { watchChat } from "@/lib/server/active-chats";
+import { MODES, SEARCH_PROVIDER_IDS } from "@/lib/contracts";
+import { ClientDisconnectError, watchChat } from "@/lib/server/active-chats";
 import { analytics } from "@/lib/server/analytics";
-import { prepareChat, publicError, runChat, TIMEOUT_MS, type ChatEmit } from "@/lib/server/chat";
+import { prepareChat, publicError, runChat, TIMEOUT_MS, type ChatEmit } from "@/lib/server/answer-pipeline";
 import { cleanText, clientIpKey, json, parseBody } from "@/lib/server/http";
 import { acceptingNewStreams, consumeRateLimit } from "@/lib/server/repo";
 import { apiRoute } from "@/lib/server/route";
+import { isShuttingDown } from "@/lib/server/shutdown-state";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,8 +32,8 @@ const schema = z
     conversationId: z.string().uuid().optional(),
     question: question.optional(),
     retryOf: z.string().uuid().optional(),
-    mode: z.enum(["quick", "deep", "deeper"]),
-    searchProvider: z.enum(["brave", "tavily", "exa"]).optional(),
+    mode: z.enum(MODES),
+    searchProvider: z.enum(SEARCH_PROVIDER_IDS).optional(),
   })
   .refine((input) => (input.question === undefined) !== (input.retryOf === undefined), {
     message: "Send either a question or the answer to retry.",
@@ -47,6 +49,12 @@ function event(name: string, data: unknown): Uint8Array {
 }
 
 export const POST = apiRoute(async ({ request, user }) => {
+  if (isShuttingDown()) {
+    return json(
+      { error: { code: "SERVICE_BUSY", message: "Beamling is restarting. Try again shortly." } },
+      { status: 503, headers: { "Retry-After": "15" } },
+    );
+  }
   const gate = await acceptingNewStreams();
   if (!gate.enabled) {
     return json(
@@ -65,7 +73,9 @@ export const POST = apiRoute(async ({ request, user }) => {
   });
 
   const internal = new AbortController();
-  const signal = AbortSignal.any([request.signal, AbortSignal.timeout(TIMEOUT_MS[input.mode]), internal.signal]);
+  // The request signal is forwarded through `shutdown`, so the combined signal carries a specific
+  // ClientDisconnectError instead of an unclassified DOMException.
+  const signal = AbortSignal.any([AbortSignal.timeout(TIMEOUT_MS[input.mode]), internal.signal]);
   let markDone!: () => void;
   const done = new Promise<void>((resolve) => {
     markDone = resolve;
@@ -81,7 +91,7 @@ export const POST = apiRoute(async ({ request, user }) => {
 
   const shutdown = () => {
     closed = true;
-    internal.abort();
+    internal.abort(new ClientDisconnectError());
     clearInterval(heartbeat);
   };
 
@@ -92,7 +102,7 @@ export const POST = apiRoute(async ({ request, user }) => {
         try {
           controller.enqueue(chunk);
         } catch {
-          closed = true;
+          shutdown();
         }
       };
       const emit: ChatEmit = (name, data) => write(event(name, data));

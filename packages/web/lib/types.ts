@@ -1,7 +1,9 @@
-export type Mode = "quick" | "deep" | "deeper";
-export type SearchProvider = "brave" | "tavily" | "exa";
+export type { BravePlan, BudgetPeriod, CredentialKind, CredentialProvider, CredentialStatus, Mode, SearchProvider } from "./contracts";
+import type { BravePlan, BudgetPeriod, CredentialKind, CredentialStatus, Mode, SearchProvider } from "./contracts";
+
 type Role = "user" | "assistant";
 type MessageStatus = "pending" | "streaming" | "complete" | "stopped" | "error";
+
 export type ChatStage =
   | "empty"
   | "queued"
@@ -19,9 +21,6 @@ export interface SearchTrace {
   status: SearchStatus;
   results?: number;
 }
-
-export type CredentialKind = "llm" | "search";
-export type CredentialStatus = "active" | "invalid" | "rate_limited" | "unverified";
 
 export interface Source {
   id: string;
@@ -90,9 +89,6 @@ export interface ConversationPage {
   conversations: ConversationSummary[];
   nextCursor: string | null;
 }
-
-export type BravePlan = "free" | "paid";
-export type BudgetPeriod = "month" | "total";
 
 export interface Credential {
   id: string;

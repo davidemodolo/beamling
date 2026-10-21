@@ -12,8 +12,18 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type {
+  BravePlan,
+  BudgetPeriod,
+  CredentialKind,
+  CredentialProvider,
+  CredentialStatus,
+  MessageStatus,
+  Mode,
+  SearchProvider,
+} from "../contracts";
 import { DEFAULT_CONVERSATION_TITLE } from "../data";
-import { DEFAULT_LLM_MODEL, DEFAULT_SEARCH_PROVIDER } from "../providers";
+import { DEFAULT_LLM_MODEL, DEFAULT_SEARCH_PROVIDER } from "../provider-catalog";
 
 // Millisecond precision matches JavaScript dates, so timestamps round-trip exactly as pagination cursors.
 const timestampMs = (name: string) => timestamp(name, { withTimezone: true, precision: 3 });
@@ -58,8 +68,8 @@ export const credentials = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    kind: text("kind").notNull(),
-    provider: text("provider").notNull(),
+    kind: text("kind").$type<CredentialKind>().notNull(),
+    provider: text("provider").$type<CredentialProvider>().notNull(),
     // Identifies the master key that wrapped the DEK, so the master key can be rotated.
     keyId: text("key_id").notNull(),
     wrappedDek: text("wrapped_dek").notNull(),
@@ -70,11 +80,11 @@ export const credentials = pgTable(
     tag: text("tag").notNull(),
     fingerprint: text("fingerprint").notNull(),
     last4: text("last4"),
-    status: text("status").notNull().default("unverified"),
-    plan: text("plan"),
+    status: text("status").$type<CredentialStatus>().notNull().default("unverified"),
+    plan: text("plan").$type<BravePlan>(),
     expiresOn: date("expires_on", { mode: "string" }),
     budgetUsd: numeric("budget_usd", { precision: 12, scale: 2 }),
-    budgetPeriod: text("budget_period"),
+    budgetPeriod: text("budget_period").$type<BudgetPeriod>(),
     budgetStartedAt: timestamp("budget_started_at", { withTimezone: true }),
     lastValidatedAt: timestamp("last_validated_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -120,8 +130,8 @@ export const settings = pgTable("settings", {
     .primaryKey()
     .references(() => users.id, { onDelete: "cascade" }),
   llmModel: text("llm_model").notNull().default(DEFAULT_LLM_MODEL),
-  defaultSearchProvider: text("default_search_provider").notNull().default(DEFAULT_SEARCH_PROVIDER),
-  defaultMode: text("default_mode").notNull().default("quick"),
+  defaultSearchProvider: text("default_search_provider").$type<SearchProvider>().notNull().default(DEFAULT_SEARCH_PROVIDER),
+  defaultMode: text("default_mode").$type<Mode>().notNull().default("quick"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -133,7 +143,7 @@ export const conversations = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     title: text("title").notNull().default(DEFAULT_CONVERSATION_TITLE),
-    mode: text("mode").notNull().default("quick"),
+    mode: text("mode").$type<Mode>().notNull().default("quick"),
     pinned: boolean("pinned").notNull().default(false),
     createdAt: timestampMs("created_at").notNull().defaultNow(),
     updatedAt: timestampMs("updated_at").notNull().defaultNow(),
@@ -155,10 +165,10 @@ export const messages = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    role: text("role").notNull(),
+    role: text("role").$type<"user" | "assistant">().notNull(),
     content: text("content").notNull().default(""),
-    status: text("status").notNull().default("complete"),
-    mode: text("mode"),
+    status: text("status").$type<MessageStatus>().notNull().default("complete"),
+    mode: text("mode").$type<Mode>(),
     uncited: boolean("uncited").notNull().default(false),
     noSources: boolean("no_sources").notNull().default(false),
     truncated: boolean("truncated").notNull().default(false),
@@ -169,7 +179,7 @@ export const messages = pgTable(
     reasoning: text("reasoning"),
     // The model and search provider the user selected for this answer.
     llmModel: text("llm_model"),
-    searchProvider: text("search_provider").notNull().default(DEFAULT_SEARCH_PROVIDER),
+    searchProvider: text("search_provider").$type<SearchProvider>().notNull().default(DEFAULT_SEARCH_PROVIDER),
     resolvedModel: text("resolved_model"),
     upstreamProvider: text("upstream_provider"),
     searchRequests: integer("search_requests").notNull().default(0),

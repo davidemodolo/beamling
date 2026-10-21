@@ -1,9 +1,11 @@
 export { cleanupExpired, deleteAccount, deleteSessions, getState } from "./account";
 export {
+  cleanupEmptyConversations,
   conversationExists,
   countConversations,
   createConversation,
   deleteConversation,
+  deleteConversationIfEmpty,
   getConversation,
   getEarlierMessages,
   listConversationPage,

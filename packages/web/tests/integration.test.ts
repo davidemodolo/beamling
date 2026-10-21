@@ -26,16 +26,23 @@ function withEnv(t: TestContext, values: Record<string, string>) {
   });
 }
 
-async function saveKey(userId: string, kind: "llm" | "search", provider: string, plaintext: string) {
+async function saveKey(
+  userId: string,
+  kind: "llm" | "search",
+  provider: "openrouter" | "brave" | "tavily" | "exa",
+  plaintext: string,
+) {
   const { encryptCredential } = await import("../lib/server/crypto");
-  const { saveCredential } = await import("../lib/server/repo");
+  const { getCredentialRow, saveCredential } = await import("../lib/server/repo");
+  const existing = await getCredentialRow(userId, kind, provider);
   return saveCredential({
     userId,
     kind,
     provider,
-    encrypted: await encryptCredential(userId, kind, provider, plaintext),
+    encrypted: await encryptCredential(userId, kind, provider, plaintext, existing?.id),
     status: "active",
     plan: provider === "brave" ? "free" : null,
+    preserveUsage: Boolean(existing),
   });
 }
 
@@ -71,7 +78,7 @@ async function ask(
   },
   signal = new AbortController().signal,
 ) {
-  const { prepareChat, runChat } = await import("../lib/server/chat");
+  const { prepareChat, runChat } = await import("../lib/server/answer-pipeline");
   const events: ChatEvents = [];
   const prepared = await prepareChat({ userId, ...input });
   await runChat(prepared, { signal, emit: (name, data) => events.push({ name, data }) });
@@ -363,7 +370,7 @@ test("a stop request reaches the answer through the database", { skip }, async (
 
 test("deleting a conversation mid-answer stops it without a database error", { skip }, async (t) => {
   const { abortChats, watchChat } = await import("../lib/server/active-chats");
-  const { prepareChat, runChat } = await import("../lib/server/chat");
+  const { prepareChat, runChat } = await import("../lib/server/answer-pipeline");
   const { completeAssistant, deleteConversation, isStopRequested } = await import("../lib/server/repo");
   withEnv(t, { BEAMLING_FAKE_DELAY_MS: "30" });
   const userId = await createAccount(t);
@@ -529,11 +536,21 @@ test("conversations and messages are paginated", { skip }, async (t) => {
   const userId = await createAccount(t);
 
   // Same updated_at for many rows, to exercise the id tiebreaker in the cursor.
+  const { randomUUID } = await import("node:crypto");
+  const { encryptText } = await import("../lib/server/workspace-key");
   const base = Date.now();
-  const rows = await db
-    .insert(conversations)
-    .values(Array.from({ length: CONVERSATION_PAGE_SIZE + 5 }, (_, i) => ({ userId, title: `C${i}`, updatedAt: new Date(base - Math.floor(i / 3) * 1000) })))
-    .returning();
+  const values = await Promise.all(
+    Array.from({ length: CONVERSATION_PAGE_SIZE + 5 }, async (_, i) => {
+      const id = randomUUID();
+      return {
+        id,
+        userId,
+        title: await encryptText(userId, "conversations", id, "title", `C${i}`),
+        updatedAt: new Date(base - Math.floor(i / 3) * 1000),
+      };
+    }),
+  );
+  const rows = await db.insert(conversations).values(values).returning();
   const first = await listConversationPage(userId);
   assert.equal(first.conversations.length, CONVERSATION_PAGE_SIZE);
   assert.ok(first.nextCursor);
@@ -550,15 +567,20 @@ test("conversations and messages are paginated", { skip }, async (t) => {
 
   const conversationId = rows[0].id;
   const total = MESSAGE_PAGE_SIZE + 5;
-  await db.insert(messages).values(
-    Array.from({ length: total }, (_, i) => ({
-      conversationId,
-      userId,
-      role: i % 2 ? "assistant" : "user",
-      content: `M${i}`,
-      createdAt: new Date(base + i),
-    })),
+  const messageValues = await Promise.all(
+    Array.from({ length: total }, async (_, i) => {
+      const id = randomUUID();
+      return {
+        id,
+        conversationId,
+        userId,
+        role: (i % 2 ? "assistant" : "user") as "assistant" | "user",
+        content: await encryptText(userId, "messages", id, "content", `M${i}`),
+        createdAt: new Date(base + i),
+      };
+    }),
   );
+  await db.insert(messages).values(messageValues);
   const conversation = await getConversation(userId, conversationId);
   assert.equal(conversation?.messages.length, MESSAGE_PAGE_SIZE);
   assert.equal(conversation?.hasMoreMessages, true);
@@ -611,9 +633,9 @@ test("new accounts stop at the hourly sign-up cap", { skip }, async (t) => {
   await reset();
   t.after(reset);
   withEnv(t, { NEW_ACCOUNTS_PER_HOUR: "2" });
-  await admitNewAccount();
-  await admitNewAccount();
-  await assert.rejects(admitNewAccount(), (error: { code?: string; status?: number }) => {
+  await admitNewAccount("one@example.test", "client-a");
+  await admitNewAccount("two@example.test", "client-b");
+  await assert.rejects(admitNewAccount("three@example.test", "client-c"), (error: { code?: string; status?: number }) => {
     return error.code === "SIGNUPS_PAUSED" && error.status === 429;
   });
 });
@@ -664,6 +686,70 @@ test("replacing a key keeps it decryptable", { skip }, async (t) => {
   const row = await getCredentialRow(userId, "llm", "openrouter");
   assert.ok(row);
   assert.match(await decryptCredential(userId, row), /^test-replacement-[ab]$/);
+});
+
+test("one account cannot exceed its per-user in-flight cap", { skip }, async (t) => {
+  const { createConversation, createExchange } = await import("../lib/server/repo");
+  withEnv(t, { MAX_CONCURRENT_CHATS_PER_USER: "2", MAX_CONCURRENT_CHATS: "50" });
+  const userId = await createAccount(t, { keys: false });
+  const conversations = await Promise.all([
+    createConversation(userId, "quick"),
+    createConversation(userId, "quick"),
+    createConversation(userId, "quick"),
+  ]);
+  await createExchange({ userId, conversationId: conversations[0].id, question: "one", mode: "quick", llmModel: "m" });
+  await createExchange({ userId, conversationId: conversations[1].id, question: "two", mode: "quick", llmModel: "m" });
+  await assert.rejects(
+    () => createExchange({ userId, conversationId: conversations[2].id, question: "three", mode: "quick", llmModel: "m" }),
+    (error: unknown) => error instanceof Error && "code" in error && error.code === "SERVER_BUSY",
+  );
+});
+
+test("a failed first question keeps a client-created conversation for retry, then cleanup removes it", { skip }, async (t) => {
+  const { prepareChat } = await import("../lib/server/answer-pipeline");
+  const { cleanupEmptyConversations, conversationExists, createConversation } = await import("../lib/server/repo");
+  const { eq } = await import("drizzle-orm");
+  const { db } = await import("../lib/server/db");
+  const { conversations } = await import("../lib/server/schema");
+  const userId = await createAccount(t, { keys: false });
+  const conversation = await createConversation(userId, "quick");
+  await assert.rejects(
+    () => prepareChat({ userId, conversationId: conversation.id, question: "No keys", mode: "quick" }),
+    (error: unknown) => error instanceof Error && "code" in error && error.code === "CREDENTIAL_MISSING",
+  );
+  assert.equal(await conversationExists(userId, conversation.id), true, "the client can retry");
+  await db
+    .update(conversations)
+    .set({ updatedAt: new Date(Date.now() - 2 * 60 * 60_000) })
+    .where(eq(conversations.id, conversation.id));
+  await cleanupEmptyConversations();
+  assert.equal(await conversationExists(userId, conversation.id), false);
+});
+
+test("a late completion cannot overwrite an interrupted outcome", { skip }, async (t) => {
+  const { completeAssistant, createConversation, createExchange, getConversation, interruptStaleAnswers } = await import(
+    "../lib/server/repo"
+  );
+  const userId = await createAccount(t, { keys: false });
+  const conversation = await createConversation(userId, "quick");
+  const exchange = await createExchange({
+    userId,
+    conversationId: conversation.id,
+    question: "Interrupt me",
+    mode: "quick",
+    llmModel: "m",
+  });
+  await interruptStaleAnswers([exchange.assistantMessage.id]);
+  const stored = await completeAssistant({
+    userId,
+    messageId: exchange.assistantMessage.id,
+    content: "late",
+    status: "complete",
+  });
+  assert.equal(stored, false);
+  const after = await getConversation(userId, conversation.id);
+  assert.equal(after?.messages.at(-1)?.status, "error");
+  assert.equal(after?.messages.at(-1)?.errorCode, "INTERRUPTED");
 });
 
 test.after(async () => {

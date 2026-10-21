@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { and, count, desc, eq, gt, inArray, lt, lte, sql } from "drizzle-orm";
 import { DEFAULT_CONVERSATION_TITLE, titleFromQuestion } from "../../data";
-import { DEFAULT_SEARCH_PROVIDER } from "../../providers";
+import { DEFAULT_SEARCH_PROVIDER } from "../../provider-catalog";
 import type { Message, Mode, SearchProvider, SearchTrace, Source, Usage } from "../../types";
 import { db } from "../db";
-import { maxConcurrentChats } from "../env";
+import { maxConcurrentChats, maxConcurrentChatsPerUser } from "../env";
 import { ApiError, pgErrorCode, storableText } from "../http";
 import { conversations, messages, sources } from "../schema";
 import { decryptText, encryptText } from "../workspace-key";
-import { interruptedFields, mapMessage, staleBefore, type MessageRow } from "./shared";
+import { interruptedFields, mapMessage, staleBefore, staleBeforeSql, type MessageRow } from "./shared";
 
 const UNIQUE_VIOLATION = "23505";
 const LOCK_NOT_AVAILABLE = "55P03";
@@ -113,7 +113,7 @@ export async function createExchange(input: {
           and(
             eq(messages.conversationId, conversation.id),
             eq(messages.status, "streaming"),
-            lte(messages.createdAt, staleBefore()),
+            lte(messages.createdAt, staleBeforeSql()),
           ),
         );
 
@@ -121,9 +121,28 @@ export async function createExchange(input: {
       const [{ value: inFlight }] = await tx
         .select({ value: count() })
         .from(messages)
-        .where(and(eq(messages.status, "streaming"), gt(messages.createdAt, staleBefore())));
+        .where(and(eq(messages.status, "streaming"), gt(messages.createdAt, staleBeforeSql())));
       if (inFlight >= maxConcurrentChats()) {
         throw new ApiError("SERVER_BUSY", "Beamling is busy right now. Try again in a minute.", 503);
+      }
+
+      const [{ value: userInFlight }] = await tx
+        .select({ value: count() })
+        .from(messages)
+        .where(
+          and(
+            eq(messages.userId, input.userId),
+            eq(messages.status, "streaming"),
+            gt(messages.createdAt, staleBeforeSql()),
+          ),
+        );
+      const perUserLimit = maxConcurrentChatsPerUser();
+      if (userInFlight >= perUserLimit) {
+        throw new ApiError(
+          "SERVER_BUSY",
+          `You already have ${perUserLimit} ${perUserLimit === 1 ? "answer" : "answers"} running. Wait for one to finish or stop it.`,
+          503,
+        );
       }
 
       const now = new Date();
@@ -284,7 +303,14 @@ export async function completeAssistant(input: AssistantOutcome): Promise<boolea
         searches,
         reasoning,
       })
-      .where(and(eq(messages.id, input.messageId), eq(messages.userId, input.userId)))
+      .where(
+        and(
+          eq(messages.id, input.messageId),
+          eq(messages.userId, input.userId),
+          // A reaper or shutdown may already have marked this run interrupted. First writer wins.
+          eq(messages.status, "streaming"),
+        ),
+      )
       .returning({ id: messages.id });
     // The update holds the row lock, so a concurrent delete cannot remove it before the sources land.
     if (!updated.length) return false;
@@ -334,7 +360,7 @@ export async function interruptStaleAnswers(messageIds?: string[]): Promise<void
     .where(
       and(
         eq(messages.status, "streaming"),
-        messageIds ? inArray(messages.id, messageIds) : lte(messages.createdAt, staleBefore()),
+        messageIds ? inArray(messages.id, messageIds) : lte(messages.createdAt, staleBeforeSql()),
       ),
     );
 }

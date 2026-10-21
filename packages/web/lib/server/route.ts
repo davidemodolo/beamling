@@ -1,4 +1,7 @@
+import { randomUUID } from "node:crypto";
+import { hmacToken } from "./crypto";
 import { assertSameOrigin, clientIpKey, errorResponse, PRIVATE_HEADERS } from "./http";
+import { log } from "./log";
 import { consumeRateLimit } from "./repo";
 import { getCurrentUser, requireUser, type SessionUser } from "./session";
 
@@ -37,20 +40,37 @@ export function apiRoute<P = unknown, S extends SessionMode = "required">(
 ): (request: Request, context: P) => Promise<Response> {
   const session = options.session ?? "required";
   return async (request, context) => {
+    const requestId = randomUUID();
+    const started = Date.now();
+    let user: SessionUser | null = null;
+    let status = 500;
     try {
       if (request.method !== "GET" && request.method !== "HEAD") assertSameOrigin(request);
-      const user = await loaders[session]();
+      user = await loaders[session]();
       if (user && request.method === "GET") {
         await consumeRateLimit(`reads:${user.id}`, READS_PER_WINDOW, READ_WINDOW_SECONDS);
         await consumeRateLimit(`reads-ip:${clientIpKey(request.headers)}`, READS_PER_IP_WINDOW, READ_WINDOW_SECONDS);
       }
       const response = await handler({ request, context, user: user as RouteUser<S> });
+      status = response.status;
       for (const [name, value] of Object.entries(PRIVATE_HEADERS)) {
         if (!response.headers.has(name)) response.headers.set(name, value);
       }
+      response.headers.set("x-request-id", requestId);
       return response;
     } catch (error) {
-      return errorResponse(error);
+      const response = errorResponse(error, requestId);
+      status = response.status;
+      return response;
+    } finally {
+      log.info("request", {
+        requestId,
+        method: request.method,
+        path: new URL(request.url).pathname,
+        status,
+        durationMs: Date.now() - started,
+        userId: user ? hmacToken(user.id) : undefined,
+      });
     }
   };
 }

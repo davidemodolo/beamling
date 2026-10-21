@@ -8,7 +8,7 @@ const ALERT_AFTER_ATTEMPTS = 5;
 async function attempt(row: AnalyticsErasure): Promise<void> {
   const ok = await analytics.deletePerson(row.distinctId);
   if (!ok) {
-    const fields = { attempts: row.attempts + 1, distinctId: row.distinctId };
+    const fields = { attempts: row.attempts + 1, distinctIdPrefix: `${row.distinctId.slice(0, 8)}…` };
     if (row.attempts + 1 >= ALERT_AFTER_ATTEMPTS) log.error("PostHog erasure keeps failing", fields);
     else log.warn("PostHog erasure will be retried", fields);
   }

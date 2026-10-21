@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { BUDGET_PERIODS, BRAVE_PLANS } from "@/lib/contracts";
 import { ApiError, idParam, json, notFound, parseBody } from "@/lib/server/http";
 import { deleteCredential, getCredentialById, updateCredentialLimits } from "@/lib/server/repo";
 import { apiRoute } from "@/lib/server/route";
@@ -7,10 +8,10 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const schema = z.object({
-  plan: z.enum(["free", "paid"]).optional(),
+  plan: z.enum(BRAVE_PLANS).optional(),
   expiresOn: z.string().date().optional().nullable(),
   budgetUsd: z.number().positive().max(1_000_000).optional().nullable(),
-  budgetPeriod: z.enum(["month", "total"]).optional().nullable(),
+  budgetPeriod: z.enum(BUDGET_PERIODS).optional().nullable(),
 });
 
 export const PATCH = apiRoute<{ params: Promise<{ id: string }> }>(async ({ request, context, user }) => {
@@ -18,7 +19,13 @@ export const PATCH = apiRoute<{ params: Promise<{ id: string }> }>(async ({ requ
   const existing = await getCredentialById(user.id, id);
   if (!existing) throw notFound("Credential not found.");
   const input = await parseBody(request, schema);
-  if (existing.provider !== "brave" && (input.plan !== undefined || input.expiresOn !== undefined || input.budgetUsd !== undefined)) {
+  if (
+    existing.provider !== "brave" &&
+    (input.plan !== undefined ||
+      input.expiresOn !== undefined ||
+      input.budgetUsd !== undefined ||
+      input.budgetPeriod !== undefined)
+  ) {
     throw new ApiError("INVALID_PROVIDER", "Plan and limits apply only to Brave Search keys.", 400);
   }
   if (input.expiresOn) {

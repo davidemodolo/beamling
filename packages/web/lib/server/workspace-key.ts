@@ -1,10 +1,12 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "./db";
-import { unwrapKey, wrapKey, type WrappedKey } from "./kms";
+import { currentKmsKeyId, unwrapKey, wrapKey, type WrappedKey } from "./kms";
 import { userDataKeys } from "./schema";
 
 const PREFIX = "enc:v1:";
+// Fixed operational messages written synchronously by interruptedFields(). They carry no user data.
+const PLAINTEXT_FIXED_VALUES = new Set(["", "The answer was interrupted."]);
 const CACHE_LIMIT = 500;
 const cache = new Map<string, Buffer>();
 
@@ -46,6 +48,26 @@ async function readStoredKey(userId: string): Promise<Buffer | null> {
   };
   const key = await unwrapKey(wrapped, wdkAad(userId));
   if (key.length !== 32) throw new Error("Workspace key has the wrong length.");
+  // Lazy rotation: once the configured KMS key changes, re-wrap the workspace key on the next read.
+  // The stored key id is authoritative until then, so a rotation never makes existing content unreadable.
+  const currentKeyId = currentKmsKeyId();
+  if (row.keyId !== currentKeyId) {
+    try {
+      const rewrapped = await wrapKey(key, wdkAad(userId));
+      await db
+        .update(userDataKeys)
+        .set({
+          keyId: rewrapped.keyId,
+          wrappedKey: rewrapped.wrappedKey,
+          wrapNonce: rewrapped.nonce ?? null,
+          wrapTag: rewrapped.tag ?? null,
+          rotatedAt: new Date(),
+        })
+        .where(and(eq(userDataKeys.userId, userId), eq(userDataKeys.keyId, row.keyId)));
+    } catch {
+      // A failed opportunistic re-wrap must not make existing content unreadable; try again next read.
+    }
+  }
   return key;
 }
 
@@ -114,7 +136,12 @@ export async function decryptText(
   field: string,
   value: string,
 ): Promise<string> {
-  if (!isEncrypted(value)) return value;
+  if (!isEncrypted(value)) {
+    // Known fixed operational values are safe. Any other non-envelope value is a legacy or injected
+    // plaintext row: fail closed rather than serving it as trusted content.
+    if (PLAINTEXT_FIXED_VALUES.has(value)) return value;
+    throw new Error("Stored content is not encrypted.");
+  }
   const key = await ensureWorkspaceKey(userId);
   let envelope: Envelope;
   try {

@@ -1,5 +1,6 @@
+import { sql } from "drizzle-orm";
 import { DEFAULT_SETTINGS } from "../../data";
-import { DEFAULT_SEARCH_PROVIDER, isSearchProvider } from "../../providers";
+import { DEFAULT_SEARCH_PROVIDER, isSearchProvider } from "../../provider-catalog";
 import { decryptText } from "../workspace-key";
 import type {
   ConversationSummary,
@@ -24,7 +25,7 @@ type SettingsRow = typeof settings.$inferSelect;
  * period, so it belongs to a crashed or restarted instance. The old 3-minute value matched Quick/Deep
  * but cut off a healthy Deeper run.
  */
-const STALE_STREAMING_MS = 8 * 60_000;
+export const STALE_STREAMING_SECONDS = 8 * 60;
 const CREDENTIAL_STATUSES: CredentialStatus[] = ["active", "invalid", "rate_limited", "unverified"];
 
 export function iso(value: Date | string): string {
@@ -32,7 +33,12 @@ export function iso(value: Date | string): string {
 }
 
 export function staleBefore(): Date {
-  return new Date(Date.now() - STALE_STREAMING_MS);
+  return new Date(Date.now() - STALE_STREAMING_SECONDS * 1000);
+}
+
+/** The same cutoff evaluated by PostgreSQL, for decisions shared across instances. */
+export function staleBeforeSql() {
+  return sql`clock_timestamp() - make_interval(secs => ${STALE_STREAMING_SECONDS})`;
 }
 
 export function interruptedFields() {

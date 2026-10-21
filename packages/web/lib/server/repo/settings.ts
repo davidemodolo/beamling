@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { isAllowedModel, isSearchProvider } from "../../providers";
+import { isAllowedModel, isSearchProvider } from "../../provider-catalog";
 import type { Settings } from "../../types";
 import { db } from "../db";
 import { settings } from "../schema";

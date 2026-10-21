@@ -1,7 +1,7 @@
 import { analytics } from "@/lib/server/analytics";
 import { decryptCredential } from "@/lib/server/crypto";
 import { ApiError, idParam, json, notFound } from "@/lib/server/http";
-import { isSearchProvider } from "@/lib/providers";
+import { isSearchProvider } from "@/lib/provider-catalog";
 import { validateProviderKey } from "@/lib/server/providers";
 import { credentialStatusFor } from "@/lib/server/providers/errors";
 import { consumeRateLimit, getCredentialById, updateCredentialValidation } from "@/lib/server/repo";

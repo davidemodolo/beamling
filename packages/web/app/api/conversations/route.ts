@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MODES } from "@/lib/contracts";
 import { json, parseBody } from "@/lib/server/http";
 import { consumeRateLimit, createConversation, listConversationPage } from "@/lib/server/repo";
 import { apiRoute } from "@/lib/server/route";
@@ -6,7 +7,7 @@ import { apiRoute } from "@/lib/server/route";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const schema = z.object({ mode: z.enum(["quick", "deep", "deeper"]).default("quick") });
+const schema = z.object({ mode: z.enum(MODES).default("quick") });
 
 /** The next page of conversation summaries, newest first. */
 export const GET = apiRoute(async ({ request, user }) => {

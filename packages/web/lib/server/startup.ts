@@ -3,6 +3,7 @@ import { analytics } from "./analytics";
 import { processAnalyticsErasures } from "./analytics-erasure";
 import { pool } from "./db";
 import { productionConfigErrors, productionConfigWarnings } from "./env";
+import { beginShutdown } from "./shutdown-state";
 import { log } from "./log";
 import { cleanupExpired, interruptStaleAnswers } from "./repo";
 import { APP_VERSION, BUILD_TIME, GIT_COMMIT } from "../version";
@@ -20,6 +21,7 @@ let shuttingDown = false;
 async function shutdown(signal: string): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
+  beginShutdown();
   log.info("Shutting down", { signal });
   try {
     const messageIds = await abortAllChats(SHUTDOWN_GRACE_MS);

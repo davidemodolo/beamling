@@ -12,6 +12,8 @@ interface ActiveChat {
 }
 
 const SHUTDOWN = "ShutdownError";
+const CLIENT_DISCONNECT = "ClientDisconnectError";
+const USER_STOP = "UserStopError";
 
 /** Abort reason for answers cut short by a server shutdown. */
 export class ShutdownError extends Error {
@@ -21,9 +23,33 @@ export class ShutdownError extends Error {
   }
 }
 
+/** Abort reason for a response stream that the client closed or that failed to enqueue. */
+export class ClientDisconnectError extends Error {
+  constructor() {
+    super("The client disconnected.");
+    this.name = CLIENT_DISCONNECT;
+  }
+}
+
+/** Abort reason for an explicit Stop action. */
+export class UserStopError extends Error {
+  constructor() {
+    super("The user stopped the answer.");
+    this.name = USER_STOP;
+  }
+}
+
 /** Checked by name: the shutdown hook and the routes are separate bundles with separate classes. */
 export function isShutdown(reason: unknown): boolean {
   return reason instanceof Error && reason.name === SHUTDOWN;
+}
+
+export function isClientDisconnect(reason: unknown): boolean {
+  return reason instanceof Error && reason.name === CLIENT_DISCONNECT;
+}
+
+export function isUserStop(reason: unknown): boolean {
+  return reason instanceof Error && reason.name === USER_STOP;
 }
 
 // Fast path for stops and deletions that land on the instance running the answer. Other instances
@@ -64,7 +90,7 @@ export function watchChat(
 export async function stopChat(userId: string, messageId: string): Promise<boolean> {
   const entry = active.get(messageId);
   if (entry && entry.userId === userId) {
-    entry.controller.abort();
+    entry.controller.abort(new UserStopError());
     return true;
   }
   return requestStop(userId, messageId);
@@ -79,13 +105,30 @@ export function abortChats(filter: { userId: string; conversationId?: string }):
   }
 }
 
-/** Aborts every running answer and waits (bounded) for their outcomes to be stored. */
+/**
+ * Aborts every running answer and waits (bounded) for their outcomes to be stored. It loops so a
+ * request that passed the shutdown gate just before the flag was set still gets drained.
+ */
 export async function abortAllChats(timeoutMs: number): Promise<string[]> {
-  const entries = [...active.entries()];
-  for (const [, entry] of entries) entry.controller.abort(new ShutdownError());
-  await Promise.race([
-    Promise.allSettled(entries.map(([, entry]) => entry.done)),
-    new Promise((resolve) => setTimeout(resolve, timeoutMs)),
-  ]);
-  return entries.map(([messageId]) => messageId);
+  const deadline = Date.now() + timeoutMs;
+  const seen = new Set<string>();
+  while (Date.now() < deadline) {
+    const entries = [...active.entries()].filter(([messageId]) => !seen.has(messageId));
+    if (!entries.length) break;
+    for (const [messageId, entry] of entries) {
+      seen.add(messageId);
+      entry.controller.abort(new ShutdownError());
+    }
+    await Promise.race([
+      Promise.allSettled(entries.map(([, entry]) => entry.done)),
+      new Promise((resolve) => setTimeout(resolve, Math.max(0, deadline - Date.now()))),
+    ]);
+  }
+  // A last pass catches an entry registered while the final wait was resolving.
+  for (const [messageId, entry] of active.entries()) {
+    if (seen.has(messageId)) continue;
+    seen.add(messageId);
+    entry.controller.abort(new ShutdownError());
+  }
+  return [...seen];
 }

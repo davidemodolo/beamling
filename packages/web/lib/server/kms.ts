@@ -1,19 +1,11 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
-import { currentMasterKey, gcpCredentials, masterKeyById } from "./env";
+import { createCipheriv, createDecipheriv, randomBytes, timingSafeEqual } from "node:crypto";
+import { currentMasterKey, gcpCredentials, kmsProvider, masterKeyById } from "./env";
 
 export interface WrappedKey {
   keyId: string;
   wrappedKey: string;
   nonce?: string;
   tag?: string;
-}
-
-export type KmsProvider = "env" | "aws" | "gcp";
-
-function provider(): KmsProvider {
-  const value = process.env.KMS_PROVIDER ?? "env";
-  if (value === "env" || value === "aws" || value === "gcp") return value;
-  throw new Error("KMS_PROVIDER must be env, aws or gcp.");
 }
 
 function plaintextAad(aad: string): Buffer {
@@ -61,7 +53,7 @@ async function gcp() {
 }
 
 export async function wrapKey(plaintext: Buffer, aad: string): Promise<WrappedKey> {
-  switch (provider()) {
+  switch (kmsProvider()) {
     case "env": {
       const master = currentMasterKey();
       const sealed = sealEnv(master.key, plaintext, plaintextAad(aad));
@@ -99,7 +91,7 @@ export async function wrapKey(plaintext: Buffer, aad: string): Promise<WrappedKe
 }
 
 export async function unwrapKey(wrapped: WrappedKey, aad: string): Promise<Buffer> {
-  switch (provider()) {
+  switch (kmsProvider()) {
     case "env": {
       if (!wrapped.nonce || !wrapped.tag) throw new Error("The environment-wrapped key is incomplete.");
       return openEnv(masterKeyById(wrapped.keyId), wrapped.wrappedKey, wrapped.nonce, wrapped.tag, plaintextAad(aad));
@@ -110,13 +102,15 @@ export async function unwrapKey(wrapped: WrappedKey, aad: string): Promise<Buffe
         new DecryptCommand({
           CiphertextBlob: Buffer.from(wrapped.wrappedKey, "base64"),
           EncryptionContext: { beamling: aad },
-          KeyId: process.env.KMS_KEY_ID || undefined,
+          // Prefer the resource that actually wrapped this row; a new KMS_KEY_ID is for new writes.
+          KeyId: wrapped.keyId || process.env.KMS_KEY_ID || undefined,
         }),
       );
       return Buffer.from(result.Plaintext ?? []);
     }
     case "gcp": {
-      const name = process.env.KMS_KEY_NAME;
+      // The stored resource name is authoritative; KMS_KEY_NAME is only the target for new writes.
+      const name = wrapped.keyId || process.env.KMS_KEY_NAME;
       if (!name) throw new Error("KMS_KEY_NAME is required for the GCP KMS adapter.");
       const [result] = await (await gcp()).decrypt({
         name,
@@ -128,8 +122,19 @@ export async function unwrapKey(wrapped: WrappedKey, aad: string): Promise<Buffe
   }
 }
 
+/** A cheap wrap/unwrap round trip that proves the configured KMS key is usable. */
+export async function probeKms(): Promise<void> {
+  const value = randomBytes(16);
+  const aad = "beamling:readiness:v1";
+  const wrapped = await wrapKey(value, aad);
+  const opened = await unwrapKey(wrapped, aad);
+  if (opened.length !== value.length || !timingSafeEqual(opened, value)) {
+    throw new Error("KMS readiness probe returned different plaintext.");
+  }
+}
+
 export function currentKmsKeyId(): string {
-  switch (provider()) {
+  switch (kmsProvider()) {
     case "env":
       return currentMasterKey().id;
     case "aws":

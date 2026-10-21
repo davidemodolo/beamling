@@ -1,6 +1,6 @@
 import { db } from "@/lib/server/db";
 import { appUrl, isFakeProviders } from "@/lib/server/env";
-import { ApiError, errorResponse, json } from "@/lib/server/http";
+import { ApiError, assertSameOrigin, errorResponse, json } from "@/lib/server/http";
 import { ensureSettings } from "@/lib/server/repo";
 import { users } from "@/lib/server/schema";
 import { createSession, getCurrentUser } from "@/lib/server/session";
@@ -10,8 +10,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** Test-only sign-in. Disabled unless explicitly enabled on a localhost app URL. */
-export async function POST() {
+export async function POST(request: Request) {
   try {
+    assertSameOrigin(request);
     return await testLogin();
   } catch (error) {
     return errorResponse(error);

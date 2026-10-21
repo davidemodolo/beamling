@@ -76,27 +76,28 @@ export function analyticsEnabled(): boolean {
 
 /** Capture settings: present only while analytics is enabled. */
 export function posthogConfig(): PostHogConfig | null {
-  return analyticsEnabled() ? posthogSettings() : null;
+  if (!analyticsEnabled()) return null;
+  const deletion = posthogDeletionConfig();
+  const apiKey = process.env.POSTHOG_API_KEY?.trim();
+  if (!deletion || !apiKey) return null;
+  return { ...deletion, apiKey };
 }
 
 /**
- * Deletion settings ignore the kill switch: events captured before `ANALYTICS_ENABLED=false` still
- * have to be erasable when their account is deleted.
+ * Deletion settings ignore the kill switch and the ingestion token: events captured before
+ * `ANALYTICS_ENABLED=false` still have to be erasable when their account is deleted.
  */
 export function posthogDeletionConfig(): PostHogConfig | null {
-  return posthogSettings();
-}
-
-function posthogSettings(): PostHogConfig | null {
-  const apiKey = process.env.POSTHOG_API_KEY?.trim();
+  const apiKey = process.env.POSTHOG_API_KEY?.trim() ?? "";
   const salt = process.env.ANALYTICS_SALT?.trim();
   const personalApiKey = process.env.POSTHOG_PERSONAL_API_KEY?.trim();
   const projectId = process.env.POSTHOG_PROJECT_ID?.trim();
   const host = posthogIngestionHost();
   const appHost = host ? posthogAppHost(host) : undefined;
-  if (!apiKey || !salt || !personalApiKey || !projectId || !host || !appHost) return null;
+  if (!salt || !personalApiKey || !projectId || !host || !appHost) return null;
   return { apiKey, salt, host, appHost, personalApiKey, projectId };
 }
+
 
 export function databaseUrl(): string | undefined {
   return process.env.DATABASE_URL ?? (isProduction() ? undefined : DEV_DATABASE_URL);
@@ -196,8 +197,65 @@ export function maxConcurrentChats(): number {
   return positiveInt("MAX_CONCURRENT_CHATS", 50);
 }
 
+/** Fairness guard: one account cannot occupy every global answer slot. */
+export function maxConcurrentChatsPerUser(): number {
+  return positiveInt("MAX_CONCURRENT_CHATS_PER_USER", 2);
+}
+
+/** Optional platform connection ceiling, used only for a startup safety warning. */
+export function platformConnectionLimit(): number | undefined {
+  const value = nonNegativeInt(process.env.PLATFORM_CONNECTION_LIMIT);
+  return value && value > 0 ? value : undefined;
+}
+
 export function loginsPerIpPerHour(): number {
   return positiveInt("LOGINS_PER_IP_PER_HOUR", 60);
+}
+
+export function authCallbacksPerIpPerHour(): number {
+  return positiveInt("AUTH_CALLBACKS_PER_IP_PER_HOUR", 120);
+}
+
+export type SignupMode = "open" | "allowlist" | "paused";
+
+/**
+ * Safe default: a production deployment accepts only invited addresses until the operator
+ * explicitly opts into open registration. Local development stays open.
+ */
+export function signupMode(): SignupMode {
+  const value = process.env.SIGNUP_MODE;
+  if (value === "open" || value === "allowlist" || value === "paused") return value;
+  return isProduction() ? "allowlist" : "open";
+}
+
+function csv(value: string | undefined): string[] {
+  return (value ?? "")
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export function signupAllowedEmails(): string[] {
+  return csv(process.env.SIGNUP_ALLOWED_EMAILS);
+}
+
+export function signupAllowedDomains(): string[] {
+  return csv(process.env.SIGNUP_ALLOWED_EMAIL_DOMAINS).map((domain) => domain.replace(/^@/, ""));
+}
+
+/** Exact addresses or a domain suffix. An empty allowlist admits nobody. */
+export function signupEmailAllowed(email: string): boolean {
+  const normalized = email.trim().toLowerCase();
+  if (!normalized.includes("@")) return false;
+  const domain = normalized.slice(normalized.lastIndexOf("@") + 1);
+  return (
+    signupAllowedEmails().includes(normalized) ||
+    signupAllowedDomains().some((allowed) => domain === allowed || domain.endsWith(`.${allowed}`))
+  );
+}
+
+export function signupsPerIpPerHour(): number {
+  return positiveInt("SIGNUPS_PER_IP_PER_HOUR", 10);
 }
 
 export const OIDC_TRANSACTION_TTL_SECONDS = 600;
@@ -233,7 +291,7 @@ const subkeys = new Map<string, Buffer>();
  * A separate 32-byte key per use of AUTH_SECRET (HKDF-SHA256), so the OIDC transaction cookie and
  * the IP hashes never share a key.
  */
-export function authSubkey(purpose: "oidc-transaction" | "ip-hash"): Buffer {
+export function authSubkey(purpose: "oidc-transaction" | "ip-hash" | "credential-fingerprint" | "provider-slot"): Buffer {
   const cacheKey = `${purpose}:${process.env.AUTH_SECRET}`;
   let key = subkeys.get(cacheKey);
   if (!key) {
@@ -336,8 +394,24 @@ export function productionConfigErrors(): string[] {
     if (issuer && (issuer.username || issuer.password)) {
       errors.push("OIDC_ISSUER must not contain credentials.");
     }
+    if (url && !isLocalHost(url.hostname) && issuer && issuer.origin !== "https://accounts.google.com") {
+      errors.push("OIDC_ISSUER must be https://accounts.google.com outside localhost (Google-only alpha).");
+    }
   } catch (error) {
     errors.push((error as Error).message);
+  }
+  if (url && !isLocalHost(url.hostname)) {
+    if (!process.env.LEGAL_ENTITY?.trim()) {
+      errors.push("LEGAL_ENTITY is required outside localhost so the privacy policy names its controller.");
+    }
+    const contact = process.env.LEGAL_CONTACT_EMAIL?.trim();
+    if (!contact || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact)) {
+      errors.push("LEGAL_CONTACT_EMAIL must be a monitored email address outside localhost.");
+    }
+  }
+  const signup = process.env.SIGNUP_MODE;
+  if (signup !== undefined && signup !== "open" && signup !== "allowlist" && signup !== "paused") {
+    errors.push("SIGNUP_MODE must be open, allowlist or paused.");
   }
   if (url) {
     const redirect = parseUrl(oidcRedirectUri());
@@ -375,8 +449,18 @@ function analyticsConfigErrors(): string[] {
   if (flag && flag !== "true" && flag !== "false") {
     return ["ANALYTICS_ENABLED must be exactly true or false."];
   }
-  if (!analyticsEnabled()) return [];
   const errors: string[] = [];
+  const deletionVarsPresent = Boolean(
+    process.env.POSTHOG_PERSONAL_API_KEY?.trim() ||
+      process.env.POSTHOG_PROJECT_ID?.trim() ||
+      process.env.ANALYTICS_SALT?.trim(),
+  );
+  if (deletionVarsPresent && !posthogDeletionConfig()) {
+    errors.push(
+      "PostHog deletion configuration is incomplete: set POSTHOG_PERSONAL_API_KEY, POSTHOG_PROJECT_ID, ANALYTICS_SALT, POSTHOG_HOST and POSTHOG_APP_HOST so account deletion can erase events.",
+    );
+  }
+  if (!analyticsEnabled()) return errors;
   if (!process.env.POSTHOG_API_KEY?.trim()) errors.push("POSTHOG_API_KEY is required when analytics is enabled.");
   if (!process.env.POSTHOG_PERSONAL_API_KEY?.trim()) {
     errors.push("POSTHOG_PERSONAL_API_KEY is required when analytics is enabled, so account deletion can remove events.");
@@ -401,6 +485,16 @@ function analyticsConfigErrors(): string[] {
 export function productionConfigWarnings(): string[] {
   if (!isProduction() || isLocalAppUrl()) return [];
   const warnings: string[] = [];
+  const maxChats = maxConcurrentChats();
+  const connectionLimit = platformConnectionLimit();
+  if (connectionLimit && maxChats >= connectionLimit) {
+    warnings.push(
+      `MAX_CONCURRENT_CHATS=${maxChats} is not below PLATFORM_CONNECTION_LIMIT=${connectionLimit}; health checks and ordinary requests may be locked out.`,
+    );
+  }
+  if (signupMode() === "allowlist" && !signupAllowedEmails().length && !signupAllowedDomains().length) {
+    warnings.push("SIGNUP_MODE=allowlist has no allowed emails or domains; all new sign-ups are paused.");
+  }
   const database = databaseHost();
   if (database && !isLocalHost(database.hostname) && database.hostname !== "db") {
     if (process.env.DATABASE_SSL !== "true") warnings.push("DATABASE_SSL is off for a remote database.");

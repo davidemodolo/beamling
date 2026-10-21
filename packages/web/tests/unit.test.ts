@@ -13,7 +13,7 @@ import { ApiError } from "../lib/server/http";
 import { searchBrave, validateBraveKey } from "../lib/server/providers/brave";
 import { exaError, searchExa, validateExaKey } from "../lib/server/providers/exa";
 import { searchTavily, tavilyError, validateTavilyKey } from "../lib/server/providers/tavily";
-import { DEFAULT_LLM_MODEL, OPENROUTER_MODEL_IDS, isAllowedModel } from "../lib/providers";
+import { DEFAULT_LLM_MODEL, OPENROUTER_MODEL_IDS, isAllowedModel } from "../lib/provider-catalog";
 import { APP_VERSION } from "../lib/version";
 
 process.env.CREDENTIAL_MASTER_KEY = randomBytes(32).toString("base64");
@@ -413,7 +413,7 @@ test("Brave drops unsafe URLs and results without a snippet", async (t) => {
 });
 
 test("search freshness applies only to questions about recent events", async () => {
-  const { freshnessDays } = await import("../lib/server/chat");
+  const { freshnessDays } = await import("../lib/server/answer-pipeline");
   assert.equal(freshnessDays("How does photosynthesis work?"), undefined);
   assert.equal(freshnessDays("Who won the 1998 World Cup?"), undefined);
   assert.equal(freshnessDays("What happened in the markets today?"), 1);
@@ -555,9 +555,16 @@ test("each use of AUTH_SECRET gets its own derived key", async (t) => {
 test("the test-only sign-in answers 404 when it is disabled", async (t) => {
   withEnv(t, { BEAMLING_TEST_AUTH: undefined, APP_URL: "https://beamling.example" });
   const { POST } = await import("../app/api/auth/test-login/route");
-  const response = await POST();
+  const response = await POST(new Request("http://localhost:3000/api/auth/test-login", { method: "POST" }));
   assert.equal(response.status, 404);
   assert.equal((await response.json()).error.code, "NOT_FOUND");
+  const crossOrigin = await POST(
+    new Request("http://localhost:3000/api/auth/test-login", {
+      method: "POST",
+      headers: { origin: "https://evil.example" },
+    }),
+  );
+  assert.equal(crossOrigin.status, 403);
 });
 
 test("same-origin checks trust only APP_URL, not proxy or host headers", async (t) => {
@@ -597,6 +604,10 @@ test("production refuses unsafe configuration", async (t) => {
     OIDC_CLIENT_ID: "client-id",
     OIDC_CLIENT_SECRET: "client-secret",
     OIDC_ISSUER: "https://accounts.google.com",
+    LEGAL_ENTITY: "Beamling Test S.r.l.",
+    LEGAL_CONTACT_EMAIL: "privacy@example.test",
+    LEGAL_ADDRESS: "Via Test 1, 00100 Roma, Italy",
+    SIGNUP_MODE: "open",
     KMS_PROVIDER: "gcp",
     KMS_KEY_NAME: "projects/p/locations/l/keyRings/r/cryptoKeys/k",
     KILL_SWITCH_SECRET: "k".repeat(32),
@@ -635,6 +646,10 @@ test("production refuses unsafe configuration", async (t) => {
   );
   assert.match(errorsWith({ OIDC_REDIRECT_URI: "https://beamling.example/callback" }), /callback\/google/);
   assert.match(errorsWith({ TRUSTED_PROXY_HOPS: undefined }), /TRUSTED_PROXY_HOPS/);
+  assert.match(errorsWith({ OIDC_ISSUER: "https://login.example.test" }), /Google-only alpha/);
+  assert.match(errorsWith({ LEGAL_ENTITY: undefined }), /LEGAL_ENTITY/);
+  assert.match(errorsWith({ LEGAL_CONTACT_EMAIL: undefined }), /LEGAL_CONTACT_EMAIL/);
+  assert.match(errorsWith({ LEGAL_CONTACT_EMAIL: "not-an-email" }), /LEGAL_CONTACT_EMAIL/);
   assert.match(errorsWith({ COOKIE_SECURE: "false" }), /COOKIE_SECURE/);
   assert.match(errorsWith({ BEAMLING_FAKE_PROVIDERS: "1" }), /BEAMLING_FAKE_PROVIDERS/);
   assert.match(errorsWith({ AUTH_SECRET: "short" }), /32 bytes/);
@@ -967,4 +982,80 @@ test("PostHog hosts must be https, and localhost is refused in production", asyn
 
   withEnv(t, { POSTHOG_HOST: "https://localhost" });
   assert.match(productionConfigErrors().join(" "), /POSTHOG_HOST must be an https origin outside localhost/);
+});
+
+
+test("stored content without an encryption envelope fails closed", async () => {
+  const { decryptText } = await import("../lib/server/workspace-key");
+  await assert.rejects(
+    () => decryptText("user", "messages", "row", "content", "legacy plaintext"),
+    /not encrypted/,
+  );
+  assert.equal(await decryptText("user", "messages", "row", "content", ""), "");
+});
+
+test("PostHog deletion works behind the kill switch without the ingestion token", async (t) => {
+  const { posthogConfig, posthogDeletionConfig } = await import("../lib/server/env");
+  withEnv(t, {
+    ANALYTICS_ENABLED: "false",
+    POSTHOG_API_KEY: undefined,
+    POSTHOG_PERSONAL_API_KEY: "phx_delete",
+    POSTHOG_PROJECT_ID: "123",
+    ANALYTICS_SALT: "x".repeat(32),
+    POSTHOG_HOST: undefined,
+    POSTHOG_APP_HOST: undefined,
+  });
+  assert.equal(posthogConfig(), null);
+  const deletion = posthogDeletionConfig();
+  assert.ok(deletion);
+  assert.equal(deletion.apiKey, "");
+  assert.equal(deletion.appHost, "https://eu.posthog.com");
+});
+
+test("malformed provider success bodies map to an outage, not a TypeError", async (t) => {
+  const { searchBrave } = await import("../lib/server/providers/brave");
+  const { searchTavily } = await import("../lib/server/providers/tavily");
+  const { searchExa } = await import("../lib/server/providers/exa");
+  for (const search of [searchBrave, searchTavily, searchExa]) {
+    mockFetch(t, () => new Response("null", { status: 200, headers: { "Content-Type": "application/json" } }));
+    await assert.rejects(
+      () => search("test-key", "q", { count: 1 }),
+      (error: unknown) => error instanceof ApiError && error.code === "PROVIDER_UNAVAILABLE",
+    );
+  }
+});
+
+test("OpenRouter rejects a stream that ends without a completion marker", async (t) => {
+  const { openRouterChat } = await import("../lib/server/providers/openrouter");
+  const body = 'data: {"choices":[{"delta":{"content":"partial"}}]}\n\n';
+  mockFetch(t, () => new Response(body, { status: 200 }));
+  await assert.rejects(
+    () => openRouterChat({ key: "sk", model: "m", messages: [], maxTokens: 1 }),
+    isApiError("PROVIDER_UNAVAILABLE", "openrouter"),
+  );
+});
+
+test("shared stream events reject malformed payloads and ignore unknown names", async () => {
+  const { parseStreamEvent } = await import("../lib/stream-events");
+  assert.deepEqual(parseStreamEvent("delta", { text: "Hello" }), { event: "delta", data: { text: "Hello" } });
+  assert.deepEqual(parseStreamEvent("stage", { stage: "searching", detail: "web" }), {
+    event: "stage",
+    data: { stage: "searching", detail: "web" },
+  });
+  assert.equal(parseStreamEvent("stage", { stage: "not-a-stage" }), null);
+  assert.equal(parseStreamEvent("delta", { text: 1 }), null);
+  assert.equal(parseStreamEvent("future-event", { anything: true }), null);
+});
+
+test("signup allowlists match exact addresses and domain suffixes", async (t) => {
+  const { signupEmailAllowed } = await import("../lib/server/env");
+  withEnv(t, {
+    SIGNUP_ALLOWED_EMAILS: "Person@Example.org",
+    SIGNUP_ALLOWED_EMAIL_DOMAINS: "opencitylabs.it,@example.test",
+  });
+  assert.equal(signupEmailAllowed("person@example.org"), true);
+  assert.equal(signupEmailAllowed("anyone@team.opencitylabs.it"), true);
+  assert.equal(signupEmailAllowed("anyone@example.test"), true);
+  assert.equal(signupEmailAllowed("anyone@evil.test"), false);
+  assert.equal(signupEmailAllowed("not-an-email"), false);
 });

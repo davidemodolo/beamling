@@ -16,6 +16,9 @@ import {
   OIDC_TRANSACTION_TTL_SECONDS,
   oidcTransactionCookieName,
   secureCookies,
+  signupEmailAllowed,
+  signupMode,
+  signupsPerIpPerHour,
 } from "./env";
 import { ApiError } from "./http";
 import { log, summarizeError } from "./log";
@@ -99,10 +102,21 @@ function verifiedEmail(claims: OidcClaims): string {
   return email;
 }
 
-/** New accounts share a global hourly budget, so a flood of sign-ups cannot grow the database unbounded. */
-export async function admitNewAccount(): Promise<void> {
+/**
+ * New accounts share a global hourly budget and a per-IP budget. The allowlist/paused modes are the
+ * primary control; the counters remain a backstop when registration is explicitly open.
+ */
+export async function admitNewAccount(email: string, clientIp: string): Promise<void> {
+  const mode = signupMode();
+  if (mode === "paused") {
+    throw new ApiError("SIGNUPS_PAUSED", "New sign-ups are paused. Try again later.", 429);
+  }
+  if (mode === "allowlist" && !signupEmailAllowed(email)) {
+    throw new ApiError("SIGNUP_NOT_INVITED", "This alpha is invite-only. Ask the operator for an invitation.", 403);
+  }
   try {
     await consumeRateLimit("signups:all", newAccountsPerHour(), 3600);
+    await consumeRateLimit(`signup-ip:${clientIp}`, signupsPerIpPerHour(), 3600);
   } catch (error) {
     if (!(error instanceof ApiError) || error.code !== "RATE_LIMITED") throw error;
     log.warn("Hourly new-account cap reached", { cap: newAccountsPerHour() });
@@ -110,7 +124,7 @@ export async function admitNewAccount(): Promise<void> {
   }
 }
 
-async function upsertUser(claims: OidcClaims): Promise<{ id: string; isNew: boolean }> {
+async function upsertUser(claims: OidcClaims, clientIp: string): Promise<{ id: string; isNew: boolean }> {
   const sub = typeof claims.sub === "string" ? claims.sub : "";
   if (!sub) throw new ApiError("AUTH_FAILED", "Google did not return a stable account id.", 502);
   const email = verifiedEmail(claims);
@@ -119,7 +133,7 @@ async function upsertUser(claims: OidcClaims): Promise<{ id: string; isNew: bool
   const now = new Date();
   const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.googleSub, sub)).limit(1);
   // Returning users always get in; only new accounts count against the sign-up cap.
-  if (!existing) await admitNewAccount();
+  if (!existing) await admitNewAccount(email, clientIp);
 
   const [user] = await db
     .insert(users)
@@ -133,6 +147,19 @@ async function upsertUser(claims: OidcClaims): Promise<{ id: string; isNew: bool
   await ensureSettings(user.id);
   await ensureWorkspaceKey(user.id);
   return { id: user.id, isNew: !existing };
+}
+
+async function clearTransactionCookie(): Promise<void> {
+  const store = await cookies();
+  // `delete()` omits Secure, which browsers reject for a __Host- cookie; set an explicit expired
+  // cookie with the same attributes instead.
+  store.set(oidcTransactionCookieName(), "", {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: secureCookies(),
+    path: "/",
+    maxAge: 0,
+  });
 }
 
 async function readTransaction(): Promise<{
@@ -162,8 +189,16 @@ async function readTransaction(): Promise<{
   }
 }
 
-export async function completeLogin(requestUrl: string): Promise<{ returnTo: string }> {
-  const transaction = await readTransaction();
+export async function completeLogin(requestUrl: string, clientIp: string): Promise<{ returnTo: string }> {
+  let transaction: Awaited<ReturnType<typeof readTransaction>>;
+  try {
+    transaction = await readTransaction();
+  } catch (error) {
+    await clearTransactionCookie();
+    throw error;
+  }
+  // The transaction is one-time: consume it before the token exchange so a failed attempt cannot be replayed.
+  await clearTransactionCookie();
   const config = await oidcConfiguration();
   const currentUrl = new URL(`${appUrl()}/api/auth/callback/google`);
   const incoming = new URL(requestUrl);
@@ -185,18 +220,8 @@ export async function completeLogin(requestUrl: string): Promise<{ returnTo: str
     throw new ApiError("AUTH_FAILED", "Google sign-in could not be completed. Try again.", 502);
   }
 
-  const user = await upsertUser(claims as OidcClaims);
+  const user = await upsertUser(claims as OidcClaims, clientIp);
   await createSession(user.id);
   if (user.isNew) analytics.capture(user.id, "account_created", {});
-  const store = await cookies();
-  // `delete()` omits Secure, which browsers reject for a __Host- cookie; set an explicit expired
-  // cookie with the same attributes instead.
-  store.set(oidcTransactionCookieName(), "", {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: secureCookies(),
-    path: "/",
-    maxAge: 0,
-  });
   return { returnTo: user.isNew ? "/onboarding" : transaction.returnTo };
 }

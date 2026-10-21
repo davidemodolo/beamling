@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MODES } from "@/lib/contracts";
 import { abortChats } from "@/lib/server/active-chats";
 import { idParam, json, notFound, parseBody } from "@/lib/server/http";
 import { deleteConversation, getConversation, updateConversation } from "@/lib/server/repo";
@@ -9,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 const schema = z
   .object({
-    mode: z.enum(["quick", "deep", "deeper"]).optional(),
+    mode: z.enum(MODES).optional(),
     pinned: z.boolean().optional(),
   })
   .refine((input) => input.mode !== undefined || input.pinned !== undefined, {

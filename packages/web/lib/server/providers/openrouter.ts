@@ -155,10 +155,15 @@ export async function openRouterChat(options: ChatOptions): Promise<ChatResult> 
   let finishReason: string | undefined;
   let usage: ChatUsage = { promptTokens: 0, completionTokens: 0, costUsd: 0 };
   let streamError: ApiError | null = null;
+  let terminal = false;
 
   const parser = createParser({
     onEvent(event) {
-      if (!event.data || event.data === "[DONE]") return;
+      if (!event.data) return;
+      if (event.data === "[DONE]") {
+        terminal = true;
+        return;
+      }
       let chunk: StreamChunk;
       try {
         chunk = JSON.parse(event.data);
@@ -184,7 +189,10 @@ export async function openRouterChat(options: ChatOptions): Promise<ChatResult> 
         content += delta.content;
         options.onDelta?.(delta.content);
       }
-      if (chunk.choices?.[0]?.finish_reason) finishReason = chunk.choices[0].finish_reason;
+      if (chunk.choices?.[0]?.finish_reason) {
+        finishReason = chunk.choices[0].finish_reason;
+        terminal = true;
+      }
       if (chunk.usage) {
         usage = {
           promptTokens: chunk.usage.prompt_tokens ?? usage.promptTokens,
@@ -215,5 +223,8 @@ export async function openRouterChat(options: ChatOptions): Promise<ChatResult> 
     reader.releaseLock();
   }
   if (streamError) throw streamError;
+  if (!terminal) {
+    throw unavailable("openrouter", "OpenRouter ended the stream before a completion marker.");
+  }
   return { content, reasoning: reasoning || undefined, model, provider, finishReason, usage };
 }

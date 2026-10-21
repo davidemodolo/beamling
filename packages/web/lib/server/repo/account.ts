@@ -1,9 +1,10 @@
-import { eq, inArray, lt, lte } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import type { AppState } from "../../types";
 import { db } from "../db";
-import { analyticsErasures, authSessions, providerSlots, rateLimits, users } from "../schema";
+import { analyticsErasures, authSessions, credentials, providerSlots, rateLimits, users } from "../schema";
+import { decryptCredential, providerSlotKey } from "../crypto";
 import { forgetWorkspaceKey } from "../workspace-key";
-import { countConversations, listConversationPage } from "./conversations";
+import { cleanupEmptyConversations, countConversations, listConversationPage } from "./conversations";
 import { listCredentials } from "./credentials";
 import { interruptStaleAnswers } from "./messages";
 import { ensureSettings } from "./settings";
@@ -48,6 +49,17 @@ export async function deleteSessions(userId: string): Promise<void> {
  * one must never lose the erasure if the process stops before the first PostHog request.
  */
 export async function deleteAccount(userId: string, analyticsDistinctId?: string | null): Promise<void> {
+  // Provider slots are keyed by the plaintext provider key; release them before the credentials cascade.
+  const storedCredentials = await db.select().from(credentials).where(eq(credentials.userId, userId));
+  const slotKeys: string[] = [];
+  for (const row of storedCredentials) {
+    if (row.kind !== "search" || row.provider !== "brave") continue;
+    try {
+      slotKeys.push(providerSlotKey("brave", await decryptCredential(userId, row)));
+    } catch {
+      // Age-based cleanup remains the fallback for an unreadable credential.
+    }
+  }
   await db.transaction(async (tx) => {
     if (analyticsDistinctId) {
       await tx
@@ -58,6 +70,7 @@ export async function deleteAccount(userId: string, analyticsDistinctId?: string
           set: { passesLeft: 2, nextAttemptAt: new Date() },
         });
     }
+    if (slotKeys.length) await tx.delete(providerSlots).where(inArray(providerSlots.key, slotKeys));
     await tx.delete(authSessions).where(eq(authSessions.userId, userId));
     await tx
       .delete(rateLimits)
@@ -79,11 +92,11 @@ export async function deleteAccount(userId: string, analyticsDistinctId?: string
  * deleted for inactivity because a Google sign-in can always return to them.
  */
 export async function cleanupExpired(): Promise<{ failures: unknown[] }> {
-  const now = new Date();
   const steps = [
-    () => db.delete(authSessions).where(lte(authSessions.expiresAt, now)),
-    () => db.delete(rateLimits).where(lte(rateLimits.expiresAt, now)),
-    () => db.delete(providerSlots).where(lt(providerSlots.nextAt, new Date(now.getTime() - 60 * 60_000))),
+    () => db.delete(authSessions).where(sql`${authSessions.expiresAt} <= clock_timestamp()`),
+    () => db.delete(rateLimits).where(sql`${rateLimits.expiresAt} <= clock_timestamp()`),
+    () => db.delete(providerSlots).where(sql`${providerSlots.nextAt} < clock_timestamp() - interval '1 hour'`),
+    () => cleanupEmptyConversations(),
     () => interruptStaleAnswers(),
   ];
   const results = await Promise.allSettled(steps.map((step) => step()));
