@@ -6,37 +6,59 @@ Your models. Your search. Your bill.
 
 ## Current features
 
-- Guest workspaces with no signup, email, or stored identity
+- Google-only accounts; no guest workspaces
 - Bring your own OpenRouter and Brave Search keys
-- Keys encrypted at rest and never returned in plaintext
-- Quick mode for one search pass and Deep mode for multi-query research
+- Keys and conversation content encrypted at rest through KMS-backed envelope encryption
+- Brave Free/Paid plan plus optional expiry and budget warnings
+- Quick for one search pass, Deep for planned multi-query research, Deeper for an agentic loop with up to 60 searches
 - Streamed answers with inline, numbered citations
+- Collapsed panels for the searches actually run and any model-provided reasoning
+- Markdown tables, headings, lists, quotes and code
 - Source panel with titles, domains, snippets, and publication dates
-- Conversation history with per-conversation deletion
+- Conversation history with pinned chats, title search and per-conversation deletion
 - Model and default-mode settings
-- Workspace deletion from the account settings
-- Self-hosting with Docker Compose and PostgreSQL
+- Account deletion and sign-out
+- Production-parity local stack with HTTPS, OIDC, KMS and TLS PostgreSQL
+
+## Technical reference
+
+See [TECHNICAL.md](TECHNICAL.md) for the current architecture, API, answer pipeline, data model, security controls and tests.
 
 ## Running locally
 
 ```sh
-cp .env.example .env            # set CREDENTIAL_MASTER_KEY (openssl rand -base64 32)
-docker compose up --build       # http://localhost:3000
+pnpm local:up                   # https://localhost
 ```
 
-Set `BEAMLING_FAKE_PROVIDERS=1` to try it without provider keys (any key starting with `test-` works).
+The parity stack runs the production image behind Caddy with Dex as the local OIDC provider and LocalStack KMS. Sign in with `test@beamling.local` / `beamling`, accept the local CA, then add real OpenRouter and Brave keys. Stop it with `pnpm local:down`.
+
+`pnpm web:dev` remains available for a fast dev loop. Set `BEAMLING_FAKE_PROVIDERS=1` to try it without provider keys (any key starting with `test-` works).
 
 Tests: `pnpm test` (unit; integration tests run when `DATABASE_URL` points at a migrated test database) and
 `pnpm --filter @beamling/web test:e2e` (Playwright, against a production build with fixture providers).
 
+## Releasing
+
+The version lives in the root `package.json`. To cut a release:
+
+```sh
+pnpm version:set 0.2.0
+git add package.json packages/web/package.json packages/mascot/package.json
+git commit -m "chore(release): v0.2.0"
+git push origin main
+```
+
+On a green `main` build, CI tags `v0.2.0`, pushes the image to GHCR as `v0.2.0` and `latest`, and creates the GitHub release. `/api/health`, the landing footer and the sidebar expose the same version and commit.
+
 ## Deploying
 
-- Serve it behind a reverse proxy that terminates TLS and appends to `X-Forwarded-For`, and set
-  `TRUSTED_PROXY_HOPS` to the number of proxies. Without one, per-IP limits trust a client-controlled header.
-- `APP_URL` must be the public `https://` URL. The server refuses to start with an unsafe configuration.
+- `APP_URL` must be the public `https://` origin only, for example `https://beamling.example` (no path, query or trailing route). It is the anchor for same-origin checks, cookies and OIDC redirects.
+- Do not expose the app container directly. The proxy must terminate TLS, overwrite client-supplied forwarding headers, append to `X-Forwarded-For`, and pass the original `Host`.
+- Set `TRUSTED_PROXY_HOPS` to the exact proxy count. The server refuses a non-local deployment without it; without a trusted proxy, per-IP limits would trust a client-controlled header.
 - Run `node scripts/migrate.mjs` before starting new instances; migrations are serialized with an advisory lock.
 - On `SIGTERM` the server stores running answers as interrupted before exiting; allow it about 10 seconds.
-- Guest workspaces whose session expired (30 days without use) are deleted automatically.
-- The privacy page promises logs and database backups kept at most 30 days: configure log retention
-  and backup expiry on the hosting platform to match.
-- Rotating `CREDENTIAL_MASTER_KEY`: see `.env.example` and `scripts/rewrap-credentials.mjs`.
+- Accounts persist across Google sign-ins; expired sessions are deleted, but account data is only removed by account deletion or retention policy.
+- Production uses GCP Cloud KMS. The env master key and `scripts/rewrap-credentials.mjs` are for local tests only.
+- Enable database backups with a 30-day expiry, platform log retention of at most 30 days, and alerts on `/api/health`.
+- Publish the operator's legal entity and monitored privacy contact before opening sign-ups; the supplied legal pages are factual drafts, not legal review.
+- Before each release: `pnpm audit --prod`, a Gitleaks history scan, and a container scan of the built image. CI runs the production audit and Gitleaks automatically.

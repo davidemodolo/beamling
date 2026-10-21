@@ -7,7 +7,7 @@ Beamling floats inside an imaginary room (a box) seen through a perspective came
 - **No light simulation.** Each eye's outline is pushed through the room in 3D and projected, and the light is drawn as one SVG path per eye. A frame costs about 0.15 ms.
 - **Light runtime.** No dependencies, about 6 kB gzipped. Renders on the server and animates on the client.
 - **Sleeps when idle.** The animation runs only while something moves. Between blinks and glances it sleeps until the next event, and it skips DOM writes when nothing changed. The slow `sleepy` drift redraws at about 20 fps instead of every frame. It pauses off screen and in hidden tabs.
-- **Mark.** With `beams={false}`, it's an eyes-only mark with a soft glow, facing the viewer.
+- **Mark.** With `beams={false}`, it's a flat eyes-only mark facing the viewer.
 - **Motion.** 12 expressions × 6 activities, spring-morphed: blinks, glances, searchlight sweeps, reading saccades, typing flicker, looking around the room.
 - **Reduced motion.** Respects `prefers-reduced-motion` (or the `reducedMotion` option): static poses, no blinking, drifting or pointer following. An explicit `lookAt()` still turns the eyes, without animation, and they return to centre when it ends.
 
