@@ -130,6 +130,7 @@ Configuration is read from environment variables at request/startup time. There 
 | `OIDC_CLIENT_SECRET` | Google OAuth client secret. |
 | `KMS_PROVIDER` | `gcp` in production, `aws` in the local parity stack, `env` only on localhost/tests. |
 | `KMS_KEY_NAME` | GCP Cloud KMS key resource name when `KMS_PROVIDER=gcp`. |
+| `GCP_KMS_CREDENTIALS` | Optional service-account JSON for hosts without a credentials file. Otherwise the GCP client uses Application Default Credentials. |
 | `KMS_KEY_ID` | AWS KMS key id or alias when `KMS_PROVIDER=aws`. |
 
 Production startup refuses to boot when any of these checks fails:
@@ -142,6 +143,7 @@ Production startup refuses to boot when any of these checks fails:
 - `OIDC_CLIENT_ID` or `OIDC_CLIENT_SECRET` is missing.
 - `OIDC_ISSUER` is not HTTPS outside localhost.
 - `KMS_PROVIDER=env` outside localhost, or the selected KMS key setting is missing.
+- `GCP_KMS_CREDENTIALS` is present but is not valid service-account JSON with `client_email` and `private_key`.
 - `BEAMLING_FAKE_PROVIDERS=1` outside a localhost `APP_URL`.
 - `ANALYTICS_ENABLED` is set to anything other than `true` or `false`.
 - Analytics is enabled without `POSTHOG_API_KEY`, `POSTHOG_PERSONAL_API_KEY`, `POSTHOG_PROJECT_ID` or at least 32 bytes of `ANALYTICS_SALT`.
@@ -1440,7 +1442,19 @@ Migrations are a release step, not an app-start side effect. The local compose `
 - On a green push to `main`, CI creates the annotated tag `v<version>` if it does not exist, builds the production image, pushes `ghcr.io/<repo>:v<version>` and `:latest`, then creates a GitHub release with generated notes.
 - A new release requires a version bump. Pushing another commit without one leaves the existing tag and image untouched.
 
-### 14.6 Database pool
+### 14.6 Fly.io deployment
+
+`fly.toml` describes the production topology: one shared-CPU 1 GB machine in `fra`, scale-to-zero, a 20-second shutdown window, HTTP health checks on `/api/health`, and the migration release command.
+
+- Production deploys are gated by the repository variable `FLY_DEPLOY_ENABLED=true`. When a new version tag is created, the `deploy` job in `ci.yml` installs pinned flyctl `0.4.120` and runs `flyctl deploy --remote-only --ha=false`.
+- Required Fly secrets: `DATABASE_URL`, `AUTH_SECRET`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `KMS_KEY_NAME`, `GCP_KMS_CREDENTIALS` and, when analytics is enabled, the PostHog values.
+- `GCP_KMS_CREDENTIALS` is the service-account JSON. It lets the GCP client run on a host with no credentials file; Application Default Credentials remain the fallback.
+- `release_command = "node scripts/migrate.mjs"` applies the schema before the new machine receives traffic.
+- Neon must use its pooled connection string with TLS; `DATABASE_SSL=true` is set in `fly.toml`.
+- `APP_URL` defaults to `https://beamling.app`. Override it as a Fly secret for staging or a different domain, and register the matching Google OAuth callback.
+- The Fly app and certificate are not created by the repository. Create the app, set the secrets, enable the workflow variable and attach the custom domain before the first deploy.
+
+### 14.7 Database pool
 
 - One pool per process, reused across route handlers and instrumentation through `globalThis`.
 - Default max 10 connections.
@@ -1537,6 +1551,7 @@ The Playwright suite checks:
 | Credential protection | AES-256-GCM envelope encryption, AAD binding, master-key rotation |
 | Persistence | PostgreSQL 18, Drizzle schema, forward-only migration ledger |
 | Local deployment | Docker Compose app + PostgreSQL, standalone image, build identity, health check, graceful shutdown |
+| Production deploy config | `fly.toml`, gated Fly deploy job, GCP service-account secret support; no live deployment yet |
 | Observability | Structured JSON logs, versioned health endpoint, build identity in the UI, optional server-side PostHog events |
 | Analytics | Opt-in server-side PostHog events with allowlisted metadata, HMAC ids, kill switch and deletion cleanup |
 | Testing | Unit, integration, E2E and mascot geometry suites |

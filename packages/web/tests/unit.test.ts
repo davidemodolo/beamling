@@ -637,6 +637,12 @@ test("production refuses unsafe configuration", async (t) => {
   assert.match(errorsWith({ BEAMLING_FAKE_PROVIDERS: "1" }), /BEAMLING_FAKE_PROVIDERS/);
   assert.match(errorsWith({ AUTH_SECRET: "short" }), /32 bytes/);
   assert.match(errorsWith({ KMS_PROVIDER: "env" }), /KMS_PROVIDER=env/);
+  assert.match(errorsWith({ GCP_KMS_CREDENTIALS: "not-json" }), /GCP_KMS_CREDENTIALS must be a JSON/);
+  assert.match(errorsWith({ GCP_KMS_CREDENTIALS: "{}" }), /GCP_KMS_CREDENTIALS must contain/);
+  assert.equal(
+    errorsWith({ GCP_KMS_CREDENTIALS: JSON.stringify({ client_email: "kms@example.test", private_key: "key" }) }),
+    "",
+  );
   assert.match(errorsWith({ ANALYTICS_ENABLED: "yes" }), /exactly true or false/);
   const analyticsErrors = errorsWith({ ANALYTICS_ENABLED: "true" });
   assert.match(analyticsErrors, /POSTHOG_API_KEY/);

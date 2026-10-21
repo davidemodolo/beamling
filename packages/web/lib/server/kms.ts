@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
-import { currentMasterKey, masterKeyById } from "./env";
+import { currentMasterKey, gcpCredentials, masterKeyById } from "./env";
 
 export interface WrappedKey {
   keyId: string;
@@ -55,7 +55,8 @@ async function aws() {
 let gcpClient: import("@google-cloud/kms").KeyManagementServiceClient | undefined;
 async function gcp() {
   const { KeyManagementServiceClient } = await import("@google-cloud/kms");
-  gcpClient ??= new KeyManagementServiceClient();
+  const credentials = gcpCredentials();
+  gcpClient ??= new KeyManagementServiceClient(credentials ? { credentials } : {});
   return gcpClient;
 }
 

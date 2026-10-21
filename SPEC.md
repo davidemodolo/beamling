@@ -45,7 +45,7 @@ This file is the **target contract** for Alpha 1 and public launch. It is not an
 | Content at rest | Conversation titles, messages, sources and stored errors are encrypted with per-account workspace keys | Same; GCP KMS in production |
 | Public pages | `/`, `/login`, `/onboarding`, `/chat`, `/chat/[id]`, `/privacy`, `/terms` | Add `/welcome` if needed, full legal/footer surface, docs, status, licenses, support and supporters |
 | Analytics | Server-side PostHog events with an allowlist, HMAC distinct IDs, opt-in kill switch and account-deletion hook; no browser SDK | PostHog Cloud EU, server-side metadata-only events and operator dashboards |
-| Operations | Production-parity Docker Compose with Caddy TLS, Dex OIDC, LocalStack KMS, TLS Postgres and the production image; release migrations, versioned health, tagged releases, graceful shutdown | Fly + Neon, GCP KMS, monitoring, backups, killswitch |
+| Operations | Production-parity Docker Compose with Caddy TLS, Dex OIDC, LocalStack KMS, TLS Postgres and the production image; release migrations, versioned health, tagged releases, graceful shutdown; Fly configuration and gated deploy job, not yet deployed | Fly + Neon, GCP KMS, monitoring, backups, killswitch |
 | Tests | 46 web unit tests, 28 database integration tests, 29 Playwright E2E tests, 6 mascot tests | Add parity-stack smoke, analytics, legal, killswitch, dump-encryption, load and eval gates |
 | Donations | None | Optional post-public `/support` and `/supporters` |
 
@@ -1747,7 +1747,7 @@ Evaluation methodology: each golden question has a reference answer and expected
 
 ## 21. Deployment and Operations
 
-**Current checkout:** `pnpm local:up` runs the production image behind Caddy with Dex OIDC, LocalStack KMS and TLS PostgreSQL; migrations are a separate release step; `/api/health` is the health check; `SIGTERM` stores partial answers before exit. Fly.io, Neon, Sentry, Better Stack, GitHub Actions deployment and the killswitch are public-launch targets.
+**Current checkout:** `pnpm local:up` runs the production image behind Caddy with Dex OIDC, LocalStack KMS and TLS PostgreSQL; migrations are a separate release step; `/api/health` is the health check; `SIGTERM` stores partial answers before exit. `fly.toml` and a gated CI deploy job are committed, but no Fly app or Neon database is live yet. Sentry, Better Stack and the killswitch remain public-launch targets.
 
 ### 21.1 Public launch stack (target)
 
@@ -1757,7 +1757,7 @@ Evaluation methodology: each golden question has a reference answer and expected
 | DNS / TLS | Dynadot DNS, or Cloudflare DNS by choice; Fly-managed certificates | If Cloudflare is used, keep the app records DNS-only (grey cloud) during certificate issuance. |
 | Compute | **Fly.io Machines**, Docker image | `min_machines_running=0`, auto-stop/auto-start, fixed maximum machine count, 1 GB `shared-cpu-1x`, health check and graceful shutdown. |
 | Database | **Neon Postgres Launch**, EU region | Scale-to-zero after 5 minutes, max CU cap, pooled connection string, 7-day instant restore plus weekly logical dumps. |
-| KMS | **GCP Cloud KMS**, one software master key | Per-workspace WDKs wrapped by the master key; deletion protection and rotation enabled. Use a restricted service account (`cloudkms.cryptoKeyEncrypterDecrypter`); prefer Workload Identity over a long-lived JSON key. |
+| KMS | **GCP Cloud KMS**, one software master key | Per-workspace WDKs wrapped by the master key; deletion protection and rotation enabled. Use a restricted service account (`cloudkms.cryptoKeyEncrypterDecrypter`). Fly uses a service-account JSON secret; move to Workload Identity if the compute host supports it. |
 | Analytics | **PostHog Cloud EU** | Server-side, metadata-only events; free plan or $0 billing limit. |
 | Legal / consent | **Iubenda** default; Cookiebot free tier alternative | Only enabled when a non-essential script exists; no custom banner. |
 | Open-source compliance | Generated `/licenses`, dependency allowlist | CI gate; app source stays proprietary. |
@@ -1774,7 +1774,7 @@ Evaluation methodology: each golden question has a reference answer and expected
 - **Migrations:** forward-only, reviewed, applied before deploy with `node scripts/migrate.mjs`. No destructive migration without a backfill plan. The public-launch migration must encrypt any existing plaintext content (§13.6) and verify that a raw database dump contains no readable user content; this is a release gate.
 - **Encryption at rest:** per-workspace content encryption (§13.6) is live and the production deployment must use GCP KMS; the launch dump/backup check must pass.
 - **Backups:** managed database backups with point-in-time recovery where available, 30-day window. Quarterly restore drill.
-- **Secrets:** platform secret store only. No secrets in the repository or build logs. Public launch requires `DATABASE_URL`, `APP_URL`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_REDIRECT_URI`, `KMS_PROVIDER=gcp`, `KMS_KEY_NAME` plus a restricted GCP service account, `POSTHOG_API_KEY`, `POSTHOG_HOST`, `POSTHOG_PERSONAL_API_KEY`, `POSTHOG_PROJECT_ID`, `ANALYTICS_SALT`, `KILL_SWITCH_SECRET` and `METRICS_SECRET`. Local development may use the AWS/LocalStack KMS adapter; `CREDENTIAL_MASTER_KEY` is test-only.
+- **Secrets:** platform secret store only. No secrets in the repository or build logs. Public launch requires `DATABASE_URL`, `APP_URL`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_REDIRECT_URI`, `KMS_PROVIDER=gcp`, `KMS_KEY_NAME` plus a restricted GCP service account (`GCP_KMS_CREDENTIALS` on Fly), `POSTHOG_API_KEY`, `POSTHOG_HOST`, `POSTHOG_PERSONAL_API_KEY`, `POSTHOG_PROJECT_ID`, `ANALYTICS_SALT`, `KILL_SWITCH_SECRET` and `METRICS_SECRET`. Local development may use the AWS/LocalStack KMS adapter; `CREDENTIAL_MASTER_KEY` is test-only.
 - **Analytics:** PostHog Cloud EU, server-side only. Environment: `POSTHOG_API_KEY`, `POSTHOG_HOST`, `POSTHOG_APP_HOST` (optional), `POSTHOG_PERSONAL_API_KEY`, `POSTHOG_PROJECT_ID`, `ANALYTICS_SALT`; `ANALYTICS_ENABLED=true` is the opt-in and `false` is the kill switch. The personal key needs `person:write` for account-deletion cleanup. Keep the project on the free plan or a $0 billing limit; no browser SDK, autocapture or session replay.
 - **Legal and consent:** publish reviewed Privacy/Terms/Cookie Policy/Subprocessors/Security pages; configure Iubenda (default) or Cookiebot only if non-essential scripts exist; add CMP domains to CSP; generate `/licenses` in CI; run the footer link checker.
 - **Public docs and feedback:** Product docs are published in a public repository with GitHub issue templates for bugs and feature requests and a private security disclosure path. The application source stays private; public docs do not grant an open-source license for the product.
@@ -1852,7 +1852,7 @@ Evaluation methodology: each golden question has a reference answer and expected
 |---|---|---|---|
 | M0 — Spec | This document, brand assets brief, domain purchases | Review complete | Spec exists; domain purchase unconfirmed |
 | M1 — Alpha 1 | Google-only accounts, OpenRouter credentials and streaming, Brave/Tavily/Exa search adapters, Brave plan/expiry/budget metadata, Quick, Deep, Deeper, citations, search animation, history, PostHog usage analytics, production-parity local stack | Quick and Deep cited answers render end to end; Google login works; animation follows real stages; local stack runs the production image with KMS-backed crypto | Implemented in code and tests, including PostHog events, kill switch and deletion hook; live PostHog project, dashboards and alerts remain operator setup |
-| M2 — Private alpha | Onboarding, settings, usage/cost, error states, account deletion, 100-question eval, Fly + Neon deploy | 10–25 invited users complete real Quick, Deep and Deeper questions without key leakage | Target |
+| M2 — Private alpha | Onboarding, settings, usage/cost, error states, account deletion, 100-question eval, Fly + Neon deploy | 10–25 invited users complete real Quick, Deep and Deeper questions without key leakage | Partial: onboarding, settings, costs, errors and deletion are implemented; Fly config and deploy job are committed; the live deploy and 100-question eval remain |
 | M3 — Public launch | All launch adapters, welcome page, public docs and GitHub feedback repo, legal pages, open-source license page, CMP if needed, rate limits, status page | Public Google sign-in open, SLOs met for one week | Target |
 | M3.1 — Support (optional, post-public) | `/support`, outbound Tipeee/PayPal link, opt-in `/supporters`, footer link | Donation link works with no payment script; consent and removal process documented | Target |
 | M4 — v1 | PDF upload, share links, exports, optional public API, KMS-backed keys | Quality and security gates passed for both modes | Target |

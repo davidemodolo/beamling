@@ -257,6 +257,31 @@ export function kmsProvider(): "env" | "aws" | "gcp" {
   throw new Error("KMS_PROVIDER must be env, aws or gcp.");
 }
 
+export interface GcpServiceAccount {
+  client_email: string;
+  private_key: string;
+}
+
+/**
+ * A service-account key passed as a secret, for hosts that cannot mount a credentials file.
+ * Workload Identity and GOOGLE_APPLICATION_CREDENTIALS remain supported when this is absent.
+ */
+export function gcpCredentials(): GcpServiceAccount | undefined {
+  const raw = process.env.GCP_KMS_CREDENTIALS?.trim();
+  if (!raw) return undefined;
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    throw new Error("GCP_KMS_CREDENTIALS must be a JSON service-account key.");
+  }
+  const candidate = value as Partial<Record<keyof GcpServiceAccount, unknown>> | null;
+  if (typeof candidate?.client_email !== "string" || typeof candidate.private_key !== "string" || !candidate.client_email || !candidate.private_key) {
+    throw new Error("GCP_KMS_CREDENTIALS must contain client_email and private_key.");
+  }
+  return { client_email: candidate.client_email, private_key: candidate.private_key };
+}
+
 function databaseHost(): { hostname: string; password: string } | null {
   const url = parseUrl(process.env.DATABASE_URL ?? "");
   return url ? { hostname: url.hostname, password: decodeURIComponent(url.password) } : null;
@@ -322,6 +347,7 @@ export function productionConfigErrors(): string[] {
     if (provider === "env" && !isLocalAppUrl()) errors.push("KMS_PROVIDER=env is not allowed outside localhost.");
     if (provider === "aws" && !process.env.KMS_KEY_ID) errors.push("KMS_KEY_ID is required for the AWS KMS adapter.");
     if (provider === "gcp" && !process.env.KMS_KEY_NAME) errors.push("KMS_KEY_NAME is required for the GCP KMS adapter.");
+    if (provider === "gcp") gcpCredentials();
     if (provider === "env") {
       currentMasterKey();
       previousMasterKeys();
