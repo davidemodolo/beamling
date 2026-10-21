@@ -32,7 +32,6 @@ export {
 export { ensureSettings, updateSettings } from "./settings";
 export {
   claimAnalyticsErasures,
-  enqueueAnalyticsErasure,
   recordAnalyticsErasure,
   type AnalyticsErasure,
 } from "./analytics-erasures";

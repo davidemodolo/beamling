@@ -687,16 +687,17 @@ test("a key saved without validation is unverified and has no check date", { ski
   assert.equal(credential.lastValidatedAt, undefined);
 });
 
-test("analytics erasures run twice on success and back off on failure", { skip }, async (t) => {
-  const { claimAnalyticsErasures, enqueueAnalyticsErasure, recordAnalyticsErasure } = await import("../lib/server/repo");
+test("deleting an account queues its erasure, which runs twice and backs off on failure", { skip }, async (t) => {
+  const { claimAnalyticsErasures, deleteAccount, recordAnalyticsErasure } = await import("../lib/server/repo");
   const { db } = await import("../lib/server/db");
   const { analyticsErasures } = await import("../lib/server/schema");
   const { eq } = await import("drizzle-orm");
+  const userId = await createAccount(t, { keys: false });
   const distinctId = `erasure-${randomBytes(6).toString("hex")}`;
   t.after(() => db.delete(analyticsErasures).where(eq(analyticsErasures.distinctId, distinctId)));
   const read = async () => (await db.select().from(analyticsErasures).where(eq(analyticsErasures.distinctId, distinctId)))[0];
 
-  await enqueueAnalyticsErasure(distinctId);
+  await deleteAccount(userId, distinctId);
   const [first] = await claimAnalyticsErasures({ distinctId });
   assert.equal(first.passesLeft, 2);
   // A claimed row is hidden from other instances until its claim expires.

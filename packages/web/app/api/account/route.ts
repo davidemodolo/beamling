@@ -1,5 +1,6 @@
 import { abortChats } from "@/lib/server/active-chats";
-import { eraseAnalyticsNow, queueAnalyticsErasure } from "@/lib/server/analytics-erasure";
+import { analytics } from "@/lib/server/analytics";
+import { eraseAnalyticsNow } from "@/lib/server/analytics-erasure";
 import { json } from "@/lib/server/http";
 import { deleteAccount } from "@/lib/server/repo";
 import { apiRoute } from "@/lib/server/route";
@@ -11,8 +12,8 @@ export const dynamic = "force-dynamic";
 export const DELETE = apiRoute(
   async ({ user }) => {
     if (user) {
-      const distinctId = await queueAnalyticsErasure(user.id);
-      await deleteAccount(user.id);
+      const distinctId = analytics.distinctIdFor(user.id);
+      await deleteAccount(user.id, distinctId);
       abortChats({ userId: user.id });
       if (distinctId) await eraseAnalyticsNow(distinctId);
     }

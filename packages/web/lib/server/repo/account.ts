@@ -1,7 +1,7 @@
 import { eq, inArray, lt, lte } from "drizzle-orm";
 import type { AppState } from "../../types";
 import { db } from "../db";
-import { authSessions, providerSlots, rateLimits, users } from "../schema";
+import { analyticsErasures, authSessions, providerSlots, rateLimits, users } from "../schema";
 import { forgetWorkspaceKey } from "../workspace-key";
 import { countConversations, listConversationPage } from "./conversations";
 import { listCredentials } from "./credentials";
@@ -42,8 +42,22 @@ export async function deleteSessions(userId: string): Promise<void> {
   await db.delete(authSessions).where(eq(authSessions.userId, userId));
 }
 
-export async function deleteAccount(userId: string): Promise<void> {
+/**
+ * Deletes the account and, in the same transaction, queues its PostHog erasure. Atomicity matters:
+ * a failed deletion must not erase the analytics of an account that still exists, and a successful
+ * one must never lose the erasure if the process stops before the first PostHog request.
+ */
+export async function deleteAccount(userId: string, analyticsDistinctId?: string | null): Promise<void> {
   await db.transaction(async (tx) => {
+    if (analyticsDistinctId) {
+      await tx
+        .insert(analyticsErasures)
+        .values({ distinctId: analyticsDistinctId })
+        .onConflictDoUpdate({
+          target: analyticsErasures.distinctId,
+          set: { passesLeft: 2, nextAttemptAt: new Date() },
+        });
+    }
     await tx.delete(authSessions).where(eq(authSessions.userId, userId));
     await tx
       .delete(rateLimits)

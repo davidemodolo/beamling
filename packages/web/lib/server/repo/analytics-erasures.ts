@@ -14,14 +14,6 @@ export interface AnalyticsErasure {
   attempts: number;
 }
 
-/** Queues an erasure, or restarts it when the same identity is queued again. */
-export async function enqueueAnalyticsErasure(distinctId: string): Promise<void> {
-  await db
-    .insert(analyticsErasures)
-    .values({ distinctId })
-    .onConflictDoUpdate({ target: analyticsErasures.distinctId, set: { passesLeft: 2, nextAttemptAt: new Date() } });
-}
-
 /**
  * Claims due rows so concurrent instances never run the same one. With `distinctId`, claims only
  * that row, which is how account deletion makes its first attempt straight away.

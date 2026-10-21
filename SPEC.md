@@ -41,12 +41,12 @@ This file is the **target contract** for Alpha 1 and public launch. It is not an
 | Sources | Ranked/deduplicated Brave results, right panel or mobile sheet, inline citations | Same with provider-specific costs |
 | History | Keyset pagination, 50 conversations per page, 60 messages per page, pinned chats, title search over loaded pages, per-conversation delete | Same, plus full-history search |
 | Settings | Curated model, default search provider and default mode; per-answer provider picker in the composer | Add optional cost ceiling |
-| Credentials | KMS-backed AES-256-GCM envelope encryption; OpenRouter, Brave, Tavily and Exa keys; Brave plan, expiry and budget metadata; usage warnings | Same; GCP KMS in production |
+| Credentials | KMS-backed AES-256-GCM envelope encryption; OpenRouter, Brave, Tavily and Exa keys; free Tavily key check; optional unverified save for Brave/Exa; Brave plan, expiry and budget metadata; usage warnings | Same; GCP KMS in production |
 | Content at rest | Conversation titles, messages, sources and stored errors are encrypted with per-account workspace keys | Same; GCP KMS in production |
 | Public pages | `/`, `/login`, `/onboarding`, `/chat`, `/chat/[id]`, `/privacy`, `/terms` | Add `/welcome` if needed, full legal/footer surface, docs, status, licenses, support and supporters |
 | Analytics | Server-side PostHog events with an allowlist, HMAC distinct IDs, opt-in kill switch and account-deletion hook; no browser SDK | PostHog Cloud EU, server-side metadata-only events and operator dashboards |
 | Operations | Production-parity Docker Compose with Caddy TLS, Dex OIDC, LocalStack KMS, TLS Postgres and the production image; release migrations, versioned health, tagged releases, graceful shutdown | Fly + Neon, GCP KMS, monitoring, backups, killswitch |
-| Tests | 40 web unit tests, 26 database integration tests, 27 Playwright E2E tests, 6 mascot tests | Add parity-stack smoke, analytics, legal, killswitch, dump-encryption, load and eval gates |
+| Tests | 46 web unit tests, 28 database integration tests, 29 Playwright E2E tests, 6 mascot tests | Add parity-stack smoke, analytics, legal, killswitch, dump-encryption, load and eval gates |
 | Donations | None | Optional post-public `/support` and `/supporters` |
 
 ---
@@ -306,7 +306,7 @@ A single `SearchProvider` adapter interface normalizes every provider to `{url, 
 **Tavily adapter**
 - Endpoint: `POST https://api.tavily.com/search`.
 - Auth: `Authorization: Bearer <user key>`.
-- Validate with one minimal request: a short probe `query`, `max_results=1`, `search_depth=basic`, `include_answer=false`, `include_raw_content=false`, `include_images=false`, `include_usage=true`. Do not request raw content or an LLM answer.
+- Validate with `GET https://api.tavily.com/usage`, which reports the key's credits without spending one. Reject `401`; map a usage at or above a non-null limit to `QUOTA_EXCEEDED`. Do not spend a search to validate the key.
 - Use `search_depth=basic` in Alpha 1 (1 credit per request). Do not use `advanced` or `auto_parameters`.
 - Use `max_results=min(maxSources, 20)` for Quick and `max_results=6` per Deep sub-query; at most 7 Tavily requests per answer including the gap pass. Deeper uses 6 results per query and at most 60 searches.
 - Map the result `content` field to the source snippet; use `title`, `url`, `published_date` and `score`. Do not request `include_raw_content`.
@@ -368,7 +368,7 @@ The current flow is OpenRouter plus one selected search provider, with encrypted
 6. The user is redirected to `/onboarding` (or `/chat` when keys are already connected).
 7. Onboarding step 1: the user adds an OpenRouter key. The client sends it once to the server over HTTPS.
 8. The server validates it with `GET https://openrouter.ai/api/v1/key`, then stores it encrypted. The client receives only the masked last four characters, status and validation time; provider limit/label details are not returned today.
-9. On the same screen, the user chooses Brave, Tavily or Exa and adds its key. For Brave, the user also selects **Free (1 request/second)** or **Paid / provider plan** and may declare an optional key expiry date and budget. The server validates the key with one minimal search request.
+9. On the same screen, the user chooses Brave, Tavily or Exa and adds its key. For Brave, the user also selects **Free (1 request/second)** or **Paid / provider plan** and may declare an optional key expiry date and budget. Tavily is checked through its free usage endpoint. Brave and Exa require one search request to validate, so the user may save the key unverified and validate it later.
 10. The user confirms the OpenRouter model (DeepSeek V4.1 Flash by default) and clicks "Start asking".
 11. The chat opens empty, ready for the first question. Onboarding is complete.
 
@@ -441,8 +441,8 @@ Each requirement has a priority (P0 = Alpha 1 target, P1 = private alpha/v1, P2 
 ### 10.2 Credentials
 
 - **FR-06 (P0):** Users can add one credential per provider per kind (LLM or search). Launch search providers are Brave, Tavily and Exa; current code accepts OpenRouter, Brave, Tavily and Exa.
-- **FR-07 (P0):** The server validates a credential before saving it.
-  - Acceptance: an OpenRouter key is validated with `GET /api/v1/key`; a Brave, Tavily or Exa key is validated with one minimal search request for that provider. Invalid keys are rejected and valid keys are saved with status `active`.
+- **FR-07 (P0):** The server validates a credential before saving it unless the user explicitly saves it unverified.
+  - Acceptance: an OpenRouter key is validated with `GET /api/v1/key`; Tavily is validated with its free usage endpoint; Brave and Exa are validated with one minimal search request unless `validate: false` is sent, which saves the key with status `unverified` and no validation time. Invalid keys are rejected and validated keys are saved with status `active`.
 - **FR-08 (P0):** Credentials are encrypted at rest with envelope encryption.
 - **FR-09 (P0):** The plaintext key is never returned by any API after creation.
 - **FR-10 (P0):** The UI displays only a masked fingerprint and the last validation time.
@@ -891,7 +891,7 @@ Key validation calls:
 
 - OpenRouter: `GET https://openrouter.ai/api/v1/key` with the user key. Reject `401`; record label, limits and usage. Do not validate with a paid completion.
 - Brave: one Web Search request with `q` and `count=1`. Reject `401`; surface `402` and `429` distinctly.
-- Tavily: one `POST /search` with a short probe, `max_results=1`, `search_depth=basic`, `include_answer=false`, `include_raw_content=false`, `include_images=false`, `include_usage=true`. Reject `401`; map `432`/`433` to plan/limit errors and `429` to rate limiting.
+- Tavily: `GET /usage`, which spends no credit. Reject `401`; map a usage at or above a non-null limit to `QUOTA_EXCEEDED`, and `429` to rate limiting.
 - Exa: one `POST /search` with a short probe, `numResults=1`, `type=auto`, `contents={highlights:true}`. Reject `401`/`403`; map `402` to insufficient credits and `429` to rate limiting.
 
 ### 13.2 Fingerprint and display
@@ -1707,9 +1707,9 @@ Rules:
 | Layer | Tool | Current coverage |
 |---|---|---|
 | Mascot unit | Node test runner | 6 geometry/expression tests |
-| Web unit | Node test runner | 40 tests: credential encryption and rotation, model allowlist, citation parsing, Brave/Tavily/Exa/OpenRouter error mapping, retries, URL filtering, ranking, language detection, prompt injection boundaries, client IP, production configuration, analytics allowlist/identity/delivery/deletion, body limits, log redaction |
-| Web integration | Node test runner + PostgreSQL | 26 tests: account persistence and content encryption, Quick/Deep/Deeper, the Deeper AI SDK tool loop, planner repair, partial search, missing keys, selected-provider persistence/cost, no fallback, one-stream-per-conversation, global cap, lock contention, stop flag, delete mid-answer, timeout, NUL handling, retry replacement, stale answer repair, pagination, session cleanup, atomic rate limits, per-key search spacing, credential replacement |
-| End-to-end | Playwright | 27 tests: 9 API checks, 13 UI flows and 5 public-route axe/CSP checks; Quick-answer coverage includes search trace, reasoning and tables, provider selection checks Tavily, and Deeper coverage checks the third mode |
+| Web unit | Node test runner | 46 tests: credential encryption and rotation, model allowlist, citation parsing, Brave/Tavily/Exa/OpenRouter error mapping, retries, URL filtering, ranking, language detection, prompt injection boundaries, client IP, production configuration, analytics allowlist/identity/delivery/deletion/erasure retries, body limits, log redaction |
+| Web integration | Node test runner + PostgreSQL | 28 tests: account persistence and content encryption, Quick/Deep/Deeper, the Deeper AI SDK tool loop, planner repair, partial search, missing keys, selected-provider persistence/cost, no fallback, one-stream-per-conversation, global cap, lock contention, stop flag, delete mid-answer, timeout, NUL handling, retry replacement, stale answer repair, pagination, session cleanup, atomic rate limits, per-key search spacing, credential replacement, unverified keys, atomic analytics erasure queuing |
+| End-to-end | Playwright | 29 tests: 10 API checks, 14 UI flows and 5 public-route axe/CSP checks; Quick-answer coverage includes search trace, reasoning and tables, provider selection checks Tavily and marks a keyless provider, unverified-key validation is covered, and Deeper coverage checks the third mode |
 
 Commands:
 

@@ -236,7 +236,7 @@ Details:
 - Missing or expired session on a protected route returns `UNAUTHENTICATED` with HTTP 401.
 - `/chat` and `/onboarding` are server-guarded and redirect to `/login` when signed out.
 - `POST /api/auth/logout` revokes the current session and clears the cookie. `POST /api/auth/logout?scope=all` revokes every session of the account (Settings → Account → Sign out everywhere).
-- `DELETE /api/account` queues the PostHog erasure of the hashed analytics identity (when PostHog deletion is configured), deletes the account, all rows and the wrapped workspace key, makes a first erasure attempt, clears the cookie, and returns `{ "ok": true }`. See §13.7.
+- `DELETE /api/account` deletes the account, all rows and the wrapped workspace key while queueing the PostHog erasure of the hashed analytics identity in the same transaction, makes a first erasure attempt, clears the cookie, and returns `{ "ok": true }`. See §13.7.
 - Cleanup removes expired sessions and counters; it does not delete inactive accounts because Google sign-in can return to them.
 - `POST /api/auth/test-login` exists only when `BEAMLING_TEST_AUTH=1`, `BEAMLING_FAKE_PROVIDERS=1` and `APP_URL` is localhost. It creates a unique test account for each new request context and is used by Playwright. Otherwise it returns `NOT_FOUND` (404).
 
@@ -1334,7 +1334,7 @@ frame-ancestors 'none'
 - The cleanup job removes expired sessions and counters; accounts are retained for a future Google sign-in.
 - There is no soft-delete or recovery path.
 - When PostHog deletion is configured, account deletion also erases the PostHog person through a durable queue in `analytics_erasures`, which holds only the HMAC distinct id:
-  - The row is written before the account data is deleted, so a crash or PostHog outage cannot lose it.
+  - The row and the account deletion commit in one transaction, so a failed deletion does not erase a live account's analytics and a successful deletion cannot lose the erasure.
   - The first attempt runs in the deletion request; the cleanup job runs the rest. Rows are claimed with `FOR UPDATE SKIP LOCKED` and hidden for 5 minutes, so instances never run the same row at once.
   - A failure retries with exponential backoff from 5 minutes, capped at 24 hours, and is never dropped. From the fifth failed attempt each failure is logged as an error (`PostHog erasure keeps failing`) with the distinct id, for alerting and manual cleanup.
   - A success schedules one confirming pass an hour later, which catches events that were still in flight when the account was deleted. The row is deleted after the second success.
