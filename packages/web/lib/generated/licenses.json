@@ -618,7 +618,7 @@
     {
       "name": "@types/node",
       "versions": [
-        "26.6.5"
+        "26.6.6"
       ],
       "license": "MIT",
       "homepage": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/node",
