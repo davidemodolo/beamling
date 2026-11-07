@@ -148,7 +148,7 @@ Steps run independently; failures are logged and serving continues.
 Scheduled with `POST /api/internal/shutdown` ([runbook](operations.md#incident-runbook)). State is the `system_flags` row `shutdown` (`scheduled_at`, optional `reason`, `notify`); deleting it cancels.
 
 - `scheduled_at` = now + `days` (min `SHUTDOWN_NOTICE_DAYS = 14`, max 365, default 14). Scheduling clears every `users.shutdown_notified_at`, so a new date is re-announced.
-- While scheduled: new accounts get `SERVICE_CLOSING`; existing users can sign in and export. `/chat`, `/login` and `/status` show the date (Europe/Rome); the chat banner links to data export.
+- While scheduled: new accounts get `SERVICE_CLOSING`; existing users can sign in and export. the app, `/login` and `/status` show the date (Europe/Rome); the chat banner links to data export.
 - `processShutdown()` runs after scheduling (if `notify`) and every cleanup tick, under a session advisory lock (other instances skip). Idempotent.
   - Before the date: email unnotified accounts, oldest first, batches of 50, 250 ms apart. A failure stops the run until the next tick. No mail with `notify: false` or without `SMTP_URL`/`MAIL_FROM`.
   - From the date: delete every account in batches of 50 (`shutdown_account_deleted` audit event).

@@ -10,6 +10,6 @@ export const metadata: Metadata = { robots: { index: false, follow: false } };
 export default async function OnboardingLayout({ children }: { children: React.ReactNode }) {
   const user = await requirePageUser("/onboarding");
   // Setup is done once; later key changes happen in Settings.
-  if (setupState(await keyedProviders(user.id)).complete) redirect("/chat");
+  if (setupState(await keyedProviders(user.id)).complete) redirect("/");
   return <StoreProvider>{children}</StoreProvider>;
 }

@@ -21,7 +21,7 @@ function SourceCard({ source, active, onSelect }: { source: Source; active: bool
     className: `source-card ${active ? "is-active" : ""}`,
     onMouseEnter: () => onSelect?.(source.position),
     onFocus: () => onSelect?.(source.position),
-    "aria-label": `Source ${source.position}: ${source.title} — ${source.domain}`,
+    "aria-label": `Source ${source.position}: ${source.title}, ${source.domain}`,
   };
   // Only http(s) URLs become links; anything else (javascript:, data:, …) is shown as plain text.
   if (!isSafeHttpUrl(source.url)) {

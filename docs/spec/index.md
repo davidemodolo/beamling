@@ -1,7 +1,7 @@
 # Product specification
 
 
-**Status:** Draft v0.9 — target product and technical contract. The current checkout is narrower than this document; see [Document status and current implementation](#document-status-and-current-implementation) and the [technical reference](../reference/index.md).
+**Status:** Draft v0.9: target product and technical contract. The current checkout is narrower than this document; see [Document status and current implementation](#document-status-and-current-implementation) and the [technical reference](../reference/index.md).
 **Date:** 2026-11-07
 **Owner:** Davide (product), TBD (engineering)
 **Primary domain:** `beamling.app` (target; `.app` is HTTPS-only and HSTS-preloaded)
@@ -41,7 +41,7 @@ Verified against the code on 2026-11-07.
 | Streaming | SSE with meta/stage/plan/search/progress/sources/delta/reasoning/citation/usage/done/error, stop and retry | Same contract, extra provider metadata |
 | Sources | Ranked and deduplicated results from the selected provider, right panel or mobile sheet, inline citations | Same with provider-specific costs |
 | History | Keyset pagination, 50 conversations per page, 60 messages per page, pinned chats, title search over loaded pages, per-conversation delete; at most 100 conversations per account (least recently active unpinned trimmed when a new conversation's first question is stored), conversations deleted 60 days after last activity, sidebar notice and warning from 90 | Same, plus full-history search |
-| Onboarding | Free path (free OpenRouter model + Brave) or own providers, two steps; `/chat` and `/onboarding` route on whether a model key and a search key exist; defaults follow saved keys | Same |
+| Onboarding | Free path (free OpenRouter model + Brave) or own providers, two steps; `/` (signed in) and `/onboarding` route on whether a model key and a search key exist; defaults follow saved keys | Same |
 | Settings | Curated model, default search provider and default mode; per-answer provider picker in the composer | Add optional cost ceiling |
 | Credentials | KMS-backed AES-256-GCM envelope encryption; one key per provider (OpenRouter, DeepSeek, Brave, Tavily, Exa; a DeepSeek key serves models and search); free OpenRouter, Tavily and DeepSeek key checks; optional unverified save for Brave/Exa only; key-check budget per account and IP; keyed-HMAC fingerprints; last four hidden for keys under 20 characters; lazy re-encryption after a KMS key change; Brave plan, expiry and budget metadata; usage warnings | Same; GCP KMS in production |
 | Content at rest | Conversation titles, messages, sources and stored errors are encrypted with per-account workspace keys | Same; GCP KMS in production |

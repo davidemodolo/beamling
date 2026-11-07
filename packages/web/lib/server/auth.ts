@@ -28,7 +28,7 @@ import { users } from "./schema";
 import { createSession } from "./session";
 import { ensureWorkspaceKey } from "./workspace-key";
 
-const STATE_PATH = /^\/(chat|onboarding)(\/[0-9a-f-]{36})?$/i;
+const STATE_PATH = /^\/((chat|onboarding)(\/[0-9a-f-]{36})?)?$/i;
 
 let configuration: Promise<client.Configuration> | undefined;
 
@@ -58,7 +58,7 @@ export async function beginLogin(returnTo: string | null): Promise<string> {
   const nonce = randomNonce();
   const verifier = randomPKCECodeVerifier();
   const challenge = await client.calculatePKCECodeChallenge(verifier);
-  const redirectTo = returnTo && STATE_PATH.test(returnTo) ? returnTo : "/chat";
+  const redirectTo = returnTo && STATE_PATH.test(returnTo) ? returnTo : "/";
 
   const transaction = await new EncryptJWT({ state, nonce, verifier, returnTo: redirectTo })
     .setProtectedHeader({ alg: "dir", enc: "A256GCM" })
@@ -185,7 +185,7 @@ async function readTransaction(): Promise<{
       state,
       nonce,
       verifier,
-      returnTo: typeof returnTo === "string" && STATE_PATH.test(returnTo) ? returnTo : "/chat",
+      returnTo: typeof returnTo === "string" && STATE_PATH.test(returnTo) ? returnTo : "/",
     };
   } catch (error) {
     log.warn("OIDC transaction cookie rejected", { error: summarizeError(error) });
@@ -233,6 +233,6 @@ export async function completeLogin(requestUrl: string, clientIp: string): Promi
   await createSession(user.id);
   audit("sign_in", { userId: user.id, ipKey: clientIp, fields: { newAccount: user.isNew } });
   if (user.isNew) analytics.capture(user.id, "account_created", {});
-  // /chat sends an account without keys on to /onboarding.
+  // / sends an account without keys on to /onboarding.
   return { returnTo: transaction.returnTo };
 }

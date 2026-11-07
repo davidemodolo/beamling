@@ -47,7 +47,7 @@ Hard timeouts: Deep 90 s, Deeper 360 s. On timeout, stop, keep partial text, mar
 
 | Mode | Max sources | Per query | Searches |
 |---|---|---|---|
-| Quick | 8 | — | 1 |
+| Quick | 8 | n/a | 1 |
 | Deep | 20 | 6 | 3–5 + up to 2 gap |
 | Deeper | 60 | 6 | up to 60 |
 
@@ -61,7 +61,7 @@ Hard timeouts: Deep 90 s, Deeper 360 s. On timeout, stop, keep partial text, mar
 |---|---|---|---|---|
 | Quick | 4,096 total | 3,500 | 1,200 | 8,192 |
 | Deep | 8,192 per search | 9,000 | 2,000 | 16,384 |
-| Deeper | 60 sources, same caps | ~40,000 | — | 24,576 |
+| Deeper | 60 sources, same caps | ~40,000 | n/a | 24,576 |
 
 - Keep the `max_tokens` reserve inside the context window: drop lowest-ranked sources, then trim history, and mark truncation. Never cut inside a source block.
 - Snippets (text or JSON tables) stay text; never execute or render embedded HTML.

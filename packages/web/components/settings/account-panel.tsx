@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Icon } from "@/components/ui/icon";
 import { errorMessage } from "@/lib/api";
@@ -10,7 +9,6 @@ import { UserAvatar } from "@/components/user-avatar";
 import { plural, shortDate } from "@/lib/utils";
 
 export function AccountPanel() {
-  const router = useRouter();
   const { user, credentials, deleteAccount, settings, signOut, updateSettings } = useAccount();
   const { conversationCount } = useConversations();
   const [confirm, setConfirm] = useState("");
@@ -22,7 +20,8 @@ export function AccountPanel() {
     setPending(true);
     try {
       await deleteAccount();
-      router.push("/");
+      // A full load: `/` now renders the landing page, not the cached app.
+      window.location.replace("/");
     } catch (cause) {
       showToast(errorMessage(cause, "Could not delete the account"));
       setPending(false);

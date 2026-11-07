@@ -35,14 +35,14 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     metadataBase: new URL(appUrl()),
     title: {
-      default: "Beamling — a little light on every answer",
+      default: "Beamling · a little light on every answer",
       template: "%s · Beamling",
     },
     description:
       "An answer engine on your own keys. Every claim links to its source.",
     applicationName: "Beamling",
     openGraph: {
-      title: "Beamling — a little light on every answer",
+      title: "Beamling · a little light on every answer",
       description: "Your keys. Your models. Clear answers with sources you can inspect.",
       type: "website",
       url: "/",

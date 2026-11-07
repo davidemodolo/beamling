@@ -74,7 +74,7 @@ function SidebarContent({ mobile, onNavigate }: SidebarProps) {
   return (
     <>
       <div className="sidebar-top">
-        <Wordmark href="/chat" onClick={close} />
+        <Wordmark href="/" onClick={close} />
         {mobile ? (
           <button type="button" className="btn btn-ghost btn-icon" onClick={close} aria-label="Close menu">
             <Icon name="x" size={17} />
@@ -82,7 +82,7 @@ function SidebarContent({ mobile, onNavigate }: SidebarProps) {
         ) : null}
       </div>
 
-      <Link href="/chat" className="btn btn-secondary sidebar-new" onClick={close}>
+      <Link href="/" className="btn btn-secondary sidebar-new" onClick={close}>
         <span className="plus-box">
           <Icon name="plus" size={14} />
         </span>
@@ -244,7 +244,7 @@ function SidebarContent({ mobile, onNavigate }: SidebarProps) {
                 deleteConversation(deleting.id);
                 setDeleting(null);
                 close();
-                if (wasActive) router.push("/chat");
+                if (wasActive) router.push("/");
               }}
             >
               <Icon name="trash" size={13} /> Delete

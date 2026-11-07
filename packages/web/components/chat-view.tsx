@@ -32,9 +32,9 @@ export function ChatView({ conversationId }: ChatViewProps) {
   const [previousPath, setPreviousPath] = useState(pathname);
   if (pathname !== previousPath) {
     setPreviousPath(pathname);
-    // A new chat rewrites the URL to /chat/{id} without remounting. Coming back to /chat
+    // A new chat rewrites the URL to /chat/{id} without remounting. Coming back to /
     // ("New question", or deleting the active conversation) must start from a clean view.
-    if (!conversationId && pathname === "/chat") setSession((value) => value + 1);
+    if (!conversationId && pathname === "/") setSession((value) => value + 1);
   }
   // One pane per conversation, so a view never shows another conversation's state.
   return <ChatPane key={conversationId ?? `draft-${session}`} conversationId={conversationId} />;
@@ -149,7 +149,7 @@ function ChatPane({ conversationId }: ChatViewProps) {
       // The user left while the conversation was being created: do not start an answer they cannot see.
       if (!mountedRef.current) return;
       setLocalId(id);
-      if (window.location.pathname === "/chat") window.history.replaceState(null, "", `/chat/${id}`);
+      if (window.location.pathname === "/") window.history.replaceState(null, "", `/chat/${id}`);
     }
     if (streams.start({ conversationId: id, mode, searchProvider, question })) {
       setInput("");
@@ -204,7 +204,7 @@ function ChatPane({ conversationId }: ChatViewProps) {
   const notFound = !!conversationId && !loadFailed && thread?.status === "missing";
   const threadError = !!conversationId && thread?.status === "error";
   const retryId = live ? undefined : retryableId(messages);
-  // Keys deleted in Settings during this visit; opening /chat again goes back to setup.
+  // Keys deleted in Settings during this visit; opening / again goes back to setup.
   const setupMissing = ready && !!user && !setupState(usableProviders(credentials)).complete;
 
   return (

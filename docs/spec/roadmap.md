@@ -33,12 +33,12 @@
 
 | Milestone | Deliverables | Exit criteria | State |
 |---|---|---|---|
-| M0 — Spec | This spec, brand brief, domains | Review complete | Spec exists; domain purchase unconfirmed |
-| M1 — Alpha 1 | Google accounts, OpenRouter, Brave/Tavily/Exa, Brave key metadata, three modes, citations, animation, history, PostHog, parity stack | Cited answers end to end; Google login; animation follows real stages; parity stack with KMS | Implemented; PostHog project, dashboards and alerts are operator setup |
-| M2 — Private alpha | Onboarding, settings, usage/cost, errors, account deletion, 100-question eval, Cloud Run + Neon | 10–25 invited users run real Quick, Deep and Deeper questions without key leakage | Partial: app features done; Cloud Run setup and deploy job committed; live deploy and eval remain |
-| M3 — Public launch | All adapters, welcome page, public docs and feedback repo, legal pages, license page, key-safety page (FR-76), CMP if needed, rate limits, status page | Public sign-in open, SLOs met for a week | Partial: killswitch, internal metrics, license page done; remaining legal surface, status and watchdog remain |
-| M3.1 — Support (optional, post-public) | `/support`, Tipeee/PayPal link, opt-in `/supporters`, footer link | Link works with no payment script; consent and removal documented | Target |
-| M4 — v1 | PDF upload, share links, exports, optional public API, KMS-backed keys | Quality and security gates for both modes | Target |
+| M0: Spec | This spec, brand brief, domains | Review complete | Spec exists; domain purchase unconfirmed |
+| M1: Alpha 1 | Google accounts, OpenRouter, Brave/Tavily/Exa, Brave key metadata, three modes, citations, animation, history, PostHog, parity stack | Cited answers end to end; Google login; animation follows real stages; parity stack with KMS | Implemented; PostHog project, dashboards and alerts are operator setup |
+| M2: Private alpha | Onboarding, settings, usage/cost, errors, account deletion, 100-question eval, Cloud Run + Neon | 10–25 invited users run real Quick, Deep and Deeper questions without key leakage | Partial: app features done; Cloud Run setup and deploy job committed; live deploy and eval remain |
+| M3: Public launch | All adapters, welcome page, public docs and feedback repo, legal pages, license page, key-safety page (FR-76), CMP if needed, rate limits, status page | Public sign-in open, SLOs met for a week | Partial: killswitch, internal metrics, license page done; remaining legal surface, status and watchdog remain |
+| M3.1: Support (optional, post-public) | `/support`, Tipeee/PayPal link, opt-in `/supporters`, footer link | Link works with no payment script; consent and removal documented | Target |
+| M4: v1 | PDF upload, share links, exports, optional public API, KMS-backed keys | Quality and security gates for both modes | Target |
 
 ---
 

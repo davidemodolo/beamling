@@ -152,7 +152,7 @@ export default function OnboardingPage() {
 
   const finish = async () => {
     await updateSettings({ llmModel, defaultSearchProvider: searchProvider });
-    router.push("/chat");
+    router.push("/");
   };
 
   const submitModel = async (event: FormEvent) => {

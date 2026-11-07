@@ -52,7 +52,7 @@ export function shutdownNotice(shutdown: Shutdown): { subject: string; text: str
     ...(shutdown.reason ? ["", shutdown.reason] : []),
     "",
     `This is a one-off service notice sent to every Beamling account. Questions: ${contact}`,
-    `— ${legal.entity}`,
+    legal.entity,
   ].join("\n");
   return { subject: `Beamling is shutting down on ${date}`, text };
 }

@@ -135,7 +135,7 @@ export function NotFoundState() {
         </div>
         <h1 style={{ color: "var(--text)", fontSize: 22, marginBottom: 6 }}>Conversation not found</h1>
         <p style={{ marginBottom: 18 }}>It may have been deleted, or it belongs to another account.</p>
-        <Link href="/chat" className="btn btn-secondary btn-sm">
+        <Link href="/" className="btn btn-secondary btn-sm">
           <Icon name="plus" size={14} /> New question
         </Link>
       </div>

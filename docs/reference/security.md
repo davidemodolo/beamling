@@ -64,17 +64,17 @@ frame-ancestors 'none'
 | Event | Logged by | Fields |
 |---|---|---|
 | `sign_in` | OIDC callback | `newAccount` |
-| `sign_out_all` | `POST /api/auth/logout?scope=all` | — |
+| `sign_out_all` | `POST /api/auth/logout?scope=all` | None |
 | `terms_accepted` | `POST /api/account/terms` | `version` |
 | `credential_saved` | `POST /api/credentials` | `credentialId`, `provider`, `replaced` |
 | `credential_deleted` | `DELETE /api/credentials/:id` | `credentialId` |
-| `data_exported` | `GET /api/account/export` | — |
-| `analytics_opt_out` / `analytics_opt_in` | `PATCH /api/settings` | — |
-| `account_deleted` | `DELETE /api/account` | — |
-| `inactive_account_deleted` | [Cleanup](conversations.md#cleanup) | — |
+| `data_exported` | `GET /api/account/export` | None |
+| `analytics_opt_out` / `analytics_opt_in` | `PATCH /api/settings` | None |
+| `account_deleted` | `DELETE /api/account` | None |
+| `inactive_account_deleted` | [Cleanup](conversations.md#cleanup) | None |
 | `shutdown_scheduled` | `POST /api/internal/shutdown` | `scheduledAt` |
-| `shutdown_cancelled` | `POST /api/internal/shutdown` | — |
-| `shutdown_account_deleted` | [Shutdown](conversations.md#scheduled-shutdown) after the date | — |
+| `shutdown_cancelled` | `POST /api/internal/shutdown` | None |
+| `shutdown_account_deleted` | [Shutdown](conversations.md#scheduled-shutdown) after the date | None |
 | `internal_auth_failed` | Internal endpoint, bad bearer | `endpoint` |
 
 ## Supply chain and release checks
