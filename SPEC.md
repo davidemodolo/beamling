@@ -47,7 +47,7 @@ This file is the **target contract** for Alpha 1 and public launch. It is not an
 | Data rights and retention | Self-service JSON export, analytics opt-out with erasure, sign out everywhere, immediate account deletion; accounts deleted after 24 months without sign-in or 7 days without terms acceptance; conversations deleted 60 days after last activity; security audit events in the structured log | Same, reviewed by counsel |
 | License | Open source under the MIT License (`LICENSE`); dependency licenses inventoried on `/licenses` | Same |
 | Analytics | Server-side PostHog events with an allowlist, HMAC distinct IDs, opt-in kill switch, per-account opt-out and account-deletion hook; no browser SDK | PostHog Cloud EU, server-side metadata-only events and operator dashboards |
-| Operations | Production-parity Docker Compose with Caddy TLS, Dex OIDC, LocalStack KMS, TLS Postgres and the production image; release migrations, versioned health, tagged releases, graceful shutdown; Cloud Run setup script, manifests and gated keyless deploy job, not yet deployed; database killswitch and internal metrics; operator-scheduled service shutdown with at least 14 days' notice (English email over optional SMTP, banner, sign-ups closed, then every account deleted) | Cloud Run + Neon, GCP KMS, monitoring, backups, killswitch |
+| Operations | Production-parity Docker Compose with Caddy TLS, Dex OIDC, LocalStack KMS, TLS Postgres and the production image; release migrations, versioned health, tagged releases, graceful shutdown; deployed to Google Cloud Run (europe-west1) with Neon Postgres (Frankfurt) at https://beamling.app since 7 November 2026 (v0.3.0), keyless CI deploys, sign-ups limited to an allowlist; database killswitch and internal metrics; operator-scheduled service shutdown with at least 14 days' notice (English email over optional SMTP, banner, sign-ups closed, then every account deleted) | Cloud Run + Neon, GCP KMS, monitoring, backups, killswitch |
 | Tests | 57 web unit tests, 38 database integration tests, 44 Playwright E2E tests, 6 mascot tests | Add parity-stack smoke, analytics, dump-encryption, load and eval gates |
 | Donations | None | Optional post-public `/support` and `/supporters` |
 
@@ -1794,7 +1794,7 @@ Evaluation methodology: each golden question has a reference answer and expected
 
 ## 21. Deployment and Operations
 
-**Current checkout:** `pnpm local:up` runs the production image behind Caddy with Dex OIDC, LocalStack KMS and TLS PostgreSQL; migrations are a separate release step; `/api/health` is the health check; `SIGTERM` stores partial answers before exit. `deploy/gcp/` (setup script, Cloud Run service and migration job) and a gated keyless CI deploy job are committed; the Neon database and Google Cloud project exist, but nothing is deployed yet. `/licenses` is generated from the production dependency graph and checked in CI. Sentry, Better Stack, the automated watchdog and external alerting remain public-launch targets.
+**Current checkout:** `pnpm local:up` runs the production image behind Caddy with Dex OIDC, LocalStack KMS and TLS PostgreSQL; migrations are a separate release step; `/api/health` is the health check; `SIGTERM` stores partial answers before exit. `deploy/gcp/` (setup script, Cloud Run service and migration job) and a gated keyless CI deploy job are committed; production runs at https://beamling.app on Cloud Run and Neon since 7 November 2026 (v0.3.0), with sign-ups limited to an allowlist. `/licenses` is generated from the production dependency graph and checked in CI. A GitHub Actions watchdog probes liveness every 5 minutes and readiness hourly; Sentry, Better Stack and automatic stream disabling remain public-launch targets.
 
 ### 21.1 Public launch stack (target)
 
@@ -1858,7 +1858,7 @@ Evaluation methodology: each golden question has a reference answer and expected
 - Store `system_flags.accepting_new_streams` in Postgres so every instance sees the same state.
 - `/api/chat` checks the flag before starting a stream. If disabled, return `503` with `Retry-After` and a friendly "Beamling is briefly at capacity" message. Existing streams finish; do not kill them.
 - Protect `POST /api/internal/kill` and `GET /api/internal/metrics` with `KILL_SWITCH_SECRET` and `METRICS_SECRET`. Do not expose them in the UI.
-- **Current checkout:** the database flag, `/api/chat` gate, `POST /api/internal/kill` and `GET /api/internal/metrics` are implemented; the watchdog and external alerting remain target work.
+- **Current checkout:** the database flag, `/api/chat` gate, `POST /api/internal/kill` and `GET /api/internal/metrics` are implemented; an availability watchdog (probes only) runs; metric-driven stream disabling and external alerting remain target work.
 - A GitHub Actions watchdog runs every 5 minutes, reads aggregate metrics, and disables new streams when thresholds are breached: 5xx rate above 10% over 5 minutes, active streams at the cap for two checks, provider failure rate above 25%, Neon CU at its cap for 10 minutes, or a login-failure spike.
 - Do not auto-re-enable. A human reviews the cause and re-enables the flag. Do not scale machines to zero as a killswitch: users get network errors and no explanation.
 - Test the killswitch in staging before launch: flag flips, `/api/chat` returns 503, existing streams finish, and the alert fires.

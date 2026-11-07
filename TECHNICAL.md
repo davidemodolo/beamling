@@ -1597,7 +1597,7 @@ The image applies Alpine security updates, removes npm from the runtime, exposes
 
 `scripts/migrate.mjs`:
 
-- `0000_init.sql` contains the complete pre-launch schema. There is no deployed database yet, so schema changes regenerate it instead of adding migrations.
+- `0000_init.sql` is the schema applied to the production database on 7 November 2026 (v0.3.0). Applied migration files are never edited: every schema change adds a new, higher-numbered file.
 - Connects to `DATABASE_URL_DIRECT`, falling back to `DATABASE_URL`. It must not go through a transaction-mode pooler, because the advisory lock is session-scoped.
 - Clears its own session timeouts, then takes a PostgreSQL advisory lock (`7314002917`) so concurrent deploys serialize.
 - Creates `beamling_migrations` if absent.
