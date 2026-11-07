@@ -108,7 +108,7 @@ The "welcome page" is the public marketing page at `/` (distinct from the `/welc
 
 **Welcome page**
 
-- Primary CTA "Start free"; secondary "How it works", "Docs", "Status".
+- Primary CTA "Get started"; copy never states provider plans, limits or privacy as facts; secondary "How it works", "Docs", "Status".
 - Plainly explain: BYOK (OpenRouter or DeepSeek, plus Brave/Tavily/Exa/DeepSeek search), keys encrypted at rest, questions go to the selected providers, not end-to-end encrypted, free alpha.
 - No fake testimonials, counts, benchmarks, "private" claims, unpermitted logos or autoplay video.
 - Short "What Beamling is not": not a lawyer or doctor, not a search index.

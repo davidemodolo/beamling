@@ -132,12 +132,12 @@ Plan metadata is Brave-only; see [current implementation](index.md#document-stat
 
 ### Sign-in and onboarding
 
-1. "Start free" on the welcome page → `/login`, whose only option is **Continue with Google**.
+1. "Get started" on the welcome page → `/login`, whose only option is **Continue with Google**.
 2. `GET /api/auth/login` sets a short-lived signed OIDC transaction cookie (`state`, `nonce`, PKCE verifier, return path) and redirects to Google with `openid email profile`.
 3. `GET /api/auth/callback/google` verifies cookie, `state`, `nonce`, PKCE, ID-token signature, issuer, audience, expiry and `email_verified` (else `AUTH_EMAIL_UNVERIFIED`).
 4. The server upserts the account by Google `sub` (email, name, avatar URL), creates an opaque session with a hashed token, sets the cookie. A returning `sub` resumes its account.
 5. `/chat` redirects to `/onboarding` until a model key and a search key are saved.
-6. The user picks **Start free** (free OpenRouter model + Brave) or **Use my own providers** and adds a model key, sent once over HTTPS.
+6. The user picks **Quick setup** (OpenRouter free model + Brave) or **Use my own providers** and adds a model key, sent once over HTTPS.
 7. The server validates it (`GET https://openrouter.ai/api/v1/key`) and stores it encrypted; the client gets only the last four characters, status and validation time.
 8. The user adds a search key (Brave on the free path). Brave also takes **Free (1 request/second)** or **Paid / provider plan**, optional expiry and budget. Tavily validates for free; Brave and Exa cost one search, so the key can be saved unverified.
 9. "Start asking" saves model and provider as defaults and opens an empty chat.

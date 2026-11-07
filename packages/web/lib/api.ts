@@ -76,7 +76,7 @@ export function describeAnswerError(code: string | undefined, message?: string):
     case "MODEL_PRIVACY_SETTING":
       return settings("Free models blocked", "Allow free models in OpenRouter's privacy settings, or pick a paid model.");
     case "FREE_LIMIT_REACHED":
-      return settings("Free limit reached", "Free requests are used up for today. Try tomorrow or pick a paid model.");
+      return settings("Free limit reached", "The provider reports the free quota is used up. Check your account or pick another model.");
     case "INSUFFICIENT_CREDITS":
       return retry("Out of credits", "A provider account has run out of credits. Top it up, then retry.");
     case "PROVIDER_RATE_LIMITED":

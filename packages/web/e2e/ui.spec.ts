@@ -19,8 +19,8 @@ test("the free setup connects OpenRouter and Brave, then setup is skipped", asyn
   await signIn(page.request);
   await page.goto("/chat");
   await expect(page).toHaveURL(/\/onboarding$/);
-  await page.getByRole("button", { name: /Start free/ }).click();
-  await expect(page.getByRole("heading", { name: "Connect a free model" })).toBeVisible();
+  await page.getByRole("button", { name: /Quick setup/ }).click();
+  await expect(page.getByRole("heading", { name: "Connect OpenRouter" })).toBeVisible();
   await page.locator("#llm-key").fill("test-openrouter-key");
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByRole("heading", { name: "Connect Brave Search" })).toBeVisible();
@@ -98,7 +98,7 @@ test("keys saved for other providers are used without asking for Brave", async (
 test("the landing page offers a free start, or the app once signed in", async ({ page }) => {
   await page.goto("/");
   const nav = page.getByRole("navigation", { name: "Main" });
-  await expect(nav.getByRole("link", { name: /Start free/ })).toHaveAttribute("href", "/chat");
+  await expect(nav.getByRole("link", { name: /Get started/ })).toHaveAttribute("href", "/chat");
   await expect(nav.getByRole("link", { name: "Sign in" })).toBeVisible();
   await connectKeys(page.request);
   await page.goto("/");

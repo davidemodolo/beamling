@@ -19,7 +19,7 @@ const LABELS: Record<string, string> = {
   searching: "Searching with Brave",
   reading: "Reading 3 sources",
   writing: "Writing with Gemma 4 31B",
-  done: "Done · 2.4 s · free tier",
+  done: "Done · 2.4 s",
 };
 
 export function LandingDemo({ host }: { host: string }) {
