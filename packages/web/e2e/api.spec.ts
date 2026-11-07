@@ -61,7 +61,7 @@ test("authenticated responses are private and pages carry a nonce-based CSP", as
   expect(state.headers()["vary"]).toMatch(/Cookie/);
   expect(state.headers()["content-security-policy"]).toBe("default-src 'none'; frame-ancestors 'none'");
 
-  const page = await request.get("/chat");
+  const page = await request.get("/");
   const csp = page.headers()["content-security-policy"] ?? "";
   const nonce = /'nonce-([^']+)'/.exec(csp)?.[1];
   expect(nonce).toBeTruthy();

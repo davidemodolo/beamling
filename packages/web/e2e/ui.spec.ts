@@ -104,8 +104,6 @@ test("/ is the landing page signed out and the app signed in", async ({ page }) 
   await page.goto("/");
   await expect(page.getByLabel("Search provider")).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Main" })).toHaveCount(0);
-  await page.goto("/");
-  await expect(page).toHaveURL(/\/$/);
 });
 
 test("a Quick answer streams with citations, cost breakdown and sources", async ({ page }) => {
