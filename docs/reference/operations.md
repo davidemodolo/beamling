@@ -72,16 +72,16 @@ Migrations are a release step, not an app-start side effect. The local compose `
 
 - `/api/live` is a DB-free liveness probe returning `{ "ok": true }`.
 - `/api/health` is cached readiness for five seconds: database `select 1`, the `beamling_migrations` table, and a KMS wrap/unwrap probe.
-- Healthy: 200 `{ "ok": true, "database": "up", "schema": "up", "kms": "up", "version": "0.2.0", "commit": "...", "builtAt": "..." }`.
+- Healthy: 200 `{ "ok": true, "database": "up", "schema": "up", "kms": "up", "version": "<version>", "commit": "...", "builtAt": "..." }`.
 - Unhealthy: 503 with the failing component marked `down`; no error details are exposed.
-- No authentication and no cache headers. `/status` renders the same readiness state for people.
+- No authentication; both send `Cache-Control: no-store`. `/status` renders the same readiness state for people.
 - On `SIGTERM` or `SIGINT`, if `NEXT_MANUAL_SIG_HANDLE` is set, the process sets a global shutdown flag, rejects new `/api/chat` requests, aborts active chats, loops over late registrations, waits up to 8 seconds for outcomes, marks leftovers interrupted, closes the pg pool and exits.
 - The Docker Compose grace period is 15 seconds; Cloud Run allows 10.
 
 ## Versioning and releases
 
 - The root `package.json` version is the single source of truth; the web and mascot packages are kept in sync.
-- `pnpm version` prints it, `pnpm version:set 0.2.0` updates all three package files, and `pnpm version:check v0.2.0` rejects a mismatched tag.
+- `pnpm version` prints it, `pnpm version:set <x.y.z>` updates all three package files, and `pnpm version:check v<x.y.z>` rejects a mismatched tag.
 - `next.config.ts` injects `NEXT_PUBLIC_APP_VERSION`, `NEXT_PUBLIC_GIT_COMMIT` and `NEXT_PUBLIC_BUILD_TIME` at build time. `/api/health`, the landing footer and the sidebar show the same identity.
 - On a green push to `main`, CI creates the annotated tag `v<version>` if it does not exist, builds the production image, pushes `ghcr.io/<repo>:v<version>` and `:latest`, records the registry digest and creates a GitHub release with generated notes.
 - The deploy job deploys that digest to Cloud Run ([Google Cloud Run deployment](#google-cloud-run-deployment)), not a second source build, and runs a post-deploy `/api/health` smoke check.
@@ -176,7 +176,7 @@ Production runs on Cloud Run in `europe-west1` (Belgium), with Neon Postgres in 
 - Enable database backups and platform log retention, and set `LEGAL_BACKUP_RETENTION_DAYS` (default 7) and `LEGAL_LOG_RETENTION_DAYS` (default 30) to the windows actually configured: the privacy notice states them. Add alerting on the watchdog and `/api/health`.
 - Analytics is opt-in and off by default. Set `ANALYTICS_ENABLED=true` plus `POSTHOG_API_KEY`, `POSTHOG_PERSONAL_API_KEY`, `POSTHOG_PROJECT_ID` and a 32-byte `ANALYTICS_SALT` to send allowlisted metadata events to PostHog Cloud EU. `POSTHOG_HOST` defaults to the EU ingestion host; the personal key needs `person:write` so account deletion can remove the hashed person and its events. Set `ANALYTICS_ENABLED=false` to stop all events immediately.
 - Set `LEGAL_ENTITY`, `LEGAL_ADDRESS` and `LEGAL_CONTACT_EMAIL` (optionally `LEGAL_VAT_ID`), have counsel review the implemented legal pages, and choose `SIGNUP_MODE=open` only after that review. Changing the terms or privacy notice materially means bumping `LEGAL_VERSION` in `packages/web/lib/legal.ts`, which asks every account to accept again.
-- Before each release: `pnpm audit --prod`, a Gitleaks history scan, and a container scan of the built image. CI runs the production audit and Gitleaks automatically.
+- Before each release: `pnpm audit --prod`, a Gitleaks history scan, and a container scan of the built image. CI runs `pnpm audit --audit-level moderate` over all dependencies and Gitleaks automatically.
 
 ## Incident runbook
 

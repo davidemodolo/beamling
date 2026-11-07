@@ -14,7 +14,7 @@ Error envelope:
 {
   "error": {
     "code": "CREDENTIAL_MISSING",
-    "message": "Add an OpenRouter key before asking a question.",
+    "message": "Add your OpenRouter key before asking a question.",
     "provider": "openrouter"
   }
 }
@@ -36,6 +36,7 @@ Error envelope:
 | `GET` | `/api/conversations/:id/messages` | Required | `?before=<messageId>` | `{ messages, hasMore }` |
 | `PATCH` | `/api/conversations/:id` | Required | `{ mode?, pinned? }` (at least one) | `{ conversation }` |
 | `DELETE` | `/api/conversations/:id` | Required | — | `{ ok: true }` |
+| `POST` | `/api/credentials` | Required | `{ provider, key, plan?, expiresOn?, budgetUsd?, validate? }` ([Accepted credentials](credentials.md#accepted-credentials)) | `201 { credential }` |
 | `POST` | `/api/credentials/:id/validate` | Required | — | `{ credential }` |
 | `PATCH` | `/api/credentials/:id` | Required | `{ plan?, expiresOn?, budgetUsd? }` | `{ credential }` |
 | `DELETE` | `/api/credentials/:id` | Required | — | `{ ok: true }` |
@@ -45,9 +46,11 @@ Error envelope:
 | `DELETE` | `/api/account` | Optional, terms not required | — | `{ ok: true }` and cleared cookie |
 | `POST` | `/api/internal/kill` | Bearer `KILL_SWITCH_SECRET` | `{ acceptingNewStreams: boolean, reason? }` | `{ acceptingNewStreams }` |
 | `GET` | `/api/internal/metrics` | Bearer `METRICS_SECRET` | — | Deployment flag, active streams and build identity |
-| `GET` | `/api/internal/shutdown` | Bearer `KILL_SWITCH_SECRET` | — | `{ shutdown: { scheduledAt, reason } \| null, mailConfigured, accounts, notified }` |
+| `GET` | `/api/internal/shutdown` | Bearer `KILL_SWITCH_SECRET` | — | `{ shutdown: { scheduledAt, reason, notify } \| null, mailConfigured, accounts, notified }` |
 | `POST` | `/api/internal/shutdown` | Bearer `KILL_SWITCH_SECRET` | `{ action: "schedule", days?: 14–365 (default 14), reason?: ≤1,000 chars, notify?: boolean (default true) }` or `{ action: "cancel" }` | Same as `GET`; `MAIL_NOT_CONFIGURED` (409) when `notify` is true without SMTP. See [Scheduled shutdown](conversations.md#scheduled-shutdown) |
-| `GET` | `/api/health` | None | — | `{ ok: true, database: "up", version, commit, builtAt }` or 503 `{ ok: false, database: "down", version, commit, builtAt }` |
+| `GET` | `/api/health` | None | — | Readiness: `{ ok, database, schema, kms, version, commit, builtAt }`, 200 when ready, 503 otherwise; `Cache-Control: no-store` |
+| `GET` | `/api/live` | None | — | Liveness without database access: `{ ok: true }`; `Cache-Control: no-store` |
+| `POST` | `/api/auth/test-login` | None | `?terms=pending` | Test only: signs in a new fixture account. Returns 404 unless `BEAMLING_TEST_AUTH=1`, fixture providers and a localhost `APP_URL` |
 | `GET` | `/.well-known/security.txt` | None | — | RFC 9116 text: `Contact` (mailto `LEGAL_CONTACT_EMAIL` when set, and `/contact`), `Expires` 180 days ahead, `Policy` `/security`, `Canonical`, `Preferred-Languages: en`; `Cache-Control: public, max-age=86400` |
 
 `apiRoute` wraps every session route. After the same-origin check and session load, it refuses an account whose `terms_version` is not the current `LEGAL_VERSION` with `TERMS_REQUIRED` (403), unless the route is declared `requireTerms: false` ([Terms acceptance](accounts.md#terms-acceptance)).
@@ -65,11 +68,13 @@ The export contains `format: "beamling-export"`, `version: 1`, `exportedAt`, the
 | `GET /api/account/export` | 5 per user/hour |
 | All authenticated mutations (non-GET/HEAD) | 300 per user/10 min, in addition to route limits |
 | All authenticated `GET` routes | 600 per user/10 min; 3,000 per hashed IP/10 min |
-| Login start | 60 per hashed IP/hour |
-| New accounts | `NEW_ACCOUNTS_PER_HOUR` across the deployment, default 200/hour |
+| Login start | `LOGINS_PER_IP_PER_HOUR` per hashed IP, default 60/hour |
+| OIDC callback | `AUTH_CALLBACKS_PER_IP_PER_HOUR` per hashed IP, default 120/hour |
+| New accounts | `NEW_ACCOUNTS_PER_HOUR` across the deployment, default 200/hour; `SIGNUPS_PER_IP_PER_HOUR` per hashed IP, default 10/hour |
 | Request body | 64 KB |
 | Question | 4,000 characters after control-character cleanup |
-| Global active streams | `MAX_CONCURRENT_CHATS`, default 50 |
+| Global active streams | `MAX_CONCURRENT_CHATS`, default 50; at most half of them (at least 1) in Deeper |
+| Active streams per account | `MAX_CONCURRENT_CHATS_PER_USER`, default 2 |
 
 All rate limits are fixed-window counters in PostgreSQL, updated atomically. A request over the limit gets `RATE_LIMITED` (429). They are not sliding windows and they do not use Redis.
 
@@ -92,15 +97,7 @@ Cookie: __Host-beamling_session=...
 {"conversationId":"...","question":"What changed in the EU AI Act in 2026?","mode":"quick"}
 ```
 
-```json
-{
-  "conversationId": "f1c2...",
-  "question": "What changed in the EU AI Act in 2026?",
-  "mode": "deep"
-}
-```
-
-A direct API call may omit `conversationId`; the server creates the conversation. The UI normally creates the conversation first so it can update the URL before streaming starts.
+The response is a server-sent event stream ([Streaming](streaming.md)). A direct API call may omit `conversationId`; the server creates the conversation. The UI normally creates the conversation first so it can update the URL before streaming starts.
 
 ## Settings and model allowlist
 
@@ -117,9 +114,10 @@ A direct API call may omit `conversationId`; the server creates the conversation
 - `anthropic/claude-haiku-4.5`
 - `openai/gpt-5.2`
 - `google/gemini-3.8-flash`
+- `deepseek:deepseek-flash` (DeepSeek direct, with a DeepSeek key)
 
 An unknown model returns `MODEL_NOT_ALLOWED`; an unknown search provider returns `INVALID_INPUT`. `defaultMode` is `quick`, `deep` or `deeper`.
 
 `analyticsOptOut` (boolean) records the account's objection to product analytics through its own path (`setAnalyticsOptOut`). Opting out, in one transaction, sets `settings.analytics_opt_out` and queues PostHog erasure of the account's distinct id in `analytics_erasures`; the route then makes a first erasure attempt. Opting back in clears the flag but leaves a pending erasure in place; capture resumes once it has finished. The whole patch is validated before anything is written, so a rejected request changes nothing. Both log an audit event (`analytics_opt_out` / `analytics_opt_in`). See [Analytics privacy](security.md#analytics-privacy).
 
-The selected model is used for planner, gap and answer calls in one run. It is stored on the assistant message. OpenRouter's resolved model and upstream provider are stored separately when reported.
+The selected model is used for planner, gap and answer calls in one run. It is stored on the assistant message. The resolved model and upstream provider are stored separately when the provider reports them (OpenRouter does).

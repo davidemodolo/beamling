@@ -111,7 +111,7 @@ frame-ancestors 'none'
 - Deleting an account cascades to sessions, the workspace data key, credentials, usage, settings, conversations, messages and sources, and removes the user's rate-limit keys.
 - Local active chats are aborted; remote instances stop on the next poll.
 - The cleanup job removes expired sessions, counters, stale provider slots, empty conversations older than one hour and conversations inactive for 60 days, and deletes accounts unused for 24 months or never accepted after 7 days ([Cleanup](conversations.md#cleanup)).
-- Creating a conversation beyond 100 deletes the least recently active unpinned ones ([Pagination and deletion](conversations.md#pagination-and-deletion)).
+- Storing the first question of a conversation beyond 100 deletes the least recently active unpinned ones ([Pagination and deletion](conversations.md#pagination-and-deletion)).
 - After a scheduled shutdown date every account is deleted through the same path as a user deletion ([Scheduled shutdown](conversations.md#scheduled-shutdown)).
 - `GET /api/account/export` gives the user a full JSON copy of their stored data (Art. 15 and 20 GDPR) without provider keys or session tokens ([Endpoints](api.md#endpoints)).
 - There is no soft-delete or recovery path.

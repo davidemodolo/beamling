@@ -83,7 +83,7 @@ Error mapping:
 |---|---|
 | `401`, `403`, invalid subscription token | `CREDENTIAL_INVALID` |
 | `402` | `INSUFFICIENT_CREDITS` |
-| `422` / “not included in plan” | `BRAVE_PLAN_MISSING_SEARCH` |
+| Error detail “not included in the plan” or code `OPTION_NOT_IN_PLAN` (any status) | `BRAVE_PLAN_MISSING_SEARCH` |
 | `429` | `PROVIDER_RATE_LIMITED` |
 | `408`, `5xx` | `PROVIDER_UNAVAILABLE` |
 | Other `4xx` | `PROVIDER_ERROR` |
@@ -108,7 +108,7 @@ Retrieval uses `POST https://api.tavily.com/search` with `Authorization: Bearer 
 | `408`, `5xx` | `PROVIDER_UNAVAILABLE` |
 | Other `4xx` | `PROVIDER_ERROR` |
 
-A `429` is retried once with the same short-wait policy as Brave.
+A `429` is retried once when `Retry-After` asks for at most 5 seconds (1 second when absent); a longer wait returns the `429`.
 
 ## Exa
 
@@ -128,13 +128,15 @@ Validation and retrieval use `POST https://api.exa.ai/search` with `x-api-key: <
 | `408`, `5xx` | `PROVIDER_UNAVAILABLE` |
 | Other `4xx` | `PROVIDER_ERROR` |
 
-A `429` is retried once with the same short-wait policy as Brave.
+A `429` is retried once under the same rule as Tavily.
 
 ## DeepSeek
 
 One key serves both capabilities; it is stored as `llm` and read once when the same answer uses DeepSeek for the model and for search.
 
 Models run through `@ai-sdk/deepseek` 3.0.80. The catalog offers `deepseek:deepseek-flash` ("DeepSeek V4.1 Flash · direct", API model `deepseek-flash`). Every request sends `thinking: { type: "disabled" }`: the prompts expect direct replies, and DeepSeek rejects a forced tool choice (the research loop's first step) in thinking mode. DeepSeek reports tokens but no price, so the adapter estimates each step's cost from the list price (Flash: $0.30 per million cache-miss input tokens, $0.006 cache-hit, $1.20 output at peak; half off-peak). Peak is 01:00–04:00 and 06:00–10:00 UTC on weekdays; Chinese public holidays are off-peak at DeepSeek but are priced as peak, so the estimate can only be high.
+
+Validation calls `GET https://api.deepseek.com/user/balance`, which spends nothing. A key whose balance reports `is_available: false` is rejected with `INSUFFICIENT_CREDITS`.
 
 Search:
 
@@ -148,6 +150,7 @@ Content-Type: application/json
 { "query": "<at most 128 characters>", "count": 8 }
 ```
 
+- `count` is the mode's results per query (8 in Quick, 6 in Deep and Deeper), clamped to 1–50.
 - The query is shortened to fit DeepSeek's 128-character limit. When the question asks for recent information, an `after:YYYY-MM-DD` operator is appended within the limit.
 - Each result's `summary` (600–800 characters, written for models) is the source snippet; the short `snippet` is the fallback. `date` is the publication date.
 - The list-price estimate is `$0.00075` per successful search, recorded in `credential_usage`.

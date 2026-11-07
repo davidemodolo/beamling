@@ -14,7 +14,7 @@
 
 ## Document status and current implementation
 
-This specification is the **target contract** for Alpha 1 and public launch. It is not an inventory of the current checkout. Where the target and the code disagree, the code is the source of truth for current behavior and the gap is tracked in [Snapshot (verified 2026-10-22)](#snapshot) and the [technical reference](../reference/index.md).
+This specification is the **target contract** for Alpha 1 and public launch. It is not an inventory of the current checkout. Where the target and the code disagree, the code is the source of truth for current behavior and the gap is tracked in [Snapshot](#snapshot) and the [technical reference](../reference/index.md).
 
 ### Source of truth
 
@@ -40,7 +40,7 @@ Verified against the code on 2026-11-07.
 | Modes | Quick, Deep and Deeper. Quick and Deeper are the same AI SDK `ToolLoopAgent` research loop over the selected search provider with different budgets (Quick: one query; Deeper: up to 60 searches). Deep is a planner, bounded concurrent searches and an optional gap pass. | Same |
 | Streaming | SSE with meta/stage/plan/search/progress/sources/delta/reasoning/citation/usage/done/error, stop and retry | Same contract, extra provider metadata |
 | Sources | Ranked and deduplicated results from the selected provider, right panel or mobile sheet, inline citations | Same with provider-specific costs |
-| History | Keyset pagination, 50 conversations per page, 60 messages per page, pinned chats, title search over loaded pages, per-conversation delete; at most 100 conversations per account (least recently active unpinned trimmed on create), conversations deleted 60 days after last activity, sidebar notice and warning from 90 | Same, plus full-history search |
+| History | Keyset pagination, 50 conversations per page, 60 messages per page, pinned chats, title search over loaded pages, per-conversation delete; at most 100 conversations per account (least recently active unpinned trimmed when a new conversation's first question is stored), conversations deleted 60 days after last activity, sidebar notice and warning from 90 | Same, plus full-history search |
 | Settings | Curated model, default search provider and default mode; per-answer provider picker in the composer | Add optional cost ceiling |
 | Credentials | KMS-backed AES-256-GCM envelope encryption; one key per provider (OpenRouter, DeepSeek, Brave, Tavily, Exa; a DeepSeek key serves models and search); free OpenRouter, Tavily and DeepSeek key checks; optional unverified save for Brave/Exa only; key-check budget per account and IP; keyed-HMAC fingerprints; last four hidden for keys under 20 characters; lazy re-encryption after a KMS key change; Brave plan, expiry and budget metadata; usage warnings | Same; GCP KMS in production |
 | Content at rest | Conversation titles, messages, sources and stored errors are encrypted with per-account workspace keys | Same; GCP KMS in production |

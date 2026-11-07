@@ -17,6 +17,17 @@ The parity stack runs the production image behind Caddy, with Dex as the local O
 
 `pnpm web:dev` is the fast development loop. Set `BEAMLING_FAKE_PROVIDERS=1` to try it without provider keys (any key starting with `test-` works). Fixture providers and `/api/auth/test-login` are test-only: do not use them to judge production behavior.
 
+Other scripts:
+
+| Command | What it does |
+|---|---|
+| `pnpm local:logs` | Follows the app container's logs in the parity stack |
+| `pnpm mascot:dev` / `mascot:build` | Develops or builds the mascot package (`web:dev` and `web:build` build it first) |
+| `pnpm db:migrate` | Applies the SQL migrations in `packages/web/drizzle` |
+| `pnpm --filter @beamling/web db:generate` | Generates a new migration from `lib/server/schema.ts` with drizzle-kit; always a new file |
+| `pnpm --filter @beamling/web db:studio` | Opens Drizzle Studio on `DATABASE_URL` |
+| `pnpm licenses:generate` | Regenerates the dependency license inventory that `licenses:check` compares against |
+
 ## Tests and checks
 
 | Command | What it runs |

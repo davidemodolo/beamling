@@ -2,14 +2,9 @@
 
 ## Testing and QA
 
-### Current suite (verified 2026-10-22)
+### Current suite
 
-| Layer | Tool | Current coverage |
-|---|---|---|
-| Mascot unit | Node test runner | 6 geometry/expression tests |
-| Web unit | Node test runner | 57 tests: credential encryption and rotation, workspace-key re-wrap, integrity vs KMS-outage errors, hidden last four for short keys, analytics opt-out, model allowlist, citation parsing, Brave/Tavily/Exa/OpenRouter error mapping, retries, URL filtering, ranking, language detection, prompt injection boundaries, client IP, production configuration, analytics allowlist/identity/delivery/deletion/erasure retries, body limits, log redaction, the English shutdown notice |
-| Web integration | Node test runner + PostgreSQL | 38 tests: account persistence and content encryption, inactive/unaccepted account cleanup, data export, analytics opt-out with erasure, Quick/Deep/Deeper, the Deeper AI SDK tool loop, planner repair, partial search, missing keys, selected-provider persistence/cost, no fallback, one-stream-per-conversation, global cap, lock contention, stop flag, delete mid-answer, timeout, NUL handling, retry replacement, stale answer repair, pagination, session cleanup, atomic rate limits, per-key search spacing, credential replacement, unverified keys, atomic analytics erasure queuing, the new-stream flag, the 100-conversation cap, 60-day conversation expiry, scheduled shutdown notices and deletion |
-| End-to-end | Playwright | 44 tests: 15 API checks, 18 UI flows and 11 public-route axe/CSP checks; the terms gate and `/welcome` acceptance, data export and analytics opt-out, `security.txt`, and the Brave/Exa-only unverified save are covered; Quick-answer coverage includes search trace, reasoning and tables, provider selection checks Tavily and marks a keyless provider, unverified-key validation is covered, the killswitch blocks new streams, the generated license and legal pages resolve, Deeper coverage checks the third mode, and a scheduled shutdown is announced in the app, at sign-in and on the status page |
+The current tests, their counts and what each file covers are listed in the [technical reference](../reference/tests.md).
 
 Commands:
 

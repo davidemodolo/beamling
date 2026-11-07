@@ -68,7 +68,7 @@ Credential operations are rate-limited to 20 per user per fixed hour. Every call
 
 ## Replace, delete, rotation
 
-- Saving a credential validates it before writing.
+- Saving a credential validates it before writing, unless the request sets `validate: false`.
 - The route encrypts the new key first, then updates the existing `(user, kind, provider)` row in place. A KMS or database failure leaves the working credential and its usage history intact.
 - Replacing a key keeps the credential id and daily usage. Concurrent replacements cannot rewrite the primary key; a losing different-id insert returns the row the first insert created.
 - Fingerprints and Brave provider-slot keys are keyed HMACs, not bare SHA-256, so a database reader cannot test candidate keys offline. Unkeyed legacy fingerprints are no longer recognized.

@@ -1,6 +1,6 @@
 # Key Management
 
-The current checkout implements KMS-backed envelope encryption for credentials and per-account workspace content keys. The env adapter remains for tests. The current data boundary is stated in [Snapshot (verified 2026-10-22)](index.md#snapshot) and the [technical reference](../reference/index.md).
+The current checkout implements KMS-backed envelope encryption for credentials and per-account workspace content keys. The env adapter remains for tests. The current data boundary is stated in [Snapshot](index.md#snapshot) and the [technical reference](../reference/index.md).
 
 ## Scheme
 

@@ -4,7 +4,7 @@
 
 `POST /api/chat` validates:
 
-- `mode` is `quick`, `deep` or `deeper`. `searchProvider` is optional and must be `brave`, `tavily` or `exa`; it defaults to the workspace default.
+- `mode` is `quick`, `deep` or `deeper`. `searchProvider` is optional and must be `brave`, `tavily`, `exa` or `deepseek`; it defaults to the workspace default.
 - Exactly one of `question` or `retryOf` is present.
 - A retry includes `conversationId`.
 - A question is at most 4,000 characters after control characters are removed and whitespace is trimmed.
@@ -51,7 +51,7 @@ question
   → rank, cap at 20 sources
   → if fewer than 4 sources: gap review + up to 2 follow-up searches
   → final ranking and stable source numbering
-  → synthesis prompt + OpenRouter stream
+  → synthesis prompt + model stream
 ```
 
 Planner behavior:
@@ -84,13 +84,13 @@ question + recent conversation
       → compact tool result (8 source summaries + counts)
       ← model decides: search again or finish
   → stop when the model returns text, 60 searches, 60 sources, or 24 steps
-  → synthesis prompt over all collected sources + OpenRouter stream
+  → synthesis prompt over all collected sources + model stream
 ```
 
 Loop controls:
 
 - The first step forces `toolChoice: { type: "tool", toolName: "search" }`, so the model cannot answer without searching.
-- Each step accepts 1–4 queries. Exact duplicate queries are filtered in the tool; the prompt also asks the model to avoid near-duplicates.
+- Each step accepts 1–4 queries. Repeated queries (compared case-insensitively after whitespace normalization) are filtered in the tool; the prompt also asks the model to avoid near-duplicates.
 - `stopWhen` combines `isStepCount(24)` with a closure that stops at 60 searches or 60 sources.
 - Search budget is reserved synchronously before launching each query, so parallel tool calls cannot exceed 60. The tool refuses new searches once the budget is exhausted and tells the model to finish.
 - A terminal credential/plan/quota error is retained and rethrown instead of being replaced by a generic `SEARCH_FAILED`.
@@ -115,7 +115,7 @@ X-Subscription-Token: <user key>
 
 Query parameters:
 
-- `q`: at most 75 words and 600 characters.
+- `q`: at most 50 words and 400 characters.
 - `count`: 1–20; Quick uses 8, Deep and Deeper use 6 per query.
 - `freshness`: omitted unless the question looks recent. Mapping: `pd` (1 day), `pw` (7 days), `pm` (30 days), `py` (365 days).
 
@@ -163,7 +163,7 @@ When ranking produces zero sources:
 - The server emits `stage: no-sources`.
 - It emits a `delta` containing the fixed cautious answer.
 - It stores the message as `complete` with `no_sources = true`.
-- It emits `usage` and `done`; no OpenRouter answer call is made.
+- It emits `usage` and `done`; no model answer call is made.
 
 The fixed answer is:
 
@@ -220,13 +220,13 @@ The system prompts also instruct the model to ignore instructions inside sources
 - Deeper synthesis: `max_tokens: 24576`.
 - Deeper research agent steps: `max_tokens: 4000`.
 - These caps include reasoning tokens when the model emits them, so they are deliberately larger than the answer length alone requires.
-- OpenRouter is called with `stream: true` and temperature `0.2`.
+- The selected model's provider is called through the AI SDK, streaming, with temperature `0.2`.
 - Deltas are forwarded to the SSE client and accumulated in memory. The browser batches React updates to one animation frame instead of re-parsing Markdown per token.
 - On a delta containing `]`, the server scans the accumulated content for new valid citation positions and emits one `citation` event per new position.
 - On completion, `sanitizeCitations()` removes out-of-range markers while preserving markers inside code fences, inline code, URLs and Markdown link targets.
 - `uncited` is true when the final answer has no valid in-range citation.
-- `truncated` is true when OpenRouter reports `finish_reason: "length"`.
-- `resolved_model` and `upstream_provider` are recorded from the synthesis stream when OpenRouter reports them.
+- `truncated` is true when the model stops at its token limit (AI SDK finish reason `length`).
+- `resolved_model` and `upstream_provider` are recorded from the synthesis stream when the provider reports them (OpenRouter does).
 - Usage from planner, repair, gap, Deeper research-agent steps and synthesis calls is summed into one answer record.
 
 The client renders valid `[n]` markers as buttons; invalid markers stay as text. Clicking a citation highlights the matching source card or opens the mobile source sheet.
@@ -240,7 +240,7 @@ The client renders valid `[n]` markers as buttons; invalid markers stay as text.
 | Quick exceeds 60 seconds | Timeout aborts the run | `stopped`, `GENERATION_TIMEOUT` |
 | Deep exceeds 90 seconds | Timeout aborts the run | `stopped`, `GENERATION_TIMEOUT` |
 | Deeper exceeds 360 seconds | Timeout aborts the run | `stopped`, `GENERATION_TIMEOUT` |
-| Client disconnects | The request signal aborts the run | `stopped`, partial text kept |
+| Client disconnects | The request signal aborts the run | `stopped`, partial text kept, `error_code = CLIENT_DISCONNECT` |
 | Conversation or account deleted | Local abort; other instances see the missing/non-streaming row on the next poll | Outcome storage becomes a no-op |
 | Server shutdown | `SIGTERM`/`SIGINT` aborts active chats with `ShutdownError`; the server waits up to 8 seconds for outcomes, then marks leftovers interrupted | `error`, `INTERRUPTED` |
 

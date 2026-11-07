@@ -48,6 +48,7 @@ Production startup refuses to boot when any of these checks fails:
 | `OIDC_ISSUER` | `https://accounts.google.com`; the local parity stack uses `http://auth.localhost:5556`. |
 | `OIDC_REDIRECT_URI` | Defaults to `${APP_URL}/api/auth/callback/google`. Production requires the same origin as `APP_URL` and the fixed callback path. |
 | `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `KMS_ENDPOINT` | AWS KMS adapter; LocalStack uses test credentials and an internal endpoint. |
+| `CREDENTIAL_MASTER_KEY` | Env-KMS adapter only (localhost and tests): 32 bytes, base64 encoded (`openssl rand -base64 32`). Required when `KMS_PROVIDER=env`. |
 | `CREDENTIAL_MASTER_KEY_ID` | `k1`; env-KMS adapter only. |
 | `CREDENTIAL_PREVIOUS_MASTER_KEYS` | Env-KMS adapter rotation list. |
 | `DATABASE_URL_DIRECT` | Direct (non-pooled) connection string for work that holds a session-level advisory lock: migrations and the scheduled-shutdown worker. Falls back to `DATABASE_URL`. Set it whenever `DATABASE_URL` points at a transaction-mode pooler. |
@@ -80,6 +81,10 @@ Production startup refuses to boot when any of these checks fails:
 | `BRAVE_PAID_MIN_INTERVAL_MS` | `0`; optional spacing for Paid-plan Brave keys. |
 | `BEAMLING_FAKE_PROVIDERS` | `1` uses fixture providers. Honored only when not production, or when production `APP_URL` is localhost. |
 | `BEAMLING_FAKE_DELAY_MS` | Overrides fixture delays (defaults vary by call). |
+| `BEAMLING_TEST_AUTH` | `1` enables `POST /api/auth/test-login`, only together with fixture providers and a localhost `APP_URL` ([Accounts](accounts.md)). |
+| `KILL_SWITCH_SECRET` | Bearer secret for `/api/internal/kill` and `/api/internal/shutdown`. At least 32 bytes; shorter or unset disables the endpoint (it returns 404). |
+| `METRICS_SECRET` | Bearer secret for `/api/internal/metrics`, with the same 32-byte rule. |
+| `APP_VERSION`, `GIT_COMMIT` (or `GITHUB_SHA`), `BUILD_TIME` | Build time only, read by `next.config.ts`: version (default: `package.json`), commit (default `local`) and build timestamp (default: now), shown by `/api/health` and the status page. |
 | `ANALYTICS_ENABLED` | Off unless exactly `true`. Set `false` as the kill switch. |
 | `POSTHOG_HOST` | Ingestion origin, default `https://eu.i.posthog.com`. |
 | `POSTHOG_APP_HOST` | Personal API origin; derived from the EU/US ingestion host or set explicitly for self-hosted PostHog. |
@@ -97,6 +102,7 @@ Production warnings (logged, not fatal):
 - `MAX_CONCURRENT_CHATS` is not below `PLATFORM_CONNECTION_LIMIT`.
 - `SIGNUP_MODE=allowlist` has no allowed emails or domains; all new sign-ups are paused.
 - `SMTP_URL`/`MAIL_FROM` are not set; a service shutdown cannot email its notice.
+- `KILL_SWITCH_SECRET` or `METRICS_SECRET` is missing or shorter than 32 bytes; its internal endpoint is disabled.
 
 ## Fixture providers
 

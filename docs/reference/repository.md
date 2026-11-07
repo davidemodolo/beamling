@@ -50,12 +50,12 @@ Toolchain:
 | Package manager | pnpm 12.18.0; dependency build scripts are denied in `pnpm-workspace.yaml` |
 | Web framework | Next.js 16.4.5, App Router |
 | UI | React 19.3.1, TypeScript 6.0.3 in the web app (typescript-eslint does not support TypeScript 7 yet), TypeScript 7.0.2 in the mascot package |
-| Styling | Tailwind CSS 4.3.3 plus hand-written CSS files under `app/styles` |
+| Styling | Tailwind CSS 4.3.4 plus hand-written CSS files under `app/styles` |
 | Database | PostgreSQL 18 |
 | ORM | Drizzle ORM 0.45.4, `pg` 8.23.1 |
 | Validation | Zod 4.6.7 |
-| Email | Nodemailer 10.2.0 (shutdown notice only) |
-| Model calls | AI SDK 7.0.163 (`streamText`, `ToolLoopAgent`) with `@openrouter/ai-sdk-provider` 3.1.0 |
+| Email | Nodemailer 10.3.1 (shutdown notice only) |
+| Model calls | AI SDK 7.0.163 (`streamText`, `ToolLoopAgent`) with `@openrouter/ai-sdk-provider` 3.1.0 and `@ai-sdk/deepseek` 3.0.80 |
 | SSE parsing (browser) | `eventsource-parser` 4.1.3 |
 | Test runner | Node test runner through `tsx`; Playwright 1.65.0 |
 | Runtime target | Node.js 26 LTS in Docker and CI |

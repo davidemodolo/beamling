@@ -1,6 +1,6 @@
 # Functional Requirements
 
-Each requirement has a priority (P0 = Alpha 1 target, P1 = private alpha/v1, P2 = later) and an acceptance criterion. Priority does not mean implemented; current coverage is in [Snapshot (verified 2026-10-22)](index.md#snapshot) and the [technical reference](../reference/index.md).
+Each requirement has a priority (P0 = Alpha 1 target, P1 = private alpha/v1, P2 = later) and an acceptance criterion. Priority does not mean implemented; current coverage is in [Snapshot](index.md#snapshot) and the [technical reference](../reference/index.md).
 
 ## Authentication and account
 

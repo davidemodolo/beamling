@@ -19,7 +19,8 @@ Server and client share `lib/stream-events.ts`; the client validates each payloa
 | `meta` | `{ conversationId, messageId, userMessageId, removed }` | Before pipeline work; `removed` lists conversations deleted by the 100-conversation cap ([Pagination and deletion](conversations.md#pagination-and-deletion)) |
 | `stage` | `{ stage, detail? }` | State changes; details are display strings |
 | `plan` | `{ queries: string[] }` | Deep only, after planning |
-| `progress` | `{ completed, total }` | After each search completes (Quick, Deep and Deeper) |
+| `search` | `{ query, status: "searching" \| "done" \| "failed", results? }` | When each search starts and settles; feeds the search trace |
+| `progress` | `{ completed, total }` | After each search in a batch completes (Quick and Deeper research batches, Deep's planned searches; not Deep's gap-review searches) |
 | `sources` | `Source[]` | Once, before writing |
 | `delta` | `{ text }` | Streamed answer text |
 | `reasoning` | `{ text }` | Model-provided reasoning, when the provider emits it |
@@ -35,6 +36,7 @@ Normal order:
 ```text
 meta
 stage queued
+[stage searching]      (Deep: "Planning 3–5 sub-queries")
 [plan]                 (Deep)
 stage searching
 search searching × N
@@ -77,7 +79,7 @@ Error/stop order ends with `error` or `stage stopped`; there is no `done` after 
 - `search` updates the visible search trace; the panel is collapsed by default.
 - `reasoning` accumulates separately from the answer and is rendered in its own collapsed panel.
 - `delta` text accumulates in the live answer.
-- `cited` positions increment a counter that pulses the mascot.
+- `citation` positions increment a counter that pulses the mascot.
 - `done`, `error`, or `stage stopped` settles the stream.
 - If the stream closes without a terminal event, the client shows `STREAM_ENDED` unless a stop was requested.
 - `onStopped` distinguishes a server-confirmed stop from a dropped connection.

@@ -51,7 +51,7 @@ rate_limits
   key (primary key), window_start, count, expires_at
 
 system_flags
-  key (primary key), enabled, reason, scheduled_at, updated_at
+  key (primary key), enabled, reason, scheduled_at, notify, updated_at
 
 provider_slots
   key (primary key), next_at
@@ -96,7 +96,7 @@ Conversation titles and message content are encrypted before insert. The reposit
 
 1. Take a transaction-scoped PostgreSQL advisory lock (`7314002918`) so every instance checks concurrency in the same order.
 2. Lock the conversation row with `SELECT … FOR UPDATE` and verify ownership.
-3. Mark any streaming answer older than eight minutes as `error` / `INTERRUPTED`. The threshold covers Deeper's six-minute limit plus recovery grace; the previous three-minute value cut off healthy Deeper runs.
+3. Mark any streaming answer in this conversation older than eight minutes as `error` / `INTERRUPTED`. The threshold covers Deeper's six-minute limit plus recovery grace. Stale answers elsewhere are marked by the periodic cleanup ([Cleanup](#cleanup)).
 4. Count all non-stale streaming messages. If the count is at or above `MAX_CONCURRENT_CHATS`, return `SERVER_BUSY` (503).
 5. For a Deeper request, count non-stale streaming Deeper messages. If the count is at or above half of `MAX_CONCURRENT_CHATS` (rounded down, at least 1), return `SERVER_BUSY` (503) with copy suggesting Deep.
 6. Count the account's non-stale streaming messages against `MAX_CONCURRENT_CHATS_PER_USER`.
