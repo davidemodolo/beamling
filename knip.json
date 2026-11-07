@@ -1,0 +1,27 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignoreExportsUsedInFile": true,
+  "workspaces": {
+    ".": {
+      "entry": [
+        "scripts/*.mjs"
+      ]
+    },
+    "packages/web": {
+      "entry": [
+        "scripts/*.mjs",
+        "tests/*.test.ts",
+        "e2e/*.spec.ts"
+      ],
+      "ignore": [
+        "scripts/*.d.mts"
+      ]
+    },
+    "packages/mascot": {
+      "entry": [
+        "demo/main.ts",
+        "test/*.test.mjs"
+      ]
+    }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "path": [
+    "packages/web/app",
+    "packages/web/lib",
+    "packages/web/components",
+    "packages/web/scripts",
+    "packages/web/tests",
+    "packages/web/e2e",
+    "packages/mascot/src",
+    "scripts"
+  ],
+  "ignore": [
+    "**/generated/**",
+    "**/node_modules/**",
+    "**/.next/**",
+    "**/dist/**"
+  ],
+  "format": [
+    "typescript",
+    "tsx",
+    "javascript"
+  ],
+  "minLines": 8,
+  "minTokens": 70,
+  "reporters": [
+    "consoleFull"
+  ],
+  "gitignore": true,
+  "threshold": 0,
+  "exitCode": 1
+}

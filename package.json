@@ -19,6 +19,12 @@
     "local:down": "docker compose down",
     "local:logs": "docker compose logs -f app",
     "licenses:generate": "node scripts/licenses.mjs generate",
-    "licenses:check": "node scripts/licenses.mjs check"
+    "licenses:check": "node scripts/licenses.mjs check",
+    "check:unused": "E2E_DATABASE_URL=postgres://knip@localhost/knip knip",
+    "check:dupes": "jscpd"
+  },
+  "devDependencies": {
+    "jscpd": "5.4.2",
+    "knip": "6.44.1"
   }
 }
