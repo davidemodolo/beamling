@@ -1500,6 +1500,8 @@ frame-ancestors 'none'
 - Dependabot checks npm, GitHub Actions and Docker weekly.
 - The built image is scanned separately; the current image has no HIGH, CRITICAL or MEDIUM findings after removing the npm tree and applying Alpine security updates.
 - `pnpm audit` reports no known vulnerabilities. `pnpm-workspace.yaml` overrides two development-only packages to their patched versions, `minimatch` (ESLint) and the `esbuild` used by drizzle-kit's `@esbuild-kit` loader; drop each override once its parent ships the fix.
+- `pnpm peers check` is clean. `pnpm-workspace.yaml` accepts ESLint 10 for `eslint-config-next`'s react, jsx-a11y and import plugins, whose latest releases have not yet widened their peer range; their rules were verified to run under ESLint 10.
+- Two deprecation notices remain, both from current upstream releases with no advisories: `node-domexception` via Google's `@google-cloud/kms` client (`node-fetch`), and `@esbuild-kit/*` via drizzle-kit (development only).
 - A Trivy scan of the production image (Node 26.13.0, Alpine 3.24.4) reports no known vulnerabilities at any severity.
 
 ### 13.7 Data deletion
@@ -1570,7 +1572,7 @@ PostgreSQL is exposed only on loopback `5433` for integration tests:
 
 The Dockerfile is multi-stage:
 
-1. `deps`: Node 26 Alpine, pnpm 12.18 installed with npm (Node 26 no longer bundles corepack), install workspace dependencies with `--ignore-scripts`.
+1. `deps`: Node 26 Alpine, pnpm installed with npm at the version in `package.json` `packageManager` (Node 26 no longer bundles corepack), install workspace dependencies with `--ignore-scripts`.
 2. `build`: copy sources, build the mascot, run `next build` with standalone output.
 3. `runner`: Node 26 Alpine with npm removed, non-root `beamling` user, standalone server, static assets, public assets, Drizzle migrations and both scripts.
 
