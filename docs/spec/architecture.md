@@ -2,119 +2,113 @@
 
 ## Scope of this architecture
 
-This section describes the **entire project**, not only the frontend. Alpha 1 is a single Next.js application that contains the UI, HTTP API and answer pipeline. There is no separate backend service and no client-side orchestration.
+The whole project. Alpha 1 is one Next.js app holding UI, HTTP API and answer pipeline: no separate backend, no client-side orchestration.
 
-Alpha 1 is Docker-first and PostgreSQL-only. The same container image runs locally through Docker Compose and in production on Google Cloud Run with Neon Postgres. There is no platform-specific database or serverless adapter.
+Docker-first and PostgreSQL-only. The same image runs in Docker Compose locally and on Google Cloud Run with Neon in production. No platform-specific database or serverless adapter.
 
-**Current checkout:** production-parity Docker Compose with Caddy TLS, Dex OIDC, LocalStack KMS, TLS PostgreSQL 18, the production image, structured logs and `/api/health`. The KMS adapters support GCP (production) and AWS/LocalStack (local). Cloud Run (`deploy/gcp/`), Neon, Sentry and Better Stack are target infrastructure; no application code depends on them today. PostHog is implemented as an optional, opt-in integration.
+**Current checkout:** parity Compose stack (Caddy TLS, Dex OIDC, LocalStack KMS, TLS PostgreSQL 18, production image), structured logs, `/api/health`, GCP and AWS/LocalStack KMS adapters, optional opt-in PostHog. Cloud Run (`deploy/gcp/`), Neon, Sentry and Better Stack are target; no code depends on them.
 
 ## Alpha 1 stack (target)
 
 | Layer | Choice | Notes |
 |---|---|---|
-| Application | Next.js 16.4, React 19.3, TypeScript 6 | Current repository; UI and API in one deployable unit |
-| Styling | Tailwind CSS 4.3 plus the existing custom CSS | No UI-kit requirement; keep the current accessible components |
-| Runtime | Node.js 26 LTS | Long-lived SSE, AES-256-GCM and standard Node APIs |
-| Database | PostgreSQL 18 | Neon Postgres (EU region); local Postgres 18 in Docker Compose |
+| Application | Next.js 16.4, React 19.3, TypeScript 6 | UI and API in one unit |
+| Styling | Tailwind CSS 4.3 + existing custom CSS | No UI kit |
+| Runtime | Node.js 26 LTS | Long-lived SSE, AES-256-GCM |
+| Database | PostgreSQL 18 | Neon (EU); Postgres 18 in Compose |
 | ORM | Drizzle ORM | Typed schema, versioned migrations |
-| Cache and limits | Database-backed limits at launch | No Redis |
-| Auth | Google OIDC + Drizzle sessions | Google-only sign-in; opaque token cookie, hashed at rest. No passwords or guest workspaces |
-| Email | Google identity email | Stored for account display and legal contact; no Beamling-sent verification or marketing email; optional SMTP relay sends only the service-shutdown notice |
-| Payments | None at launch | Added only when monetization starts |
-| Object storage | None in Alpha 1 | Exports are generated on demand; no uploads |
-| Cryptography | AES-256-GCM envelope encryption with KMS-wrapped keys | Current: GCP/AWS/env KMS adapters, per-account workspace content keys. Production: GCP Cloud KMS |
-| LLM | OpenRouter Chat Completions, streaming | One adapter, no direct-provider adapters |
-| Search | Brave, Tavily or Exa | Provider adapter per answer; snippets only; no Beamling page fetcher |
-| Container | Multi-stage Dockerfile, Next standalone output | Non-root runtime, healthcheck, no secrets in the image |
-| Observability | Structured logs now; Sentry and Better Stack target | Cloud Run/Neon metrics and PostHog usage analytics; no content in logs |
-| Analytics | PostHog Cloud EU, server-side (target) | Metadata-only product events; no content or keys; free tier. The checkout implements the event contract, opt-in kill switch and deletion hook |
+| Cache and limits | Database-backed | No Redis |
+| Auth | Google OIDC + Drizzle sessions | Google only; opaque cookie token, hashed. No passwords or guests |
+| Email | Google identity email | For display and legal contact. No Beamling email except the optional SMTP shutdown notice |
+| Payments | None at launch | Only when monetization starts |
+| Object storage | None | Exports on demand; no uploads |
+| Cryptography | AES-256-GCM envelopes, KMS-wrapped keys | GCP/AWS/env adapters, per-account content keys. Production: GCP Cloud KMS |
+| LLM | OpenRouter Chat Completions, streaming | One adapter |
+| Search | Brave, Tavily or Exa | One provider per answer; snippets only; no page fetcher |
+| Container | Multi-stage Dockerfile, Next standalone | Non-root, healthcheck, no secrets |
+| Observability | Structured logs; Sentry and Better Stack target | Cloud Run/Neon metrics; no content in logs |
+| Analytics | PostHog Cloud EU, server-side (target) | Metadata only. Event contract, opt-in kill switch and deletion hook implemented |
 
 ## Chat request path
 
-1. The browser sends `POST /api/chat` with a session cookie and an abort signal.
-2. The route handler authenticates the user and loads the conversation.
-3. The handler resolves the OpenRouter credential and the credential for the selected search provider, decrypts them in memory, and starts the pipeline.
-4. The handler returns an SSE stream with events `meta`, `stage`, `plan`, `progress`, `sources`, `delta`, `citation`, `usage`, `done`, or `error`.
-5. Quick runs one search on the selected provider. Deep runs the planner, 3–5 searches with concurrency 2, then an optional gap pass of at most two searches.
-6. The selected provider returns ranked results. The server normalizes, deduplicates, trims and numbers them; it does not fetch pages.
-7. OpenRouter streams deltas. The handler forwards them, accumulates the full text and parses citation markers.
-8. On completion, the handler persists the resolved model, selected search provider, sources, usage, generation cost, search request count, search cost and final status.
-9. The abort signal cancels Beamling's pending search requests on the selected provider and the OpenRouter stream, then marks the message as stopped. Provider cancellation is upstream-dependent, so the UI must not promise that stopping guarantees zero provider billing.
+1. Browser sends `POST /api/chat` with session cookie and abort signal.
+2. Handler authenticates and loads the conversation.
+3. It decrypts the OpenRouter and selected search credentials in memory and starts the pipeline.
+4. It returns SSE: `meta`, `stage`, `plan`, `progress`, `sources`, `delta`, `citation`, `usage`, `done`, `error` ([Streaming protocol](../reference/streaming.md)).
+5. Quick: one search. Deep: planner, 3–5 searches at concurrency 2, optional gap pass of at most two.
+6. Results are normalized, deduplicated, trimmed and numbered; no page fetching.
+7. OpenRouter deltas are forwarded, accumulated and parsed for citations.
+8. On completion it persists resolved model, search provider, sources, usage, generation cost, search request count, search cost and status.
+9. Abort cancels pending searches and the OpenRouter stream and marks the message stopped. Provider cancellation is upstream-dependent; never promise zero billing.
 
 ## Environments
 
 | Environment | Purpose | Identity | Database and crypto | Providers |
 |---|---|---|---|---|
-| Local parity | Development and manual testing against production code paths | Local Dex OIDC provider through the same OIDC client; Google only in production | PostgreSQL 18 with TLS, LocalStack KMS, production Docker image, Caddy TLS | Real user keys only; fixture providers only in an explicit test profile |
-| Preview | Pull request checks | Google test client or Dex | Preview Postgres + LocalStack KMS | Fixture adapters, optional sandbox keys |
-| Production | Live users | Google OIDC | Neon Postgres with PITR and weekly dumps + GCP Cloud KMS | Real user keys only |
+| Local parity | Dev and manual testing on production paths | Dex via the same OIDC client | TLS PostgreSQL 18, LocalStack KMS, production image, Caddy TLS | Real user keys; fixtures only in a test profile |
+| Preview | PR checks | Google test client or Dex | Preview Postgres + LocalStack KMS | Fixtures, optional sandbox keys |
+| Production | Live users | Google OIDC | Neon (PITR, weekly dumps) + GCP Cloud KMS | Real user keys |
 
-The local parity stack is **not** a simplified dev server. It runs the same standalone image, `NODE_ENV=production`, secure cookies, the real OIDC callback code, the real KMS envelope code, TLS to PostgreSQL and real migrations. Only the external vendors are substituted: Dex stands in for Google and LocalStack KMS stands in for GCP KMS. The app-facing protocols and code paths are the same.
+Local parity is **not** a simplified dev server: same image, `NODE_ENV=production`, secure cookies, real OIDC callback, real KMS envelope code, TLS to PostgreSQL, real migrations. Only vendors are swapped (Dex for Google, LocalStack for GCP KMS).
 
 ## Streaming and limits
 
-- SSE heartbeat every 15 seconds to keep proxies open.
-- The chat route runs on Node.js 26 and uses web-standard streams for SSE.
-- Quick mode maximum duration: 60 seconds. Deep mode: 90 seconds. Deeper mode: 360 seconds.
-- One active generation per conversation; the current code rejects a second request with `GENERATION_IN_PROGRESS` (409) rather than cancelling the first.
-- Global concurrency cap protects provider quota and server memory. With more than one instance, use a database-backed atomic counter or the host's native limiter; do not rely on process memory alone.
-- Per-user and per-IP limits are keyed by hashed identifiers and stored in `rate_limits` or a platform equivalent.
-- No sticky sessions. Each SSE connection stays on one instance for its lifetime; all durable state lives in the database.
-- Alpha 1 Deep and Deeper run synchronously in the chat request. There is no queue or background worker; Deep stops after 90 seconds and Deeper after 360 seconds, keeping any partial text.
+- SSE heartbeat every 15 seconds; web-standard streams on Node.js 26.
+- Max duration: Quick 60 s, Deep 90 s, Deeper 360 s. Deep and Deeper run synchronously in the request (no queue) and keep partial text on timeout.
+- One active generation per conversation; a second request gets `GENERATION_IN_PROGRESS` (409).
+- Global concurrency cap. With several instances, use a database-backed atomic counter or the host limiter, not process memory.
+- Per-user and per-IP limits use hashed keys in `rate_limits` or equivalent.
+- No sticky sessions; an SSE connection stays on one instance; durable state is in the database.
 
 ## Deployment targets
 
 | Target | Model | Notes |
 |---|---|---|
-| **Google Cloud Run + Neon** | Docker image + scale-to-zero Postgres | **Public launch default.** Scale-to-zero compute and DB on free allowances; keyless KMS and deploy identities; custom domain/TLS via domain mapping |
-| Railway | Docker image + managed PostgreSQL | Fallback; simpler but not scale-to-zero |
-| Render | Docker image + managed PostgreSQL | Equivalent fallback |
-| Hetzner or similar | Docker Compose or Dokploy | Cheapest steady state, more operations |
-| AWS | ECS Fargate + RDS | Only when a concrete compliance or scale requirement appears |
+| **Google Cloud Run + Neon** | Docker image + scale-to-zero Postgres | **Public launch default.** Free allowances, keyless KMS and deploy identities, domain mapping for TLS |
+| Railway | Docker + managed PostgreSQL | Fallback; not scale-to-zero |
+| Render | Docker + managed PostgreSQL | Equivalent fallback |
+| Hetzner or similar | Compose or Dokploy | Cheapest steady state, more ops |
+| AWS | ECS Fargate + RDS | Only for a concrete compliance or scale need |
 
-Decision rule: use Google Cloud Run for compute and Neon for Postgres at public launch. Everything must run from the Docker image plus PostgreSQL; no platform-specific runtime APIs, no Redis and no queue. Fly.io, Railway and Render remain fallbacks.
+Decision: Cloud Run + Neon at launch. Everything runs from the image plus PostgreSQL: no platform runtime APIs, Redis or queue. Fly.io, Railway and Render are fallbacks.
 
 ## Container contract
 
-- `Dockerfile` is multi-stage: install workspace dependencies, build the mascot package and Next.js, then run the standalone output as a non-root user.
-- `next.config.ts` must set `output: "standalone"`.
-- `docker-compose.yml` starts the production-parity stack: Caddy TLS, the app image, PostgreSQL 18 with TLS, Dex OIDC, LocalStack KMS and a one-shot migrator.
-- The image must not contain `.env` files, API keys or build-time user credentials.
-- Current environment: `DATABASE_URL` and TLS options, `APP_URL`, `AUTH_SECRET`, `OIDC_ISSUER`/`OIDC_CLIENT_ID`/`OIDC_CLIENT_SECRET`/`OIDC_REDIRECT_URI`, `KMS_PROVIDER` plus the selected KMS key settings, `PORT`, `TRUSTED_PROXY_HOPS`, `MAX_CONCURRENT_CHATS`, `BRAVE_MIN_INTERVAL_MS`/`BRAVE_PAID_MIN_INTERVAL_MS`, `COOKIE_SECURE` and the fixture-provider switches. The env KMS adapter additionally uses `CREDENTIAL_MASTER_KEY` and rotation variables.
-- Target public-launch additions: `POSTHOG_API_KEY`, `POSTHOG_HOST`, `POSTHOG_PERSONAL_API_KEY`, `POSTHOG_PROJECT_ID`, `ANALYTICS_SALT`, `KILL_SWITCH_SECRET` and `METRICS_SECRET`. `POSTHOG_APP_HOST` is optional.
-- The image exposes a health endpoint and a Docker `HEALTHCHECK`.
-- Database migrations run as a release step, not automatically on every container start.
-- The Docker build must include `packages/web` and `packages/mascot` because the app depends on the workspace package.
+- Multi-stage `Dockerfile`: install workspace deps, build `packages/mascot` and Next.js (both packages in the build), run standalone output as non-root.
+- `next.config.ts` sets `output: "standalone"`.
+- `docker-compose.yml` starts Caddy TLS, the app, TLS PostgreSQL 18, Dex, LocalStack KMS and a one-shot migrator.
+- No `.env` files, API keys or user credentials in the image.
+- Health endpoint and Docker `HEALTHCHECK`.
+- Migrations run as a release step, not on container start.
+- Current env ([Runtime configuration](../reference/configuration.md)): `DATABASE_URL` + TLS options, `APP_URL`, `AUTH_SECRET`, `OIDC_ISSUER`/`OIDC_CLIENT_ID`/`OIDC_CLIENT_SECRET`/`OIDC_REDIRECT_URI`, `KMS_PROVIDER` + KMS key settings, `PORT`, `TRUSTED_PROXY_HOPS`, `MAX_CONCURRENT_CHATS`, `BRAVE_MIN_INTERVAL_MS`/`BRAVE_PAID_MIN_INTERVAL_MS`, `COOKIE_SECURE`, fixture switches; env KMS adds `CREDENTIAL_MASTER_KEY` and rotation variables.
+- Public-launch additions: `POSTHOG_API_KEY`, `POSTHOG_HOST`, `POSTHOG_PERSONAL_API_KEY`, `POSTHOG_PROJECT_ID`, `ANALYTICS_SALT`, `KILL_SWITCH_SECRET`, `METRICS_SECRET`; optional `POSTHOG_APP_HOST`.
 
 ## Local production-parity stack
 
-The default `docker compose up --build` must exercise the production code paths. It includes:
+`docker compose up --build` exercises production code paths:
 
 | Service | Role | Production equivalent |
 |---|---|---|
-| `caddy` | HTTPS on `https://localhost`, reverse proxy, `X-Forwarded-*`, local CA | Google front end (TLS, `X-Forwarded-For`) |
-| `app` | The standalone production image, `NODE_ENV=production` | Cloud Run service |
+| `caddy` | HTTPS on `https://localhost`, reverse proxy, `X-Forwarded-*`, local CA | Google front end |
+| `app` | Standalone image, `NODE_ENV=production` | Cloud Run service |
 | `migrate` | One-shot `node scripts/migrate.mjs` | Release command |
-| `db` | PostgreSQL 18 with TLS required and a local CA | Neon Postgres |
-| `dex` | Local OIDC issuer with a seeded test account | Google OIDC |
-| `kms` | LocalStack KMS with a pre-created symmetric key | GCP Cloud KMS |
+| `db` | PostgreSQL 18, TLS required, local CA | Neon |
+| `dex` | OIDC issuer with a seeded test account | Google OIDC |
+| `kms` | LocalStack KMS with a symmetric key | GCP Cloud KMS |
 
-Requirements:
-
-- No `BEAMLING_FAKE_PROVIDERS` in the default profile. Fixtures live in a separate test profile used by automated tests.
-- Login goes through the real `/api/auth/login` → OIDC → `/api/auth/callback/google` flow. Dex is configured as a generic OIDC issuer; production sets the Google issuer.
-- Credential and content encryption call the real KMS adapter. Local uses the AWS KMS API against LocalStack; production uses GCP Cloud KMS. Both wrap/unwrap workspace keys through the same interface.
-- PostgreSQL connections use TLS with a mounted CA; the app verifies it.
-- Cookies are `Secure` and `__Host-` because the local URL is HTTPS.
-- The parity stack uses the same standalone image and migration files as production, not `next dev`.
-- A `pnpm local:up` / `pnpm local:down` pair wraps Compose. A separate `pnpm dev` path may use the dev server, but it is not the parity environment.
-- The stack must expose enough seeded identity to log in without Google. The seeded local account is test-only and must never be enabled in production.
+- No `BEAMLING_FAKE_PROVIDERS` by default; fixtures only in the automated test profile.
+- Login uses the real `/api/auth/login` → OIDC → `/api/auth/callback/google` flow, with Dex as a generic issuer.
+- Encryption uses the real KMS adapter (AWS API on LocalStack locally, GCP in production), same interface.
+- PostgreSQL TLS with a mounted CA the app verifies.
+- `Secure`, `__Host-` cookies (local URL is HTTPS).
+- Same image and migrations as production, not `next dev`. `pnpm local:up` / `pnpm local:down` wrap Compose; `pnpm dev` is not parity.
+- The seeded Dex account is test-only, never enabled in production.
 
 ## Stateless rules
 
-- Application instances hold no durable state and write no local files.
-- The database is the only source of truth for users, sessions, conversations, messages, sources, credentials and usage.
-- No in-memory job queues. Alpha 1 Deep is synchronous; background jobs are post-alpha.
+- Instances hold no durable state and write no local files.
+- The database is the only source of truth; sessions live there.
+- No in-memory job queues; background jobs are post-alpha.
 - Handlers are idempotent where possible and safe to retry.
-- Any instance can serve any request. Sessions live in the database, not in memory.
-- Configuration comes from environment variables only.
+- Any instance serves any request.
+- Configuration comes only from environment variables.

@@ -58,7 +58,7 @@ function KeyField({
         id={id}
         value={value}
         onChange={onChange}
-        placeholder={connected ? "Already saved · paste a new key to replace it" : provider.placeholder}
+        placeholder={connected ? "Saved · paste a new key to replace it" : provider.placeholder}
         invalid={!!error}
       />
       {error ? (
@@ -67,10 +67,10 @@ function KeyField({
         </p>
       ) : connected ? (
         <p className="hint">
-          <Icon name="check" size={12} /> Your {provider.name} key is saved. Leave this empty to keep it.
+          <Icon name="check" size={12} /> Key saved.
         </p>
       ) : provider.freeValidation ? (
-        <p className="hint">Checked with {provider.name} without spending credit.</p>
+        <p className="hint">Checked for free.</p>
       ) : null}
       {children}
       {provider.notice ? (
@@ -214,10 +214,7 @@ export default function OnboardingPage() {
           <section className="onboard-step" aria-labelledby="setup-title">
             <span className="badge badge-beam" style={{ width: "fit-content" }}>Setup</span>
             <h1 id="setup-title">How do you want to start?</h1>
-            <p className="lead">
-              Beamling runs on your own model and search keys, so you only ever pay the providers, and only if you choose
-              to. Your keys are checked, encrypted at rest and never shown again.
-            </p>
+            <p className="lead">Beamling runs on your own keys. They are encrypted and never shown again.</p>
             <div className="onboard-paths">
               <button
                 type="button"
@@ -229,9 +226,7 @@ export default function OnboardingPage() {
               >
                 <span className="badge badge-success">Recommended</span>
                 <strong>Start free</strong>
-                <span>
-                  A free OpenRouter model and Brave Search&apos;s monthly free credit. Two free accounts, about three minutes.
-                </span>
+                <span>OpenRouter and Brave free plans.</span>
                 <span className="onboard-path-go">
                   Set up for free <Icon name="arrow-right" size={13} />
                 </span>
@@ -245,7 +240,7 @@ export default function OnboardingPage() {
                 }}
               >
                 <strong>Use my own providers</strong>
-                <span>Pick any supported model (Claude, GPT, Gemini, DeepSeek) and search provider (Brave, Tavily, Exa, DeepSeek).</span>
+                <span>Claude, GPT, Gemini, DeepSeek and more.</span>
                 <span className="onboard-path-go">
                   Choose providers <Icon name="arrow-right" size={13} />
                 </span>
@@ -259,12 +254,9 @@ export default function OnboardingPage() {
               title={path === "free" ? "Connect a free model" : "Choose your model"}
               lead={
                 path === "free" ? (
-                  <>
-                    Create a free account at OpenRouter, open <em>Keys</em> and create a key. No card is needed. Free models
-                    allow about 50 requests a day.
-                  </>
+                  "Create a free OpenRouter key. No card needed."
                 ) : (
-                  "The model writes every answer. You can change it any time in Settings."
+                  "You can change it later in Settings."
                 )
               }
             />
@@ -273,7 +265,7 @@ export default function OnboardingPage() {
                 <Icon name="sparkles" size={16} />
                 <div>
                   <strong>{llmModelName(llmModel)}</strong>
-                  <span>Runs on OpenRouter&apos;s free tier · $0</span>
+                  <span>Free on OpenRouter</span>
                 </div>
               </div>
             ) : (
@@ -312,10 +304,7 @@ export default function OnboardingPage() {
               }}
             >
               {path === "free" ? (
-                <p className="hint">
-                  Free models are run by hosts that may keep your prompts and use them for training, so avoid private
-                  questions. If a free model is refused, allow free models in OpenRouter&apos;s privacy settings.
-                </p>
+                <p className="hint">Free hosts may train on prompts; avoid private questions.</p>
               ) : null}
             </KeyField>
             <div className="onboard-actions">
@@ -335,12 +324,9 @@ export default function OnboardingPage() {
               title={path === "free" ? "Connect Brave Search" : "Choose your search provider"}
               lead={
                 path === "free" ? (
-                  <>
-                    Brave gives every account $5 of search credit each month, about 1,000 searches, with no card needed.
-                    Create a key on the Search plan.
-                  </>
+                  "Brave has a free plan. Create a key on the Search plan."
                 ) : (
-                  "Search finds the sources behind each answer. You can switch provider for any single question."
+                  "You can switch provider per question."
                 )
               }
             />
@@ -368,7 +354,7 @@ export default function OnboardingPage() {
               </div>
             )}
             {sharedKey ? (
-              <p className="hint">Uses your {searchInfo.name} key from the model step.</p>
+              <p className="hint">Uses your {searchInfo.name} key.</p>
             ) : (
               <>
                 <KeyField

@@ -173,12 +173,12 @@ export function EmptyState({ onFinishSetup }: { onFinishSetup?: () => void }) {
         <h1>
           Ask anything. <em>See the sources.</em>
         </h1>
-        <p>Beamling searches with your keys, reads what it finds, and shows you where every answer comes from.</p>
+        <p>Every answer shows its sources.</p>
         {onFinishSetup ? (
           <div className="notice notice-warn" role="status">
             <Icon name="key" size={16} />
             <div>
-              <strong>A key is missing.</strong> Answers need a model key and a search key.{" "}
+              <strong>A key is missing.</strong>{" "}
               <button type="button" className="btn btn-secondary btn-sm" onClick={onFinishSetup}>
                 Add a key
               </button>

@@ -2,9 +2,9 @@
 
 ## Conventions
 
-- JSON over HTTPS, `Content-Type: application/json` except for SSE.
-- Authentication through a database-backed session cookie. No API bearer tokens in Alpha 1.
-- Errors use a stable shape:
+- JSON over HTTPS, except SSE.
+- Database-backed session cookie; no bearer tokens in Alpha 1.
+- Error shape:
 
 ```json
 {
@@ -20,32 +20,35 @@
 
 | Method | Path | Purpose | Auth |
 |---|---|---|---|
-| GET | `/api/auth/login` | Start Google OIDC; sets the short-lived transaction cookie and redirects | None |
-| GET | `/api/auth/callback/google` | Verify OIDC response, create/resume the account and session, redirect | Transaction cookie |
-| POST | `/api/auth/logout` | Revoke the current session and clear the cookie; `?scope=all` revokes every session of the account | Session |
-| GET | `/api/state` | Current account, settings, masked credentials, the conversation count and the first page of conversation summaries (no messages) | Session |
-| POST | `/api/chat` | Ask a question (or retry the latest failed or stopped answer), returns SSE | Session |
-| POST | `/api/chat/stop` | Stop an in-flight answer by message ID | Session |
-| GET | `/api/conversations?cursor=` | Next page of conversation summaries, newest first (50 per page) | Session |
-| POST | `/api/conversations` | Create an empty conversation; the 100-conversation cap is applied when its first question is stored, and the `meta` event lists removed ids | Session |
-| GET | `/api/conversations/:id` | Get a conversation with its newest 60 messages and their sources, plus `hasMoreMessages` | Session |
-| GET | `/api/conversations/:id/messages?before=` | The 60 messages before a message ID, with sources | Session |
-| PATCH | `/api/conversations/:id` | Change the conversation mode or pin state | Session |
-| DELETE | `/api/conversations/:id` | Delete conversation | Session |
-| POST | `/api/credentials` | Create and validate a credential with plan/limit metadata; `validate: false` saves it unverified | Session |
-| POST | `/api/credentials/:id/validate` | Re-validate the key | Session |
-| PATCH | `/api/credentials/:id` | Update declared plan, expiry or budget without the key | Session |
-| DELETE | `/api/credentials/:id` | Delete credential and its usage | Session |
-| POST | `/api/account/terms` | Accept the current terms version with an age confirmation | Session (terms not required) |
-| GET | `/api/account/export` | Download every stored record of the account as JSON | Session (terms not required) |
-| DELETE | `/api/account` | Delete the account and data | Session (terms not required) |
+| GET | `/api/auth/login` | Start Google OIDC (transaction cookie, redirect) | None |
+| GET | `/api/auth/callback/google` | Verify OIDC, create/resume account and session | Transaction cookie |
+| POST | `/api/auth/logout` | Revoke the session; `?scope=all` revokes all | Session |
+| GET | `/api/state` | Account, settings, masked credentials, conversation count, first page of summaries | Session |
+| POST | `/api/chat` | Ask or retry; returns SSE | Session |
+| POST | `/api/chat/stop` | Stop an answer by message ID | Session |
+| GET | `/api/conversations?cursor=` | Next page of summaries, newest first (50) | Session |
+| POST | `/api/conversations` | Create an empty conversation; the 100 cap applies on its first question (`meta.removed` lists deleted ids) | Session |
+| GET | `/api/conversations/:id` | Newest 60 messages with sources, plus `hasMoreMessages` | Session |
+| GET | `/api/conversations/:id/messages?before=` | 60 messages before a message ID | Session |
+| PATCH | `/api/conversations/:id` | Change mode or pin state | Session |
+| DELETE | `/api/conversations/:id` | Delete | Session |
+| POST | `/api/credentials` | Create and validate a credential with plan/limits; `validate: false` skips validation | Session |
+| POST | `/api/credentials/:id/validate` | Re-validate | Session |
+| PATCH | `/api/credentials/:id` | Update plan, expiry or budget | Session |
+| DELETE | `/api/credentials/:id` | Delete credential and usage | Session |
+| POST | `/api/account/terms` | Accept current terms and confirm age | Session (terms not required) |
+| GET | `/api/account/export` | Export all account data as JSON | Session (terms not required) |
+| DELETE | `/api/account` | Delete account and data | Session (terms not required) |
 | POST | `/api/internal/kill` | Open or close new streams | Bearer `KILL_SWITCH_SECRET` |
 | GET | `/api/internal/metrics` | Deployment flag, active streams and build identity | Bearer `METRICS_SECRET` |
-| GET, POST | `/api/internal/shutdown` | Show, schedule (`days` ≥ 14, `reason`, `notify`) or cancel a service shutdown; returns notification progress | Bearer `KILL_SWITCH_SECRET` |
+| GET, POST | `/api/internal/shutdown` | Show, schedule (`days` ≥ 14, `reason`, `notify`) or cancel shutdown; returns notice progress | Bearer `KILL_SWITCH_SECRET` |
 | GET | `/api/health` | Liveness and database check | None |
 | GET | `/.well-known/security.txt` | RFC 9116 security contact | None |
 
-Every authenticated response carries `Cache-Control: private, no-store` and `Vary: Cookie`. Request bodies are limited to 64 KB (`PAYLOAD_TOO_LARGE`). GET routes share a per-user limit of 600 requests per 10 minutes and a per-IP limit of 3,000 requests per 10 minutes; mutations share a per-user limit of 300 per 10 minutes. An account that has not accepted the current terms gets `TERMS_REQUIRED` except on the routes marked above.
+- Authenticated responses: `Cache-Control: private, no-store`, `Vary: Cookie`.
+- Body limit 64 KB (`PAYLOAD_TOO_LARGE`).
+- Rate limits per 10 minutes: GET 600/user and 3,000/IP; mutations 300/user.
+- Terms not accepted: `TERMS_REQUIRED`, except on routes marked above.
 
 ## Ask a question
 
@@ -60,9 +63,9 @@ Request:
 }
 ```
 
-`mode` is `quick`, `deep` or `deeper`; `searchProvider` is optional and defaults to the workspace setting. To retry the latest failed or stopped answer, send `{"conversationId":"f1c2...","retryOf":"<assistant message id>","mode":"quick"}` instead of a question. The server reuses the stored question and replaces that answer, so the question is never stored twice.
+`mode`: `quick`, `deep` or `deeper`. `searchProvider` defaults to the workspace setting. Retry the latest failed or stopped answer with `{"conversationId":"f1c2...","retryOf":"<assistant message id>","mode":"quick"}`; the stored question is reused and the answer replaced.
 
-Response: `text/event-stream` with these events. The per-answer provider is returned in `usage.searchProvider` and persisted on the message.
+Response: `text/event-stream`:
 
 ```text
 event: meta
@@ -73,9 +76,6 @@ data: {"stage":"queued","detail":"Understanding the question"}
 
 event: stage
 data: {"stage":"searching","detail":"Searching the web"}
-
-event: search
-data: {"query":"What changed in the EU AI Act in 2026?","status":"searching"}
 
 event: search
 data: {"query":"What changed in the EU AI Act in 2026?","status":"done","results":8}
@@ -108,9 +108,13 @@ event: done
 data: {"noSources":false,"truncated":false,"degraded":false,"searchFailures":0}
 ```
 
-`usage.costUsd` is the generation cost reported by OpenRouter (actual); `usage.searchCostUsd` is the selected provider's cost at its configured list price (estimated); `usage.searchProvider` identifies Brave, Tavily or Exa; `usage.resolvedModel` and `usage.upstreamProvider` are what OpenRouter actually used when it reports them. `done.searchFailures` greater than zero is the partial-search warning and `degraded` marks a Deep run whose planner failed twice.
+- `usage.costUsd`: actual generation cost from OpenRouter.
+- `usage.searchCostUsd`: estimated at the provider's list price.
+- `usage.searchProvider`: Brave, Tavily or Exa; persisted on the message.
+- `usage.resolvedModel`, `usage.upstreamProvider`: what OpenRouter used, when reported.
+- `done.searchFailures > 0`: partial-search warning. `degraded`: Deep planner failed twice.
 
-Deep adds `plan` and repeated `progress` events:
+Deep adds `plan` and one `progress` per search:
 
 ```text
 event: plan
@@ -124,69 +128,58 @@ data: {"query":"EU AI Act timeline","status":"done","results":6}
 
 event: progress
 data: {"completed":1,"total":3}
-
-event: progress
-data: {"completed":2,"total":3}
-
-event: progress
-data: {"completed":3,"total":3}
 ```
 
 Stream rules:
 
-- OpenRouter errors before the stream starts are plain JSON. After headers are sent, a mid-stream error arrives as an SSE `error` event; the server ends the message with status `error`.
-- OpenRouter usage arrives once in the final chunk before `[DONE]`. The server must not emit `usage` before it has either that chunk or a documented fallback estimate.
-- `stage` transitions are monotonic for a run: `queued → searching → reading → writing`, followed by `stopped`, `no-sources` or `error` on an abnormal end. Successful completion is the separate `done` event. Deep may emit multiple `progress` events inside `searching`.
-- `sources` is emitted once, before `writing`, with final positions. The client never renumbers sources after the first `delta`.
-- A client disconnect aborts OpenRouter and pending search requests. Do not continue generating and billing in the background.
+- Errors before the stream starts are plain JSON; after headers, an SSE `error` event, and the message ends with status `error`.
+- OpenRouter usage arrives in the final chunk before `[DONE]`; emit `usage` only after it or a documented fallback estimate.
+- `stage` is monotonic: `queued → searching → reading → writing`, then `stopped`, `no-sources` or `error` on abnormal end. Success is the `done` event.
+- `sources` is emitted once, before `writing`, with final positions; never renumbered.
+- Client disconnect aborts OpenRouter and pending searches; nothing continues in the background.
 
 ## Error codes
 
 | Code | Meaning | HTTP |
 |---|---|---|
-| `UNAUTHENTICATED` | No valid signed-in session | 401 |
+| `UNAUTHENTICATED` | No valid session | 401 |
 | `AUTH_STATE_INVALID` | Missing, expired or replayed OIDC transaction | 400 |
 | `AUTH_EMAIL_UNVERIFIED` | Google did not return a verified email | 403 |
-| `AUTH_FAILED` | OIDC discovery, exchange or ID-token verification failed | 502 |
+| `AUTH_FAILED` | OIDC discovery, exchange or token verification failed | 502 |
 | `CREDENTIAL_MISSING` | No credential for the required provider | 400 |
 | `CREDENTIAL_INVALID` | Provider rejected the key | 400 |
 | `INSUFFICIENT_CREDITS` | OpenRouter returned `402` | 402 |
 | `MODEL_NOT_FOUND` | Model unavailable on OpenRouter | 400 |
-| `PROVIDER_RATE_LIMITED` | OpenRouter or the search provider rate limit was hit | 429 |
-| `BRAVE_PLAN_MISSING_SEARCH` | Brave key is not attached to a Search plan | 400 |
+| `PROVIDER_RATE_LIMITED` | Model or search provider rate limit | 429 |
+| `BRAVE_PLAN_MISSING_SEARCH` | Brave key has no Search plan | 400 |
 | `PROVIDER_UNAVAILABLE` | Provider outage, timeout or `5xx` | 502 |
-| `SERVICE_BUSY` | Operator killswitch stopped new streams | 503 |
-| `SEARCH_FAILED` | The search provider failed for every query | 502 |
+| `SERVICE_BUSY` | Killswitch stopped new streams | 503 |
+| `SEARCH_FAILED` | Every search failed | 502 |
 | `CONTEXT_TOO_LARGE` | Query or context exceeds model limits | 400 |
-| `GENERATION_IN_PROGRESS` | A generation is already active in this conversation | 409 |
+| `GENERATION_IN_PROGRESS` | A generation is already active here | 409 |
 | `RATE_LIMITED` | Beamling rate limit hit | 429 |
 | `INTERNAL` | Unhandled error | 500 |
-
-Additional codes:
-
-| Code | Meaning | HTTP |
-|---|---|---|
 | `INVALID_JSON`, `INVALID_INPUT`, `INVALID_ID`, `INVALID_CURSOR` | Malformed request | 400 |
 | `PAYLOAD_TOO_LARGE` | Request body over 64 KB | 413 |
 | `INVALID_ORIGIN` | Cross-origin mutation rejected | 403 |
-| `TERMS_REQUIRED` | The account has not accepted the current terms | 403 |
-| `TERMS_OUTDATED` | Acceptance sent for a terms version that is no longer current | 409 |
-| `SERVICE_CLOSING` | A new account was refused because a shutdown is scheduled | 403 |
+| `TERMS_REQUIRED` | Current terms not accepted | 403 |
+| `TERMS_OUTDATED` | Terms version no longer current | 409 |
+| `SERVICE_CLOSING` | New account refused; shutdown scheduled | 403 |
 | `SERVICE_CLOSED` | Sign-in refused after the shutdown date | 403 |
-| `MAIL_NOT_CONFIGURED` | Shutdown scheduled with email notice but SMTP is not configured | 409 |
-| `NOT_FOUND`, `CONVERSATION_NOT_FOUND`, `MESSAGE_NOT_FOUND` | Missing, or owned by another user (IDs are not probeable) | 404 |
-| `RETRY_NOT_ALLOWED` | Only the latest failed or stopped answer can be retried | 409 |
-| `CREDENTIAL_UNREADABLE` | A stored key cannot be decrypted; replace it | 400 |
+| `MAIL_NOT_CONFIGURED` | Email notice requested without SMTP | 409 |
+| `NOT_FOUND`, `CONVERSATION_NOT_FOUND`, `MESSAGE_NOT_FOUND` | Missing or not owned (not probeable) | 404 |
+| `RETRY_NOT_ALLOWED` | Only the latest failed or stopped answer is retryable | 409 |
+| `CREDENTIAL_UNREADABLE` | Stored key cannot be decrypted | 400 |
 | `INVALID_PROVIDER`, `MODEL_NOT_ALLOWED` | Provider or model outside the allowlist | 400 |
-| `PROVIDER_ERROR` | Provider rejected the request for another reason | 502 |
-| `SERVER_BUSY` | The global, Deeper (half of the global slots) or per-account concurrency cap is reached | 503 |
-| `INTERRUPTED` | The server restarted or crashed while the answer was written (stored on the message) | — |
-| `GENERATION_TIMEOUT` | Quick exceeded 60 s, Deep 90 s or Deeper 360 s (stored on the message) | — |
+| `PROVIDER_ERROR` | Other provider rejection | 502 |
+| `SERVER_BUSY` | Global, Deeper (half the global slots) or per-account concurrency cap | 503 |
+| `INTERRUPTED` | Server restarted mid-answer (stored) | — |
+| `GENERATION_TIMEOUT` | Quick > 60 s, Deep > 90 s, Deeper > 360 s (stored) | — |
 
-Warnings are not error codes:
+Warnings (not error codes):
 
-- No usable sources: `stage: no-sources`, `done.noSources = true`, and a stored `no_sources` flag. The request still returns 200.
-- Partial Deep retrieval: `done.searchFailures > 0` and a stored `search_failures` count. The answer still completes.
-- Uncited answer: `uncited` is stored and the UI shows a warning; the request still completes.
-- `GENERATION_TIMEOUT` is stored on a message with status `stopped` and the partial text kept ([Latency budget](pipeline.md#latency-budget)); the SSE stream ends with `stage: stopped`. There is no 504 response after a stream has started.
-- `FORBIDDEN`, `SEARCH_PLAN_MISSING`, `SEARCH_PARTIAL`, `NO_SOURCES` and `QUOTA_EXCEEDED` are not emitted by the current implementation.
+- No sources: `stage: no-sources`, `done.noSources = true`, stored `no_sources`; still 200.
+- Partial Deep retrieval: `done.searchFailures > 0`, stored `search_failures`.
+- Uncited: stored `uncited`, UI warning.
+- `GENERATION_TIMEOUT`: message `stopped`, partial text kept ([Latency budget](pipeline.md#latency-budget)), stream ends with `stage: stopped`; no 504 after streaming starts.
+- Not emitted by current code: `FORBIDDEN`, `SEARCH_PLAN_MISSING`, `SEARCH_PARTIAL`, `NO_SOURCES`, `QUOTA_EXCEEDED`.

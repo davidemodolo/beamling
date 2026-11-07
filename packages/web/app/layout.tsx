@@ -39,7 +39,7 @@ export async function generateMetadata(): Promise<Metadata> {
       template: "%s · Beamling",
     },
     description:
-      "A bring-your-own-key answer engine. Ask anything, and Beamling shows you exactly where the answer comes from.",
+      "An answer engine on your own keys. Every claim links to its source.",
     applicationName: "Beamling",
     openGraph: {
       title: "Beamling — a little light on every answer",

@@ -1,56 +1,61 @@
 # Error model
 
-Errors are stable strings; the UI maps them to copy and actions.
+Error codes are stable strings. The UI maps each to a title, message and action.
 
-| Code | Typical source | HTTP |
+| Code | Cause | HTTP |
 |---|---|---|
-| `UNAUTHENTICATED` | Missing/expired account session | 401 |
+| `UNAUTHENTICATED` | No or expired session | 401 |
 | `AUTH_STATE_INVALID` | Missing, expired or replayed OIDC transaction cookie | 400 |
-| `AUTH_EMAIL_UNVERIFIED` | Provider did not return a verified email | 403 |
-| `AUTH_FAILED` | OIDC discovery, token exchange or ID-token verification failed | 502 |
+| `AUTH_EMAIL_UNVERIFIED` | No verified email from the provider | 403 |
+| `AUTH_FAILED` | OIDC discovery, token exchange or ID-token check failed | 502 |
 | `INVALID_JSON` | Unparseable body | 400 |
-| `INVALID_INPUT` | Schema failure, empty/oversized question | 400 |
+| `INVALID_INPUT` | Schema failure, empty or oversized question | 400 |
 | `INVALID_ID` | Non-UUID route id | 400 |
 | `INVALID_CURSOR` | Bad pagination cursor | 400 |
 | `PAYLOAD_TOO_LARGE` | Body over 64 KB | 413 |
 | `INVALID_ORIGIN` | Cross-origin mutation (`Origin` or `Sec-Fetch-Site`) | 403 |
-| `TERMS_REQUIRED` | Account has not accepted the current `LEGAL_VERSION` | 403 |
-| `TERMS_OUTDATED` | `POST /api/account/terms` with a version other than the current one | 409 |
-| `INVALID_PROVIDER` | Plan or limits sent for a key whose provider has none; revalidating a key whose provider was removed from the catalog | 400 |
-| `MODEL_NOT_ALLOWED` | Model outside allowlist | 400 |
-| `CREDENTIAL_MISSING` | No key for the selected model's provider or search provider | 400 |
-| `CREDENTIAL_INVALID` | Provider rejected key | 400 |
+| `TERMS_REQUIRED` | Current `LEGAL_VERSION` not accepted | 403 |
+| `TERMS_OUTDATED` | `POST /api/account/terms` with a non-current version | 409 |
+| `INVALID_PROVIDER` | Plan or limits for a provider without them; revalidating a key whose provider left the catalog | 400 |
+| `MODEL_NOT_ALLOWED` | Model outside the allowlist | 400 |
+| `CREDENTIAL_MISSING` | No key for the selected model or search provider | 400 |
+| `CREDENTIAL_INVALID` | Provider rejected the key | 400 |
 | `CREDENTIAL_UNREADABLE` | Stored key cannot be decrypted | 400 |
-| `INSUFFICIENT_CREDITS` | Model or search provider `402`; a DeepSeek key without balance at validation | 402 |
+| `INSUFFICIENT_CREDITS` | Provider `402`; DeepSeek key without balance at validation | 402 |
 | `MODEL_NOT_FOUND` | Model provider `404` | 400 |
-| `MODEL_PRIVACY_SETTING` | OpenRouter `404` naming the account's data policy (free models blocked) | 400 |
+| `MODEL_PRIVACY_SETTING` | OpenRouter `404` naming the data policy (free models blocked) | 400 |
 | `FREE_LIMIT_REACHED` | OpenRouter `429` `free-models-per-day` | 429 |
-| `BRAVE_PLAN_MISSING_SEARCH` | Brave key has no Search plan | 400 |
-| `SEARCH_PLAN_MISSING` | Tavily key has no Search access (`432`) | 400 |
-| `QUOTA_EXCEEDED` | Tavily plan limit reached (`433`) | 402 |
-| `PROVIDER_RATE_LIMITED` | Model or search provider `429` | 429 |
-| `PROVIDER_UNAVAILABLE` | Timeout, network failure or provider `5xx` (502); KMS or transport failure while reading a key for revalidation (503) | 502 / 503 |
-| `SERVICE_BUSY` | The operator kill switch stopped new streams, or the process is shutting down (`Retry-After: 15`) | 503 |
+| `BRAVE_PLAN_MISSING_SEARCH` | Brave key without the Search plan | 400 |
+| `SEARCH_PLAN_MISSING` | Tavily key without Search access (`432`) | 400 |
+| `QUOTA_EXCEEDED` | Tavily plan limit (`433`) | 402 |
+| `PROVIDER_RATE_LIMITED` | Provider `429` | 429 |
+| `PROVIDER_UNAVAILABLE` | Timeout, network or provider `5xx` (502); KMS or transport failure reading a key for revalidation (503) | 502 / 503 |
+| `SERVICE_BUSY` | Kill switch on, or process shutting down (`Retry-After: 15`) | 503 |
 | `PROVIDER_ERROR` | Other provider rejection | 502 |
-| `EMPTY_RESPONSE` | The model returned an empty answer | 502 |
+| `EMPTY_RESPONSE` | Model returned an empty answer | 502 |
 | `SEARCH_FAILED` | Every search failed | 502 |
-| `CONTEXT_TOO_LARGE` | The model provider says the context is too long | 400 |
+| `CONTEXT_TOO_LARGE` | Provider says the context is too long | 400 |
 | `GENERATION_IN_PROGRESS` | Another stream owns the conversation | 409 |
 | `SERVER_BUSY` | Global, Deeper or per-account stream cap, or lock timeout | 503 |
-| `RETRY_NOT_ALLOWED` | Retrying a non-latest or non-failed answer | 409 |
+| `RETRY_NOT_ALLOWED` | Retry of a non-latest or non-failed answer | 409 |
 | `RATE_LIMITED` | Beamling rate limit | 429 |
-| `SIGNUPS_PAUSED` | Hourly new-account cap reached, or `SIGNUP_MODE=paused` (callback redirects to `/login?error=signups_paused`) | 429 |
-| `SIGNUP_NOT_INVITED` | New account not on the allowlist when `SIGNUP_MODE=allowlist` | 403 |
-| `SERVICE_CLOSING` | New account while a shutdown is scheduled (callback redirects to `/login?error=service_closing`) | 403 |
-| `SERVICE_CLOSED` | Sign-in after the shutdown date (callback redirects to `/login?error=service_closed`) | 403 |
-| `MAIL_NOT_CONFIGURED` | Shutdown scheduled with `notify: true` but `SMTP_URL`/`MAIL_FROM` are unset | 409 |
-| `NOT_FOUND` / `CONVERSATION_NOT_FOUND` / `MESSAGE_NOT_FOUND` | Missing or not owned; also an internal endpoint whose secret is not configured | 404 |
-| `UNAUTHORIZED` | Internal endpoint called with a wrong bearer secret | 401 |
+| `SIGNUPS_PAUSED` | Hourly new-account cap or `SIGNUP_MODE=paused`; callback redirects to `/login?error=signups_paused` | 429 |
+| `SIGNUP_NOT_INVITED` | Not on the allowlist with `SIGNUP_MODE=allowlist` | 403 |
+| `SERVICE_CLOSING` | New account during a scheduled shutdown; redirects to `/login?error=service_closing` | 403 |
+| `SERVICE_CLOSED` | Sign-in after the shutdown date; redirects to `/login?error=service_closed` | 403 |
+| `MAIL_NOT_CONFIGURED` | Shutdown with `notify: true` but no `SMTP_URL`/`MAIL_FROM` | 409 |
+| `NOT_FOUND` / `CONVERSATION_NOT_FOUND` / `MESSAGE_NOT_FOUND` | Missing or not owned; internal endpoint without its secret configured | 404 |
+| `UNAUTHORIZED` | Internal endpoint with a wrong bearer secret | 401 |
 | `INTERNAL` | Unhandled error | 500 |
-| `INTERRUPTED` | Stored when a stream is abandoned | — |
-| `GENERATION_TIMEOUT` | Stored when the time limit is reached | — |
-| `CLIENT_DISCONNECT` | Stored on an answer stopped because the browser disconnected | — |
+| `INTERRUPTED` | Stored on an abandoned stream | — |
+| `GENERATION_TIMEOUT` | Stored when the time limit is hit | — |
+| `CLIENT_DISCONNECT` | Stored when the browser disconnected | — |
 
-The UI maps `CREDENTIAL_MISSING`, `CREDENTIAL_INVALID`, `CREDENTIAL_UNREADABLE`, `BRAVE_PLAN_MISSING_SEARCH`, `SEARCH_PLAN_MISSING`, `MODEL_NOT_FOUND`, `MODEL_PRIVACY_SETTING` and `FREE_LIMIT_REACHED` to Settings; `UNAUTHENTICATED` to a page reload (which leads to sign-in); `TERMS_REQUIRED` to `/welcome`; most provider failures to retry. `GENERATION_TIMEOUT` and `INTERRUPTED` appear on the stopped/error answer card.
+UI actions (`describeAnswerError` in `lib/api.ts`):
 
-`@/lib/api.ts` also synthesizes client-side codes: `NETWORK`, `TIMEOUT`, `STREAM_ENDED`, `REQUEST_FAILED` and `INVALID_RESPONSE`.
+- **Settings**: `CREDENTIAL_MISSING`, `CREDENTIAL_INVALID`, `CREDENTIAL_UNREADABLE`, `BRAVE_PLAN_MISSING_SEARCH`, `SEARCH_PLAN_MISSING`, `MODEL_NOT_FOUND`, `MODEL_PRIVACY_SETTING`, `FREE_LIMIT_REACHED`.
+- **Reload** (leads to sign-in): `UNAUTHENTICATED`.
+- **`/welcome`**: `TERMS_REQUIRED`.
+- **Retry**: most provider and capacity failures.
+
+`GENERATION_TIMEOUT` and `INTERRUPTED` show on the stopped or failed answer card. The client also creates its own codes: `NETWORK`, `TIMEOUT`, `STREAM_ENDED`, `REQUEST_FAILED`, `INVALID_RESPONSE`.

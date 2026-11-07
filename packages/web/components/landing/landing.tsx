@@ -43,13 +43,12 @@ export function Landing({ signedIn }: { signedIn: boolean }) {
         <section className="lp-hero">
           <div className="lp-container lp-hero-grid">
             <div className="lp-hero-copy">
-              <span className="l-eyebrow">Free · open source · your own keys</span>
+              <span className="l-eyebrow">Free · open source</span>
               <h1>
                 Answers you can <em>check.</em>
               </h1>
               <p className="lp-lead">
-                Beamling searches the web, reads what it finds and writes an answer where every claim links to its source.
-                It runs on your own model and search accounts, and you can start with free ones.
+                Web answers where every claim links to its source. Runs on your own keys, free to start.
               </p>
               <div className="l-cta">
                 <MainCta signedIn={signedIn} large />
@@ -59,10 +58,10 @@ export function Landing({ signedIn }: { signedIn: boolean }) {
               </div>
               <ul className="lp-checks">
                 <li>
-                  <Icon name="check" size={13} /> $0 to start
+                  <Icon name="check" size={13} /> Free
                 </li>
                 <li>
-                  <Icon name="check" size={13} /> Keys encrypted at rest
+                  <Icon name="check" size={13} /> Encrypted keys
                 </li>
                 <li>
                   <Icon name="check" size={13} /> MIT licensed
@@ -79,11 +78,7 @@ export function Landing({ signedIn }: { signedIn: boolean }) {
           <div className="lp-container">
             <div className="lp-head">
               <span className="l-eyebrow">Start free</span>
-              <h2>Up and running in three minutes, for $0.</h2>
-              <p>
-                You need two keys, a model and a search provider, and both have a free tier. Beamling walks you through it
-                after you sign in.
-              </p>
+              <h2>Start free in three steps.</h2>
             </div>
             <ol className="lp-free">
               {FREE_STEPS.map((step, index) => (
@@ -104,7 +99,7 @@ export function Landing({ signedIn }: { signedIn: boolean }) {
             </ol>
             <div className="l-cta lp-section-cta">
               <MainCta signedIn={signedIn} large />
-              <span className="lp-note">Already pay for Claude, GPT or Gemini? Use those keys instead.</span>
+              <span className="lp-note">Or use your paid keys.</span>
             </div>
           </div>
         </section>
@@ -113,8 +108,7 @@ export function Landing({ signedIn }: { signedIn: boolean }) {
           <div className="lp-container">
             <div className="lp-head">
               <span className="l-eyebrow">How it works</span>
-              <h2>Pick how hard it should look.</h2>
-              <p>Every question runs in one of three modes. All three cite their sources; they differ in how much they search.</p>
+              <h2>Three modes.</h2>
             </div>
             <div className="lp-modes">
               {MODE_CARDS.map((card) => (
@@ -154,9 +148,7 @@ export function Landing({ signedIn }: { signedIn: boolean }) {
             <div className="lp-head">
               <span className="l-eyebrow">Providers</span>
               <h2>Use the accounts you already have.</h2>
-              <p>
-                Requests go straight from Beamling to your provider with your key. Nothing passes through a shared account.
-              </p>
+              <p>Requests go straight to your provider.</p>
             </div>
             <ProviderPills />
           </div>
@@ -168,7 +160,7 @@ export function Landing({ signedIn }: { signedIn: boolean }) {
               <span className="l-eyebrow">FAQ</span>
               <h2>Good questions.</h2>
               <p>
-                Something missing? Read the <a href={SOURCE_URL}>source on GitHub</a> or <Link href="/contact">get in touch</Link>.
+                More in the <a href={SOURCE_URL}>source</a>, or <Link href="/contact">get in touch</Link>.
               </p>
             </div>
             <div className="lp-faq-list">
@@ -190,7 +182,7 @@ export function Landing({ signedIn }: { signedIn: boolean }) {
             <div className="lp-final-inner">
               <div>
                 <h2>Ask your first question.</h2>
-                <p>Free to start, open source, and every answer shows its sources.</p>
+                <p>Free and open source.</p>
                 <div className="l-cta">
                   <MainCta signedIn={signedIn} large />
                 </div>

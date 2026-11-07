@@ -7,29 +7,25 @@ export const SEARCH_NAMES = SEARCH_PROVIDERS.map((provider) => provider.shortNam
 
 /** The free setup path, step by step. */
 export const FREE_STEPS = [
+  { title: "Sign in with Google", body: "No password needed.", cost: "Free" },
   {
-    title: "Sign in with Google",
-    body: "No password and no newsletter. Accept the terms and you are in.",
-    cost: "Free",
-  },
-  {
-    title: "Get a free OpenRouter key",
-    body: "Create an account and a key. No card needed. Free models allow about 50 requests a day.",
-    cost: "$0 · no card",
+    title: "Get an OpenRouter key",
+    body: "Free models, no card.",
+    cost: "Free plan",
     href: PROVIDERS.openrouter.keyUrl,
   },
   {
     title: "Get a Brave Search key",
-    body: "Brave gives $5 of search credit every month, about 1,000 searches. No card needed.",
-    cost: "$5 credit / month",
+    body: "Brave has a free plan.",
+    cost: "Free plan",
     href: PROVIDERS.brave.keyUrl,
   },
 ];
 
 const MODE_DETAILS = {
-  quick: "For facts, dates and quick checks. One search, eight sources, an answer in seconds.",
-  deep: "For questions with several parts. The model plans sub-queries, searches them together and fills the gaps.",
-  deeper: "For real research. The model keeps searching until the evidence is enough, then writes a report.",
+  quick: "One search, a cited answer in seconds.",
+  deep: "Splits the question and searches each part.",
+  deeper: "Keeps searching, then writes a report.",
 };
 
 export const MODE_CARDS = MODES.map((mode) => ({
@@ -41,51 +37,35 @@ export const MODE_CARDS = MODES.map((mode) => ({
 }));
 
 export const PRINCIPLES = [
-  {
-    icon: "book" as const,
-    title: "Sources first",
-    body: "Every claim carries a number. Click it to see the page and the passage it came from.",
-  },
-  {
-    icon: "chart" as const,
-    title: "Nothing hidden",
-    body: "Each answer shows its model, search provider, cost and time. If a provider fails, Beamling tells you and does not quietly switch to another.",
-  },
-  {
-    icon: "lock" as const,
-    title: "Your keys stay yours",
-    body: "Keys and conversations are encrypted at rest, keys are never shown again, and there is no markup on what providers charge.",
-  },
-  {
-    icon: "globe" as const,
-    title: "Open source",
-    body: "The whole app is MIT-licensed and public. You can read the code that handles your keys.",
-  },
+  { icon: "book" as const, title: "Sources first", body: "Every claim links to its source." },
+  { icon: "chart" as const, title: "Nothing hidden", body: "Model, cost and time shown on every answer." },
+  { icon: "lock" as const, title: "Your keys stay yours", body: "Encrypted at rest, no markup." },
+  { icon: "globe" as const, title: "Open source", body: "MIT licensed." },
 ];
 
 export const FAQ = [
   {
-    q: "Is Beamling really free?",
-    a: "Beamling itself costs nothing. Models and search run on your own provider accounts, and with a free OpenRouter model and Brave's monthly credit those cost nothing either.",
+    q: "Is it free?",
+    a: "Yes. Beamling is free, and OpenRouter and Brave both have free plans.",
   },
   {
-    q: "Why do I need my own keys?",
-    a: "So no one sits between you and the providers. There is no shared account and no markup: you choose the models, see the cost of each answer and set your own limits.",
+    q: "Why my own keys?",
+    a: "No middleman and no markup. You pick the models and set the limits.",
   },
   {
-    q: "What happens when I reach a free limit?",
-    a: "OpenRouter's free requests reset every day at midnight UTC, and Brave's credit renews every month. Beamling says which limit you hit, and you can switch to a paid model in Settings at any time.",
+    q: "What if I hit a free limit?",
+    a: "Free limits reset on their own. You can switch to a paid model in Settings.",
   },
   {
     q: "Can I use Claude, GPT or Gemini?",
-    a: `Yes. Add credit to your OpenRouter account and pick the model in Settings. Search can run on ${orList(SEARCH_NAMES)}.`,
+    a: `Yes, through OpenRouter. Search runs on ${orList(SEARCH_NAMES)}.`,
   },
   {
-    q: "Where are my keys and conversations stored?",
-    a: "In Beamling's database in the EU, encrypted with keys held in Google Cloud KMS. Keys are never sent back to your browser. You can export or delete everything at any time.",
+    q: "Where is my data?",
+    a: "In the EU, encrypted. Export or delete it any time.",
   },
   {
     q: "Are free models private?",
-    a: "Free models are run by hosts that may keep prompts and use them for training. Avoid private questions with a free model, or use a paid one.",
+    a: "Not always: free hosts may train on prompts. Use a paid model for private questions.",
   },
 ];

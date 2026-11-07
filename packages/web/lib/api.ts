@@ -60,7 +60,7 @@ export function describeAnswerError(code: string | undefined, message?: string):
     case "UNAUTHENTICATED":
       return { title: "Session expired", message: SESSION_EXPIRED, action: "reload" };
     case "CREDENTIAL_MISSING":
-      return settings("Key needed", "Add a key for the selected model and search provider in Settings.");
+      return settings("Key needed", "Add the missing key in Settings.");
     case "CREDENTIAL_INVALID":
       return settings("Key rejected", "A provider rejected your key. Replace it in Settings, then retry.");
     case "CREDENTIAL_UNREADABLE":
@@ -74,9 +74,9 @@ export function describeAnswerError(code: string | undefined, message?: string):
     case "MODEL_NOT_FOUND":
       return settings("Model unavailable", "The provider does not offer this model right now. Pick another in Settings.");
     case "MODEL_PRIVACY_SETTING":
-      return settings("Free models blocked", "Your provider's privacy settings block this model. Allow free models there, or pick a paid model.");
+      return settings("Free models blocked", "Allow free models in OpenRouter's privacy settings, or pick a paid model.");
     case "FREE_LIMIT_REACHED":
-      return settings("Free limit reached", "Today's free requests are used up. They reset at midnight UTC, or pick a paid model in Settings.");
+      return settings("Free limit reached", "Free requests are used up for today. Try tomorrow or pick a paid model.");
     case "INSUFFICIENT_CREDITS":
       return retry("Out of credits", "A provider account has run out of credits. Top it up, then retry.");
     case "PROVIDER_RATE_LIMITED":
@@ -84,9 +84,9 @@ export function describeAnswerError(code: string | undefined, message?: string):
     case "PROVIDER_UNAVAILABLE":
       return retry("Provider unavailable", "A provider is unavailable right now. Try again shortly.");
     case "SEARCH_FAILED":
-      return retry("Search failed", "Every web search failed, so no answer was written. Try again shortly.");
+      return retry("Search failed", "Every web search failed. Try again shortly.");
     case "CONTEXT_TOO_LARGE":
-      return retry("Too long for this model", "The question and sources are too long for this model. Try a shorter question.");
+      return retry("Too long for this model", "Try a shorter question.");
     case "RATE_LIMITED":
       return { title: "Slow down", message: GENERIC_COPY.RATE_LIMITED, action: "retry" };
     // SERVICE_BUSY is the operator kill switch or a restart; the user sees the same thing.
@@ -96,7 +96,7 @@ export function describeAnswerError(code: string | undefined, message?: string):
     case "GENERATION_IN_PROGRESS":
       return {
         title: "Already answering",
-        message: "An answer is already being written for this conversation. Wait for it to finish, then retry.",
+        message: "Wait for the current answer to finish, then retry.",
         action: "retry",
       };
     case "INTERRUPTED":
