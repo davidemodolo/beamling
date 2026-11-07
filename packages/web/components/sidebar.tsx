@@ -8,7 +8,7 @@ import { useStore } from "@/lib/store";
 import type { ConversationSummary } from "@/lib/types";
 import { dayGroup } from "@/lib/utils";
 import { versionLabel } from "@/lib/version";
-import { useSidebar } from "./chat-shell";
+import { useSidebar } from "./sidebar-context";
 import { Icon } from "./ui/icon";
 import { Modal } from "./ui/modal";
 import { Wordmark } from "./wordmark";

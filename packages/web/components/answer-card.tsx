@@ -8,7 +8,7 @@ import { llmModelName, searchProviderName } from "@/lib/provider-catalog";
 import type { ThreadMessage } from "@/lib/store";
 import type { SearchProvider, SearchTrace, Source, Usage } from "@/lib/types";
 import { formatCost, formatNumber } from "@/lib/utils";
-import { useSidebar } from "./chat-shell";
+import { useSidebar } from "./sidebar-context";
 import { Markdown } from "./markdown";
 import { Mascot } from "./mascot";
 import { Icon } from "./ui/icon";
