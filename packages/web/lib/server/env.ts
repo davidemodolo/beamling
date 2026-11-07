@@ -103,6 +103,14 @@ export function databaseUrl(): string | undefined {
   return process.env.DATABASE_URL ?? (isProduction() ? undefined : DEV_DATABASE_URL);
 }
 
+/**
+ * A connection that bypasses a transaction-mode pooler (PgBouncer, Neon `-pooler`), for work
+ * that holds a session-level advisory lock. Falls back to DATABASE_URL when unset.
+ */
+export function databaseDirectUrl(): string | undefined {
+  return process.env.DATABASE_URL_DIRECT || databaseUrl();
+}
+
 export function databaseSsl(): { rejectUnauthorized: boolean; ca?: string } | undefined {
   if (process.env.DATABASE_SSL !== "true") return undefined;
   const ca =
@@ -360,6 +368,15 @@ export function productionConfigErrors(): string[] {
   if (!isProduction()) return [];
   const errors: string[] = [];
   if (!process.env.DATABASE_URL) errors.push("DATABASE_URL is required.");
+  // Neon names its transaction-mode pooler host "<endpoint>-pooler". Session-scoped advisory
+  // locks (migrations, shutdown worker) need a direct connection beside it.
+  const isPoolerHost = (value: string | undefined) => Boolean(parseUrl(value ?? "")?.hostname.includes("-pooler"));
+  if (isPoolerHost(process.env.DATABASE_URL) && !process.env.DATABASE_URL_DIRECT) {
+    errors.push("DATABASE_URL_DIRECT is required when DATABASE_URL points at a connection pooler.");
+  }
+  if (isPoolerHost(process.env.DATABASE_URL_DIRECT)) {
+    errors.push("DATABASE_URL_DIRECT must be a direct connection, not a connection pooler.");
+  }
 
   // APP_URL is the public origin for same-origin checks, cookies and OIDC redirects. Unlike the
   // development fallback, production may not infer it from a provider-specific alias.
