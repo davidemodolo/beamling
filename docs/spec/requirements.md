@@ -118,7 +118,7 @@ Priority: P0 = Alpha 1 target, P1 = private alpha/v1, P2 = later. Priority is no
   - Acceptance: opens the provider page in a new tab; no payment script on Beamling; nothing blocks chat.
 - **FR-59 (P2):** `/supporters` lists only consenting donors; no amounts, emails, legal names or scraped data.
   - Acceptance: each entry has a consent reference; removals honored; no payment SDK.
-- **FR-60 (P1, target, not started):** A plain-language page ("How Beamling keeps your keys safe", linked from `/security` and onboarding) explains why pasting a key is safe, each claim linked to code via permalinks pinned to the released commit:
+- **FR-76 (P1, target, not started):** A plain-language page ("How Beamling keeps your keys safe", linked from `/security` and onboarding) explains why pasting a key is safe, each claim linked to code via permalinks pinned to the released commit:
   - HTTPS in transit, KMS envelope encryption before storage (`lib/server/crypto.ts`, `lib/server/kms.ts`);
   - after saving, only the last four characters (or none for short keys) reach the browser;
   - decrypted only in server memory for one request, sent only to its own provider;
