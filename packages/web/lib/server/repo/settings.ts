@@ -1,5 +1,6 @@
 import { eq, sql } from "drizzle-orm";
-import { isAllowedModel, isSearchProvider } from "../../provider-catalog";
+import { isSearchProvider } from "../../contracts";
+import { isAllowedModel } from "../../provider-catalog";
 import type { Settings } from "../../types";
 import { db } from "../db";
 import { analyticsErasures, settings } from "../schema";

@@ -18,7 +18,7 @@ test("citation sanitization removes invalid markers and preserves code", () => {
 });
 
 test("search freshness applies only to questions about recent events", async () => {
-  const { freshnessDays } = await import("../../lib/server/answer-pipeline");
+  const { freshnessDays } = await import("../../lib/server/answer/retrieval");
   assert.equal(freshnessDays("How does photosynthesis work?"), undefined);
   assert.equal(freshnessDays("Who won the 1998 World Cup?"), undefined);
   assert.equal(freshnessDays("What happened in the markets today?"), 1);

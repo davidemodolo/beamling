@@ -195,7 +195,7 @@ export const messages = pgTable(
     searchFailures: integer("search_failures").notNull().default(0),
     tokensIn: integer("tokens_in"),
     tokensOut: integer("tokens_out"),
-    // Generation cost reported by OpenRouter (actual).
+    // Generation cost: reported by the provider, or estimated from token prices (DeepSeek).
     costUsd: numeric("cost_usd", { precision: 12, scale: 6 }),
     // Search cost estimated from the selected provider's list price.
     searchCostUsd: numeric("search_cost_usd", { precision: 12, scale: 6 }),

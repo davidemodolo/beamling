@@ -87,12 +87,12 @@ export async function planQueries(ctx: RunContext, state: RunState): Promise<str
 }
 
 /**
- * Deep only: when evidence is thin, at most two follow-up searches appended without renumbering.
+ * When evidence is thin, at most two follow-up searches appended without renumbering.
  * A failed review or a provider outage is skipped; a terminal search error (key, plan) is thrown.
  */
 export async function fillEvidenceGaps(ctx: RunContext, state: RunState, queries: string[]): Promise<void> {
   const { prepared, signal } = ctx;
-  if (prepared.mode !== "deep" || state.sources.length >= GAP_REVIEW_BELOW) return;
+  if (state.sources.length >= GAP_REVIEW_BELOW) return;
   let terminalSearchError: unknown;
   try {
     const review = await chat({

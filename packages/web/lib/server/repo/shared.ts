@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { DEFAULT_SETTINGS } from "../../data";
-import { DEFAULT_SEARCH_PROVIDER, isSearchProvider } from "../../provider-catalog";
+import { isSearchProvider } from "../../contracts";
+import { DEFAULT_SEARCH_PROVIDER } from "../../provider-catalog";
 import { decryptText } from "../workspace-key";
 import type {
   ConversationSummary,

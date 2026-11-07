@@ -77,7 +77,7 @@ The server does not fetch result pages, crawl the web or load remote media in an
 | Streaming | SSE stages, progress, sources, deltas, citations, usage, done/error; heartbeat |
 | Cancellation | Local and cross-instance stop, partial text kept, timeout and shutdown handling |
 | Models | Allowlisted models per provider in the catalog (five through OpenRouter), default DeepSeek V4.1 Flash |
-| Costs | OpenRouter actual generation cost, selected-provider list-price estimate, tokens, latency, search count |
+| Costs | Generation cost reported by OpenRouter or estimated from DeepSeek token prices, search cost from the selected provider's list price, tokens, latency, search count |
 | Search transparency | Persisted per-answer search trace, collapsed by default |
 | Reasoning transparency | Provider-supplied reasoning, persisted encrypted and collapsed by default |
 | Markdown | Tables in addition to headings, lists, quotes, code and citations |

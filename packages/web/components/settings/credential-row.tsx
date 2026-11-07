@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Icon } from "@/components/ui/icon";
 import type { Credential, CredentialStatus } from "@/lib/types";
-import { shortDate } from "@/lib/utils";
+import { formatCost, shortDate } from "@/lib/utils";
 
 const STATUS_LABEL: Record<CredentialStatus, string> = {
   active: "Active",
@@ -50,7 +50,7 @@ export function CredentialRow({
             {credential.plan === "paid" ? "Paid plan" : "Free · 1 req/s"}
             {credential.expiresOn ? ` · expires ${credential.expiresOn}` : ""}
             {credential.budgetUsd != null
-              ? ` · est. $${(credential.spentUsd ?? 0).toFixed(2)} of $${credential.budgetUsd.toFixed(2)}`
+              ? ` · est. ${formatCost(credential.spentUsd ?? 0)} of ${formatCost(credential.budgetUsd)}`
               : ""}
           </span>
         ) : null}

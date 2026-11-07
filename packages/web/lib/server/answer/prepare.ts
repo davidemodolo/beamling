@@ -1,5 +1,5 @@
-import { credentialKind, type CredentialProvider } from "../../contracts";
-import { DEFAULT_LLM_MODEL, isSearchProvider, modelInfo } from "../../provider-catalog";
+import { credentialKind, isSearchProvider, type CredentialProvider } from "../../contracts";
+import { DEFAULT_LLM_MODEL, modelInfo } from "../../provider-catalog";
 import type { Message, Mode, SearchProvider } from "../../types";
 import { ApiError } from "../http";
 import { log } from "../log";

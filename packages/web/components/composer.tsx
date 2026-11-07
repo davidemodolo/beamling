@@ -126,10 +126,6 @@ export function Composer({
               ))}
             </select>
           </label>
-          <span className="spacer" />
-          <span className="badge" title="Keys are stored encrypted on the server">
-            Live
-          </span>
         </div>
       </form>
       <div className="composer-hint">

@@ -10,12 +10,12 @@ import { newRunState, type ChatEmit, type PreparedChat, type RunContext, type Ru
 import { fillEvidenceGaps, planQueries } from "./answer/deep";
 import { DEEPER_BUDGET, QUICK_BUDGET, runResearch } from "./answer/research";
 import { abortOutcome, RunRecorder } from "./answer/outcome";
-import { freshnessDays, retrieveSources } from "./answer/retrieval";
+import { DEEP_RETRIEVAL, freshnessDays, retrieveSources } from "./answer/retrieval";
 import { streamSynthesis } from "./answer/synthesis";
+import { plural } from "../utils";
 
 export { prepareChat } from "./answer/prepare";
-export { freshnessDays };
-export { TIMEOUT_MS, type ChatEmit, type PreparedChat } from "./answer/context";
+export { TIMEOUT_MS, type ChatEmit } from "./answer/context";
 
 const QUEUED_DETAIL = { quick: "Understanding the question", deep: "Planning a research path", deeper: "Starting deeper research" };
 
@@ -28,7 +28,7 @@ async function gatherSources(ctx: RunContext, state: RunState): Promise<string[]
   }
   const queries = await planQueries(ctx, state);
   ctx.emit("plan", { queries });
-  await retrieveSources(ctx, state, queries);
+  await retrieveSources(ctx, state, queries, DEEP_RETRIEVAL);
   await fillEvidenceGaps(ctx, state, queries);
   return queries;
 }
@@ -111,7 +111,7 @@ export async function runChat(prepared: PreparedChat, options: { signal: AbortSi
     const queries = await gatherSources(ctx, state);
     emit("stage", {
       stage: "reading",
-      detail: `Reading ${state.sources.length} ${state.sources.length === 1 ? "source" : "sources"}`,
+      detail: `Reading ${plural(state.sources.length, "source")}`,
     });
     emit("sources", state.sources);
     if (state.sources.length) await finishWithAnswer(ctx, state, recorder, queries);

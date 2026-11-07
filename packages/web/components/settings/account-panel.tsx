@@ -7,7 +7,7 @@ import { errorMessage } from "@/lib/api";
 import { useToast } from "@/lib/hooks/use-toast";
 import { useAccount, useConversations } from "@/lib/store";
 import { UserAvatar } from "@/components/user-avatar";
-import { shortDate } from "@/lib/utils";
+import { plural, shortDate } from "@/lib/utils";
 
 export function AccountPanel() {
   const router = useRouter();
@@ -65,7 +65,7 @@ export function AccountPanel() {
             <div className="grow">
               <div className="row-title">Storage</div>
               <div className="row-hint">
-                {conversationCount} {conversationCount === 1 ? "conversation" : "conversations"} · {credentials.length} encrypted keys
+                {plural(conversationCount, "conversation")} · {plural(credentials.length, "encrypted key")}
               </div>
             </div>
           </div>

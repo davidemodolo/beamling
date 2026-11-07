@@ -13,7 +13,6 @@ import {
   type SearchOptions,
 } from "./shared";
 
-export type { RetrievedSource } from "./shared";
 
 interface BraveWebResponse {
   web?: {
