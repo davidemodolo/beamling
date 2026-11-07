@@ -135,8 +135,12 @@ else
     --issuer-uri https://token.actions.githubusercontent.com \
     --attribute-mapping "$MAPPING" --attribute-condition "$CONDITION"
 fi
+# Bind by repository ID, not by subject: GitHub's subject format changes with its settings
+# (the immutable form is repo:owner@id/name@id:...). The provider condition above already
+# limits tokens to this repository and owner, the main branch and the production environment.
+WIF_POOL="projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github"
 g iam service-accounts add-iam-policy-binding "$DEPLOY_SA" --role roles/iam.workloadIdentityUser \
-  --member "principal://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/subject/repo:$GITHUB_REPO:environment:production" >/dev/null
+  --member "principalSet://iam.googleapis.com/$WIF_POOL/attribute.repository_id/$GITHUB_REPO_ID" >/dev/null
 
 step "Cloud Run service placeholder, public invoker"
 # The first real deploy replaces the placeholder image; deploys never change IAM.
