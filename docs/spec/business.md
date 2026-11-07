@@ -2,42 +2,42 @@
 
 ## Business Model
 
-At launch Beamling is free. Users sign in with Google, connect their own keys, and use the product without a paywall.
+Free at launch: sign in with Google, bring your own keys, no paywall.
 
-- No paid plan, no billing code, and no payment provider integration at launch. Post-public donation links are outbound only.
-- Users pay their model and search providers directly. Beamling never touches token billing.
-- The free product exists to establish retention and word of mouth before any monetization.
-- Donations and a donor page are optional post-public additions; ads are not part of the public launch.
+- No paid plan, billing code or payment integration. Post-public donation links are outbound only.
+- Users pay their model and search providers directly; Beamling never touches token billing.
+- The goal is retention and word of mouth before monetization.
+- Donations and a donor page are optional post-public additions; no ads at launch.
 
-Monetization is explicitly deferred. Options to evaluate once usage data exists, in rough order of preference:
+Monetization is deferred. Options, in order of preference:
 
-1. **Hosted subscription.** A paid tier for power features (higher Deep limits, longer history, exports, sharing) while BYOK remains required.
-2. **Prepaid credits.** Users buy credits that Beamling spends on their behalf through Beamling-owned provider accounts, removing the BYOK requirement for non-technical users.
-3. **Token resale.** Beamling buys provider capacity wholesale and resells it with a margin. This is the most operationally and legally complex option and is not a launch consideration.
+1. **Hosted subscription:** power features (higher Deep limits, longer history, exports, sharing); BYOK still required.
+2. **Prepaid credits:** Beamling spends credits through its own provider accounts, removing BYOK for non-technical users.
+3. **Token resale:** wholesale capacity resold at a margin. Most complex; not a launch consideration.
 
-Constraints on any future monetization:
+Constraints:
 
-- No silent markup on keys the user supplies.
-- The free tier must remain genuinely usable.
-- No lock-in: users can always bring their own keys and export their data.
+- No silent markup on user keys.
+- The free tier stays genuinely usable.
+- No lock-in: users can always bring their own keys and export data.
 
 ### Donations (post-public, optional)
 
-Donations are the chosen support mechanism if fixed infrastructure costs need help. They are optional, post-public and never gate a feature.
+The chosen support mechanism if fixed costs need help. Never gates a feature.
 
-- **Primary: Tipeee.** EU/Italy-friendly and handles one-time or recurring support. **Fallback: PayPal.me.** Use plain outbound links; no embedded widget, iframe, script, API or webhook. Confirm current fees and payout terms before publishing.
-- Place "Support Beamling" in the footer and on `/support`; do not interrupt chat with modals, banners or nag screens.
-- `/support` explains what donations cover (domain, hosting, Neon, KMS, monitoring), shows the current monthly target, and states that donations are voluntary and do not buy features, priority, influence or data.
-- No billing code, no card data and no payment webhooks. Tipeee and PayPal are external; Beamling receives no payment credentials.
-- Do not promise automatic funding. Platform payouts are manual or scheduled and cloud bills are charged separately. Keep the hard caps in [Spend guardrails, alerts and killswitch (target)](quality-ops.md#spend-guardrails-alerts-and-killswitch-target). At near-zero scale, donations are symbolic, not a funding guarantee. If donations exceed costs, keep a reserve rather than raising caps automatically.
-- **No ads at launch.** An ad box is not part of the public launch. Adding ads later requires a separate privacy, CMP, security and UX review; it is not a default monetization path.
+- **Tipeee** primary, **PayPal.me** fallback, as plain outbound links: no widget, iframe, script, API or webhook. Check fees and payout terms before publishing.
+- "Support Beamling" in the footer and on `/support`; no modals, banners or nags in chat.
+- `/support` lists what donations cover (domain, hosting, Neon, KMS, monitoring), shows the monthly target, and says donations are voluntary and buy no features, priority, influence or data.
+- No billing code, card data or payment webhooks.
+- Don't promise automatic funding; payouts and cloud bills are separate. Hard caps stay in [Spend guardrails, alerts and killswitch](quality-ops.md#spend-guardrails-alerts-and-killswitch-target). Surplus goes to a reserve, not higher caps.
+- **No ads at launch.** Ads later need a separate privacy, CMP, security and UX review.
 
 **Supporters page**
 
-- `/supporters` lists only donors who explicitly opt in to public display. Store a manually curated `content/supporters.json`; no backend and no payment-data import.
-- Publish display name or handle, optional link and optional short message. Never publish amounts, tiers, emails, legal names or anonymous donors' identities.
-- Consent is specific and revocable: the donor confirms the exact text to publish; removal requests are honored promptly. Do not scrape Tipeee or PayPal.
-- No ranking by amount, no "top donors", no pressure copy. Link the page from `/support`; the footer links to `/support`, not to the chat.
+- `/supporters` lists only donors who opt in, from a hand-curated `content/supporters.json`; no backend or payment import.
+- Show display name or handle, optional link and short message. Never amounts, tiers, emails, legal names or anonymous donors.
+- Consent covers the exact text and is revocable; honor removals promptly. Never scrape Tipeee or PayPal.
+- No ranking, "top donors" or pressure copy. Linked from `/support`.
 
 ---
 
@@ -46,71 +46,67 @@ Donations are the chosen support mechanism if fixed infrastructure costs need he
 | Metric | Definition | Target |
 |---|---|---|
 | Activation | First sign-in to first cited answer | 70% of new accounts |
-| Time to first answer | First visit to first rendered answer | Under 3 minutes median |
-| Quick time to first token | Request to first streamed token | Under 3 seconds p95 |
-| Deep time to first progress | Submit to first truthful `stage`/`progress` event | Under 1 second p95 |
-| Deep completion | Submit to final `done` | Under 45 seconds p95, 90 seconds max |
-| Uncited answers | Completed answers with zero valid citations | Under 2% |
-| Provider cost accuracy | Recorded cost versus OpenRouter and selected search-provider invoices | Within 5% |
-| D7 retention | Users active on day 7 after first visit | 35% |
-| D30 retention | Users active on day 30 | 20% |
-| Queries per active user | Weekly average | 8 or more |
-| Citation click-through | Answers with at least one citation click | 25% |
-| Weekly active users | Users asking at least one question in a week | Growth over 12 weeks |
-| Provider error rate | Non-200 provider responses | Under 2% |
-| NPS | In-product survey | 40 or more |
+| Time to first answer | First visit to first rendered answer | < 3 min median |
+| Quick time to first token | Request to first token | < 3 s p95 |
+| Deep time to first progress | Submit to first truthful `stage`/`progress` | < 1 s p95 |
+| Deep completion | Submit to `done` | < 45 s p95, 90 s max |
+| Uncited answers | Completed answers with no valid citation | < 2% |
+| Provider cost accuracy | Recorded vs invoiced cost | Within 5% |
+| D7 retention | Active on day 7 | 35% |
+| D30 retention | Active on day 30 | 20% |
+| Queries per active user | Weekly average | ≥ 8 |
+| Citation click-through | Answers with a citation click | 25% |
+| Weekly active users | Asked ≥ 1 question in a week | Growth over 12 weeks |
+| Provider error rate | Non-200 provider responses | < 2% |
+| NPS | In-product survey | ≥ 40 |
 
-Guardrail metrics: credential validation failures, key decryption errors, rate-limit incidents, support tickets per 100 users.
+Guardrails: credential validation failures, decryption errors, rate-limit incidents, support tickets per 100 users.
 
 ### Usage analytics service (target)
 
-The checkout implements the event contract below; the PostHog project, dashboards and alerts are operator setup. Alpha 1 target uses **PostHog Cloud EU (Frankfurt)** for internal product analytics and usage dashboards. It is the cheapest suitable option: the free plan includes **1,000,000 analytics events per month**, one project, one year of retention, no credit card, and it stops accepting events at the free limit instead of charging. Beamling does not operate an always-on analytics service.
+**PostHog Cloud EU (Frankfurt)**, free plan, for internal product analytics. The event contract is implemented; project, dashboards and alerts are operator setup. Beamling runs no analytics service of its own.
 
 **Scope**
 
-- Internal operator analytics only. No customer-facing usage dashboard in Alpha 1. A personal `/usage` page is P1 and reads from the application database, not PostHog.
-- Server-side events only. No PostHog browser SDK, autocapture, session replay, heatmaps, surveys or feature flags in Alpha 1.
-- Analytics is best-effort and must never block, delay or fail a chat request. Events are queued with a short timeout and dropped on failure. `ANALYTICS_ENABLED=false` is the kill switch.
-- Local, test and preview environments do not send events by default.
+- Internal only. A personal `/usage` page is P1 and reads the app database, not PostHog.
+- Server-side events only: no browser SDK, autocapture, replay, heatmaps, surveys or flags.
+- Best-effort: never blocks, delays or fails a chat. Short timeout, dropped on failure. `ANALYTICS_ENABLED=false` is the kill switch.
+- Local, test and preview send nothing by default.
 
 **Events and allowed properties**
 
 | Event | When | Allowed properties |
 |---|---|---|
-| `account_created` | First successful Google sign-in for a new account | `app_version` |
+| `account_created` | First sign-in of a new account | `app_version` |
 | `question_asked` | Chat request accepted | `mode`, `search_provider`, `llm_model`, `app_version` |
 | `answer_completed` | `done` emitted | `mode`, `search_provider`, `llm_model`, `resolved_model`, `upstream_provider`, `tokens_in`, `tokens_out`, `cost_usd`, `search_cost_usd`, `search_requests`, `search_failures`, `latency_ms`, `uncited`, `no_sources`, `degraded` |
 | `answer_failed` | Error emitted | `mode`, `search_provider`, `llm_model`, `error_code`, `latency_ms`, `search_failures` |
-| `answer_stopped` | User stops a stream | `mode`, `search_provider`, `latency_ms` |
-| `credential_added` | Credential validated and saved | `kind`, `provider`, `status` |
+| `answer_stopped` | User stops | `mode`, `search_provider`, `latency_ms` |
+| `credential_added` | Key validated and saved | `kind`, `provider`, `status` |
 | `credential_validation_failed` | Provider rejects a key | `kind`, `provider`, `error_code` |
 | `search_provider_selected` | Default provider changed | `search_provider`, `previous_provider` |
 
 Rules:
 
-- `distinctId = HMAC-SHA256(userId, ANALYTICS_SALT)` truncated to 32 hex characters. No email, IP address, session token or raw user ID is sent. Keep `ANALYTICS_SALT` stable for the life of the project; rotating it breaks deletion by hash for older events.
-- PostHog IP capture and GeoIP are disabled. No geolocation, device fingerprint or page URL.
-- Never send questions, answers, conversation titles, source URLs, source titles, snippets, credential plaintext, error messages or provider-request bodies. `error_code` is allowed; `error_message` is not.
-- Cost fields record whether the value is provider-reported or estimated. PostHog dashboards keep actual and estimated costs separate.
-- Analytics must tolerate PostHog being unavailable: no retries that block requests, no user-visible errors.
+- `distinctId = HMAC-SHA256(userId, ANALYTICS_SALT)`, 32 hex chars. No email, IP, session token or raw user id. Never rotate `ANALYTICS_SALT` (it breaks deletion of older events).
+- IP capture and GeoIP off. No geolocation, device fingerprint or page URL.
+- Never send questions, answers, titles, source URLs/titles/snippets, keys, error messages or provider bodies. `error_code` yes, `error_message` no.
+- Cost fields say whether they are reported or estimated; dashboards keep them apart.
+- PostHog outages cause no blocking retries and no user-visible errors.
 
 **Dashboards and alerts**
 
-- DAU/WAU/MAU, activation, questions/day, Quick vs Deep, search-provider share, model mix, error rate by code, p50/p95 latency, tokens and cost per answer, cost per active workspace, D1/D7 retention and event volume.
-- PostHog alerts cover activation, error-rate and usage anomalies. Sentry or Better Stack remains the source for exceptions and uptime; the Google Cloud budget alert, the Cloud Run instance cap and Neon's plan limits remain the source for spend guardrails. PostHog is not the billing or SLO source of truth.
-- Keep the project on the free plan or set a **$0 billing limit** so events are dropped rather than billed. Monitor event volume; if it approaches 1,000,000/month, reduce event cardinality or sample before upgrading.
-- PostHog access: EU project, 2FA, least-privilege members, no shared logins; review members quarterly.
+- DAU/WAU/MAU, activation, questions/day, Quick vs Deep, provider share, model mix, errors by code, p50/p95 latency, tokens and cost per answer, cost per workspace, D1/D7 retention, event volume.
+- PostHog alerts on activation, error-rate and usage anomalies. Exceptions and uptime: Sentry or Better Stack. Spend: Google Cloud budget alert, Cloud Run instance cap, Neon plan limits. PostHog is not a billing or SLO source.
+- Stay on the free plan or set a **$0 billing limit** so excess events are dropped. Near the free limit, reduce cardinality or sample before upgrading.
+- EU project, 2FA, least-privilege members, no shared logins; quarterly member review.
 
 **Privacy and lifecycle**
 
-- PostHog is a subprocessor. Publish it in the subprocessor list, link its DPA and privacy policy, and document the EU region and legal basis before launch.
-- The server-side events use no cookies. If a browser SDK, session replay or client-side analytics is added later, consent is required first.
-- Free-plan event retention is one year. Do not send special-category or user content.
-- Account deletion also deletes the PostHog person/events for the hashed `distinctId`; the hash is computed from the user ID, so no additional mapping table is needed.
-- Legal review of the DPA, retention and consent basis is required before public launch.
+- PostHog is a subprocessor: list it, link its DPA and policy, document region and legal basis before launch.
+- No cookies. Any future browser SDK or replay needs consent first.
+- Never send special-category or user content.
+- Account deletion deletes the PostHog person/events for the hashed `distinctId` (derived from the user id; no mapping table).
+- Legal review of DPA, retention and consent basis before public launch.
 
-**Why this service**
-
-- PostHog is product analytics, not page analytics. Google Analytics, Plausible and Umami would not answer DAU, funnels, retention or per-answer cost questions.
-- Metabase, Grafana and a custom admin dashboard would add an always-on service and engineering time. PostHog's free tier is cheaper and sufficient for the alpha.
-- A user-facing usage page is still built from the application database; PostHog is internal only.
+PostHog was chosen because page analytics (Google Analytics, Plausible, Umami) can't answer funnel, retention or cost questions, and Metabase, Grafana or a custom dashboard would need an always-on service.
