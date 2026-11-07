@@ -18,7 +18,7 @@ Beamling floats inside an imaginary room (a box) seen through a perspective came
 ```tsx
 import { BeamlingMascot } from "@beamling/mascot/react";
 
-<BeamlingMascot state="searching" style={{ width: 240 }} />            // spec §16.4 answer states
+<BeamlingMascot state="searching" style={{ width: 240 }} />            // answer states from the product spec (docs/spec/ux.md)
 <BeamlingMascot expression="happy" activity="idle" followPointer />
 <BeamlingMascot beams={false} label="" style={{ width: 28 }} />          // small mark next to the wordmark
 ```

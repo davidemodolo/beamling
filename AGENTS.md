@@ -4,10 +4,13 @@
 
 ## Documentation
 
-- `SPEC.md` is the target product and technical contract, not a description of the current checkout.
-- `TECHNICAL.md` documents what the current code does. Read the relevant section before changing routes, schema, environment variables, providers, limits, auth, streaming, UI, deployment, or security behavior, and update it in the same change.
-- Keep the two documents distinct: do not put planned or unimplemented behavior in `TECHNICAL.md` as if it were current.
-- If code and `SPEC.md` disagree, the code is the current source of truth; update the implementation snapshot in `SPEC.md` §0 or the relevant requirement status.
+The documentation is an MkDocs site in `docs/` (config in `mkdocs.yml`), published to GitHub Pages.
+
+- `docs/spec/` is the target product and technical contract, not a description of the current checkout.
+- `docs/reference/` documents what the current code does. Read the relevant page before changing routes, schema, environment variables, providers, limits, auth, streaming, UI, deployment, or security behavior, and update it in the same change.
+- Keep the two distinct: do not put planned or unimplemented behavior in `docs/reference/` as if it were current.
+- If code and the spec disagree, the code is the current source of truth; update the snapshot in `docs/spec/index.md` or the relevant requirement status.
+- New pages must be added to `nav` in `mkdocs.yml`. `mkdocs build --strict` (run in CI) fails on broken links, missing anchors and pages outside the nav.
 
 ## Local verification
 
