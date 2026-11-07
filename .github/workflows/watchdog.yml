@@ -2,7 +2,10 @@ name: Watchdog
 
 on:
   schedule:
+    # Liveness every 5 minutes. /api/live does not touch the database, so Neon can still scale to
+    # zero; the full readiness check (database, schema, KMS) runs hourly and on manual dispatch.
     - cron: "*/5 * * * *"
+    - cron: "17 * * * *"
   workflow_dispatch:
 
 permissions: {}
@@ -12,13 +15,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Probe public liveness and readiness
+      - name: Probe public liveness (and hourly readiness)
         env:
           PUBLIC_URL: ${{ vars.PUBLIC_APP_URL || 'https://beamling.app' }}
+          FULL_CHECK: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '17 * * * *' }}
         run: |
-          curl --fail --silent --show-error --max-time 10 "$PUBLIC_URL/api/live" >/dev/null
-          curl --fail --silent --show-error --max-time 10 "$PUBLIC_URL/api/health" >/dev/null
-          curl --fail --silent --show-error --max-time 10 "$PUBLIC_URL/" >/dev/null
+          curl --fail --silent --show-error --max-time 20 "$PUBLIC_URL/api/live" >/dev/null
+          if [ "$FULL_CHECK" = "true" ]; then
+            # A sleeping database or a cold instance can take a few seconds to answer.
+            curl --fail --silent --show-error --max-time 30 "$PUBLIC_URL/api/health" >/dev/null
+            curl --fail --silent --show-error --max-time 30 "$PUBLIC_URL/" >/dev/null
+          fi
       - name: Notify operator
         if: failure()
         env:

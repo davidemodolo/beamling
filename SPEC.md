@@ -32,7 +32,7 @@ This file is the **target contract** for Alpha 1 and public launch. It is not an
 
 | Area | Current checkout | Alpha 1 / public-launch target |
 |---|---|---|
-| Runtime | Next.js 16.4.5, React 19.3.1, TypeScript 6.0.3, Node 26 LTS, one web app plus the mascot workspace package | Same, deployed on Fly.io |
+| Runtime | Next.js 16.4.5, React 19.3.1, TypeScript 6.0.3, Node 26 LTS, one web app plus the mascot workspace package | Same, deployed on Google Cloud Run |
 | Auth | Google-only OIDC accounts, opaque session cookie, 30-day sliding expiry capped at 90 days, previous session revoked on sign-in, hashed token at rest; versioned terms acceptance with 18+ confirmation at `/welcome` before the app or API can be used | Same; no guest workspaces |
 | LLM | OpenRouter only; five allowlisted models; DeepSeek V4.1 Flash default | Same |
 | Search | Brave, Tavily and Exa selected per answer; Brave free/paid spacing and key metadata; Tavily and Exa use their basic search contracts | Same, plus provider-specific plan metadata and cost ceilings |
@@ -47,7 +47,7 @@ This file is the **target contract** for Alpha 1 and public launch. It is not an
 | Data rights and retention | Self-service JSON export, analytics opt-out with erasure, sign out everywhere, immediate account deletion; accounts deleted after 24 months without sign-in or 7 days without terms acceptance; conversations deleted 60 days after last activity; security audit events in the structured log | Same, reviewed by counsel |
 | License | Open source under the MIT License (`LICENSE`); dependency licenses inventoried on `/licenses` | Same |
 | Analytics | Server-side PostHog events with an allowlist, HMAC distinct IDs, opt-in kill switch, per-account opt-out and account-deletion hook; no browser SDK | PostHog Cloud EU, server-side metadata-only events and operator dashboards |
-| Operations | Production-parity Docker Compose with Caddy TLS, Dex OIDC, LocalStack KMS, TLS Postgres and the production image; release migrations, versioned health, tagged releases, graceful shutdown; Fly configuration and gated deploy job, not yet deployed; database killswitch and internal metrics; operator-scheduled service shutdown with at least 14 days' notice (English email over optional SMTP, banner, sign-ups closed, then every account deleted) | Fly + Neon, GCP KMS, monitoring, backups, killswitch |
+| Operations | Production-parity Docker Compose with Caddy TLS, Dex OIDC, LocalStack KMS, TLS Postgres and the production image; release migrations, versioned health, tagged releases, graceful shutdown; Cloud Run setup script, manifests and gated keyless deploy job, not yet deployed; database killswitch and internal metrics; operator-scheduled service shutdown with at least 14 days' notice (English email over optional SMTP, banner, sign-ups closed, then every account deleted) | Cloud Run + Neon, GCP KMS, monitoring, backups, killswitch |
 | Tests | 57 web unit tests, 38 database integration tests, 44 Playwright E2E tests, 6 mascot tests | Add parity-stack smoke, analytics, dump-encryption, load and eval gates |
 | Donations | None | Optional post-public `/support` and `/supporters` |
 
@@ -771,9 +771,9 @@ Rules:
 
 This section describes the **entire project**, not only the frontend. Alpha 1 is a single Next.js application that contains the UI, HTTP API and answer pipeline. There is no separate backend service and no client-side orchestration.
 
-Alpha 1 is Docker-first and PostgreSQL-only. The same container image runs locally through Docker Compose and in production on Fly.io with Neon Postgres. There is no platform-specific database or serverless adapter.
+Alpha 1 is Docker-first and PostgreSQL-only. The same container image runs locally through Docker Compose and in production on Google Cloud Run with Neon Postgres. There is no platform-specific database or serverless adapter.
 
-**Current checkout:** production-parity Docker Compose with Caddy TLS, Dex OIDC, LocalStack KMS, TLS PostgreSQL 18, the production image, structured logs and `/api/health`. The KMS adapters support GCP (production) and AWS/LocalStack (local). Fly.io, Neon, Sentry and Better Stack are target infrastructure; no code depends on them today. PostHog is implemented as an optional, opt-in integration.
+**Current checkout:** production-parity Docker Compose with Caddy TLS, Dex OIDC, LocalStack KMS, TLS PostgreSQL 18, the production image, structured logs and `/api/health`. The KMS adapters support GCP (production) and AWS/LocalStack (local). Cloud Run (`deploy/gcp/`), Neon, Sentry and Better Stack are target infrastructure; no application code depends on them today. PostHog is implemented as an optional, opt-in integration.
 
 ### 12.2 Alpha 1 stack (target)
 
@@ -793,7 +793,7 @@ Alpha 1 is Docker-first and PostgreSQL-only. The same container image runs local
 | LLM | OpenRouter Chat Completions, streaming | One adapter, no direct-provider adapters |
 | Search | Brave, Tavily or Exa | Provider adapter per answer; snippets only; no Beamling page fetcher |
 | Container | Multi-stage Dockerfile, Next standalone output | Non-root runtime, healthcheck, no secrets in the image |
-| Observability | Structured logs now; Sentry and Better Stack target | Fly/Neon metrics and PostHog usage analytics; no content in logs |
+| Observability | Structured logs now; Sentry and Better Stack target | Cloud Run/Neon metrics and PostHog usage analytics; no content in logs |
 | Analytics | PostHog Cloud EU, server-side (target) | Metadata-only product events; no content or keys; free tier. The checkout implements the event contract, opt-in kill switch and deletion hook |
 
 ### 12.3 Chat request path
@@ -833,13 +833,13 @@ The local parity stack is **not** a simplified dev server. It runs the same stan
 
 | Target | Model | Notes |
 |---|---|---|
-| **Fly.io + Neon** | Docker image + scale-to-zero Postgres | **Public launch default.** Scale-to-zero compute and DB; custom domain/TLS included |
+| **Google Cloud Run + Neon** | Docker image + scale-to-zero Postgres | **Public launch default.** Scale-to-zero compute and DB on free allowances; keyless KMS and deploy identities; custom domain/TLS via domain mapping |
 | Railway | Docker image + managed PostgreSQL | Fallback; simpler but not scale-to-zero |
 | Render | Docker image + managed PostgreSQL | Equivalent fallback |
 | Hetzner or similar | Docker Compose or Dokploy | Cheapest steady state, more operations |
 | AWS | ECS Fargate + RDS | Only when a concrete compliance or scale requirement appears |
 
-Decision rule: use Fly.io for compute and Neon for Postgres at public launch. Everything must run from the Docker image plus PostgreSQL; no platform-specific runtime APIs, no Redis and no queue. Railway/Render remain fallbacks.
+Decision rule: use Google Cloud Run for compute and Neon for Postgres at public launch. Everything must run from the Docker image plus PostgreSQL; no platform-specific runtime APIs, no Redis and no queue. Fly.io, Railway and Render remain fallbacks.
 
 ### 12.6.1 Container contract
 
@@ -859,8 +859,8 @@ The default `docker compose up --build` must exercise the production code paths.
 
 | Service | Role | Production equivalent |
 |---|---|---|
-| `caddy` | HTTPS on `https://localhost`, reverse proxy, `X-Forwarded-*`, local CA | Fly proxy/TLS |
-| `app` | The standalone production image, `NODE_ENV=production` | Fly app |
+| `caddy` | HTTPS on `https://localhost`, reverse proxy, `X-Forwarded-*`, local CA | Google front end (TLS, `X-Forwarded-For`) |
+| `app` | The standalone production image, `NODE_ENV=production` | Cloud Run service |
 | `migrate` | One-shot `node scripts/migrate.mjs` | Release command |
 | `db` | PostgreSQL 18 with TLS required and a local CA | Neon Postgres |
 | `dex` | Local OIDC issuer with a seeded test account | Google OIDC |
@@ -1657,7 +1657,7 @@ Donations are the chosen support mechanism if fixed infrastructure costs need he
 
 - **Primary: Tipeee.** EU/Italy-friendly and handles one-time or recurring support. **Fallback: PayPal.me.** Use plain outbound links; no embedded widget, iframe, script, API or webhook. Confirm current fees and payout terms before publishing.
 - Place "Support Beamling" in the footer and on `/support`; do not interrupt chat with modals, banners or nag screens.
-- `/support` explains what donations cover (domain, Fly, Neon, KMS, monitoring), shows the current monthly target, and states that donations are voluntary and do not buy features, priority, influence or data.
+- `/support` explains what donations cover (domain, hosting, Neon, KMS, monitoring), shows the current monthly target, and states that donations are voluntary and do not buy features, priority, influence or data.
 - No billing code, no card data and no payment webhooks. Tipeee and PayPal are external; Beamling receives no payment credentials.
 - Do not promise automatic funding. Platform payouts are manual or scheduled and cloud bills are charged separately. Keep the hard caps in §21.3. At near-zero scale, donations are symbolic, not a funding guarantee. If donations exceed costs, keep a reserve rather than raising caps automatically.
 - **No ads at launch.** An ad box is not part of the public launch. Adding ads later requires a separate privacy, CMP, security and UX review; it is not a default monetization path.
@@ -1727,7 +1727,7 @@ Rules:
 **Dashboards and alerts**
 
 - DAU/WAU/MAU, activation, questions/day, Quick vs Deep, search-provider share, model mix, error rate by code, p50/p95 latency, tokens and cost per answer, cost per active workspace, D1/D7 retention and event volume.
-- PostHog alerts cover activation, error-rate and usage anomalies. Sentry or Better Stack remains the source for exceptions and uptime; Neon and Fly caps remain the source for spend guardrails. PostHog is not the billing or SLO source of truth.
+- PostHog alerts cover activation, error-rate and usage anomalies. Sentry or Better Stack remains the source for exceptions and uptime; the Google Cloud budget alert, the Cloud Run instance cap and Neon's plan limits remain the source for spend guardrails. PostHog is not the billing or SLO source of truth.
 - Keep the project on the free plan or set a **$0 billing limit** so events are dropped rather than billed. Monitor event volume; if it approaches 1,000,000/month, reduce event cardinality or sample before upgrading.
 - PostHog access: EU project, 2FA, least-privilege members, no shared logins; review members quarterly.
 
@@ -1794,22 +1794,22 @@ Evaluation methodology: each golden question has a reference answer and expected
 
 ## 21. Deployment and Operations
 
-**Current checkout:** `pnpm local:up` runs the production image behind Caddy with Dex OIDC, LocalStack KMS and TLS PostgreSQL; migrations are a separate release step; `/api/health` is the health check; `SIGTERM` stores partial answers before exit. `fly.toml` and a gated CI deploy job are committed, but no Fly app or Neon database is live yet. `/licenses` is generated from the production dependency graph and checked in CI. Sentry, Better Stack, the automated watchdog and external alerting remain public-launch targets.
+**Current checkout:** `pnpm local:up` runs the production image behind Caddy with Dex OIDC, LocalStack KMS and TLS PostgreSQL; migrations are a separate release step; `/api/health` is the health check; `SIGTERM` stores partial answers before exit. `deploy/gcp/` (setup script, Cloud Run service and migration job) and a gated keyless CI deploy job are committed; the Neon database and Google Cloud project exist, but nothing is deployed yet. `/licenses` is generated from the production dependency graph and checked in CI. Sentry, Better Stack, the automated watchdog and external alerting remain public-launch targets.
 
 ### 21.1 Public launch stack (target)
 
 | Layer | Public launch choice | Notes |
 |---|---|---|
 | Domain | **Dynadot**, `beamling.app` | ICANN-accredited registrar; `.app` requires HTTPS. Keep registrar lock, 2FA and auto-renew on. |
-| DNS / TLS | Dynadot DNS, or Cloudflare DNS by choice; Fly-managed certificates | If Cloudflare is used, keep the app records DNS-only (grey cloud) during certificate issuance. |
-| Compute | **Fly.io Machines**, Docker image | `min_machines_running=0`, auto-stop/auto-start, fixed maximum machine count, 1 GB `shared-cpu-1x`, health check and graceful shutdown. |
+| DNS / TLS | Dynadot DNS, or Cloudflare DNS by choice; Google-managed certificates (Cloud Run domain mapping) | If Cloudflare is used, keep the app records DNS-only (grey cloud) during certificate issuance. |
+| Compute | **Google Cloud Run** (`europe-west1`), Docker image | Scale to zero, request-based billing, fixed maximum instance count, 1 vCPU / 1 GiB, liveness probes and graceful shutdown. Domain mapping is not available in `europe-west3`. |
 | Database | **Neon Postgres Launch**, EU region | Scale-to-zero after 5 minutes, max CU cap, pooled connection string for the app and a direct one for migrations, 7-day instant restore plus weekly logical dumps. |
-| KMS | **GCP Cloud KMS**, one software master key | Per-workspace WDKs wrapped by the master key; deletion protection and rotation enabled. Use a restricted service account (`cloudkms.cryptoKeyEncrypterDecrypter`). Fly uses a service-account JSON secret; move to Workload Identity if the compute host supports it. |
+| KMS | **GCP Cloud KMS**, one software master key | Per-workspace WDKs wrapped by the master key; deletion protection and rotation enabled. Use a restricted service account (`cloudkms.cryptoKeyEncrypterDecrypter`). Cloud Run runs as that service account, so no key file exists. |
 | Analytics | **PostHog Cloud EU** | Server-side, metadata-only events; free plan or $0 billing limit. |
 | Legal / consent | **Iubenda** default; Cookiebot free tier alternative | Only enabled when a non-essential script exists; no custom banner. |
 | Open-source compliance | MIT `LICENSE`, generated `/licenses`, dependency allowlist | CI gate on dependency licenses; the application source is MIT-licensed. |
-| Monitoring | **Sentry** for exceptions, **Better Stack** for uptime | Alert to email and a Slack/Discord webhook; Fly and Neon for capacity. |
-| CI/CD | GitHub Actions → `fly deploy` | Migrations via `release_command`; secrets in Fly and GitHub environment secrets. |
+| Monitoring | **Sentry** for exceptions, **Better Stack** for uptime | Alert to email and a Slack/Discord webhook; Cloud Run and Neon for capacity. |
+| CI/CD | GitHub Actions → Cloud Run via Workload Identity Federation (no stored deploy key) | Migrations as a Cloud Run job before the service update; runtime secrets in Secret Manager. |
 | Backups | Neon instant restore + weekly `pg_dump` to S3-compatible storage | Test a restore before launch; the encryption dump test is a release gate. |
 | Docs / feedback | Public source, docs and feedback repository | MIT-licensed source; public issue templates and private security disclosure. |
 | Provider keys | User BYOK only | No operator OpenRouter, Brave, Tavily or Exa keys in production. |
@@ -1821,20 +1821,20 @@ Evaluation methodology: each golden question has a reference answer and expected
 - **Migrations:** forward-only, reviewed, applied before deploy with `node scripts/migrate.mjs`. No destructive migration without a backfill plan. The public-launch migration must encrypt any existing plaintext content (§13.6) and verify that a raw database dump contains no readable user content; this is a release gate.
 - **Encryption at rest:** per-workspace content encryption (§13.6) is live and the production deployment must use GCP KMS; the launch dump/backup check must pass.
 - **Backups:** managed database backups with point-in-time recovery where available, 30-day window. Quarterly restore drill.
-- **Secrets:** platform secret store only. No secrets in the repository or build logs. Public launch requires `DATABASE_URL`, `DATABASE_URL_DIRECT`, `APP_URL`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_REDIRECT_URI`, `KMS_PROVIDER=gcp`, `KMS_KEY_NAME` plus a restricted GCP service account (`GCP_KMS_CREDENTIALS` on Fly), `POSTHOG_API_KEY`, `POSTHOG_HOST`, `POSTHOG_PERSONAL_API_KEY`, `POSTHOG_PROJECT_ID`, `ANALYTICS_SALT`, `KILL_SWITCH_SECRET`, `METRICS_SECRET`, `LEGAL_ENTITY` and `LEGAL_CONTACT_EMAIL` (optionally `LEGAL_ADDRESS` and `LEGAL_VAT_ID`, the address being required with a VAT ID, `LEGAL_LOG_RETENTION_DAYS`, `LEGAL_BACKUP_RETENTION_DAYS`, and `SMTP_URL`, `MAIL_FROM` and `LEGAL_MAIL_PROVIDER` to email a shutdown notice). Local development may use the AWS/LocalStack KMS adapter; `CREDENTIAL_MASTER_KEY` is test-only.
+- **Secrets:** platform secret store only. No secrets in the repository or build logs. Public launch requires `DATABASE_URL`, `DATABASE_URL_DIRECT`, `APP_URL`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_REDIRECT_URI`, `KMS_PROVIDER=gcp`, `KMS_KEY_NAME` plus a restricted GCP service account (the Cloud Run identity; `GCP_KMS_CREDENTIALS` only off Google Cloud), `POSTHOG_API_KEY`, `POSTHOG_HOST`, `POSTHOG_PERSONAL_API_KEY`, `POSTHOG_PROJECT_ID`, `ANALYTICS_SALT`, `KILL_SWITCH_SECRET`, `METRICS_SECRET`, `LEGAL_ENTITY` and `LEGAL_CONTACT_EMAIL` (optionally `LEGAL_ADDRESS` and `LEGAL_VAT_ID`, the address being required with a VAT ID, `LEGAL_LOG_RETENTION_DAYS`, `LEGAL_BACKUP_RETENTION_DAYS`, and `SMTP_URL`, `MAIL_FROM` and `LEGAL_MAIL_PROVIDER` to email a shutdown notice). Local development may use the AWS/LocalStack KMS adapter; `CREDENTIAL_MASTER_KEY` is test-only.
 - **Analytics:** PostHog Cloud EU, server-side only. Environment: `POSTHOG_API_KEY`, `POSTHOG_HOST`, `POSTHOG_APP_HOST` (optional), `POSTHOG_PERSONAL_API_KEY`, `POSTHOG_PROJECT_ID`, `ANALYTICS_SALT`; `ANALYTICS_ENABLED=true` is the opt-in and `false` is the kill switch. The personal key needs `person:write` for account-deletion cleanup. Keep the project on the free plan or a $0 billing limit; no browser SDK, autocapture or session replay.
 - **Legal and consent:** publish reviewed Privacy/Terms/Cookie Policy/Subprocessors/Security pages; configure Iubenda (default) or Cookiebot only if non-essential scripts exist; add CMP domains to CSP; generate `/licenses` in CI; run the footer link checker.
 - **Public docs and feedback:** The source and product docs are published in a public repository under the MIT License, with GitHub issue templates for bugs and feature requests and a private security disclosure path.
 - **Status page:** public availability and provider incident feed (v1).
 - **Runbooks:** OpenRouter outage, search-provider outage (Brave, Tavily or Exa), master key failure, database failover, credential leak, abuse spike, cost anomaly.
-- **Portability:** the same Docker image runs on Railway, Render, Fly.io or a Docker Compose VM. A migration runbook covers moving between hosting providers.
+- **Portability:** the same Docker image runs on Cloud Run, Railway, Render, Fly.io or a Docker Compose VM. A migration runbook covers moving between hosting providers.
 - **SLOs:** 99.9% API availability; Quick p95 time to first token under 3 seconds; Deep p95 first progress under 1 second; error budget policy at 10% consumption.
 
 ### 21.3 Spend guardrails, alerts and killswitch (target)
 
 **Hard caps**
 
-- Fly maximum machine count (for example 5–25); Fly never creates more.
+- Cloud Run maximum instance count (2 at launch); Cloud Run never starts more.
 - Per-machine concurrency `hard_limit`; the total is roughly machine count × per-machine limit.
 - App-level global active-stream cap and per-IP/per-account rate limits.
 - Neon maximum CU cap and scale-to-zero enabled.
@@ -1848,14 +1848,14 @@ Evaluation methodology: each golden question has a reference answer and expected
 - Better Stack: uptime check on `/api/health` and the welcome page, email plus Slack/Discord webhook.
 - Sentry: new issue, 5xx spike and release regression.
 - Neon: 80% and 100% spending notifications; monitor CU usage.
-- Fly: cost explorer and machine-count review; Fly has no native hard budget cap, so the fixed machine count is the spend cap.
+- Google Cloud: billing budget alert and instance-count review; budgets only alert, so the fixed instance count is the spend cap.
 - GCP: budget alert for the KMS key.
 - PostHog: activation, error-rate and event-volume anomalies.
 - A daily cost check is enough at alpha scale; review before raising machine or CU caps.
 
 **Killswitch**
 
-- Store `system_flags.accepting_new_streams` in Postgres so every Fly machine sees the same state.
+- Store `system_flags.accepting_new_streams` in Postgres so every instance sees the same state.
 - `/api/chat` checks the flag before starting a stream. If disabled, return `503` with `Retry-After` and a friendly "Beamling is briefly at capacity" message. Existing streams finish; do not kill them.
 - Protect `POST /api/internal/kill` and `GET /api/internal/metrics` with `KILL_SWITCH_SECRET` and `METRICS_SECRET`. Do not expose them in the UI.
 - **Current checkout:** the database flag, `/api/chat` gate, `POST /api/internal/kill` and `GET /api/internal/metrics` are implemented; the watchdog and external alerting remain target work.
@@ -1900,7 +1900,7 @@ Evaluation methodology: each golden question has a reference answer and expected
 |---|---|---|---|
 | M0 — Spec | This document, brand assets brief, domain purchases | Review complete | Spec exists; domain purchase unconfirmed |
 | M1 — Alpha 1 | Google-only accounts, OpenRouter credentials and streaming, Brave/Tavily/Exa search adapters, Brave plan/expiry/budget metadata, Quick, Deep, Deeper, citations, search animation, history, PostHog usage analytics, production-parity local stack | Quick and Deep cited answers render end to end; Google login works; animation follows real stages; local stack runs the production image with KMS-backed crypto | Implemented in code and tests, including PostHog events, kill switch and deletion hook; live PostHog project, dashboards and alerts remain operator setup |
-| M2 — Private alpha | Onboarding, settings, usage/cost, error states, account deletion, 100-question eval, Fly + Neon deploy | 10–25 invited users complete real Quick, Deep and Deeper questions without key leakage | Partial: onboarding, settings, costs, errors and deletion are implemented; Fly config and deploy job are committed; the live deploy and 100-question eval remain |
+| M2 — Private alpha | Onboarding, settings, usage/cost, error states, account deletion, 100-question eval, Cloud Run + Neon deploy | 10–25 invited users complete real Quick, Deep and Deeper questions without key leakage | Partial: onboarding, settings, costs, errors and deletion are implemented; Cloud Run setup, manifests and deploy job are committed; the live deploy and 100-question eval remain |
 | M3 — Public launch | All launch adapters, welcome page, public docs and GitHub feedback repo, legal pages, open-source license page, key-safety explainer page (FR-60), CMP if needed, rate limits, status page | Public Google sign-in open, SLOs met for one week | Partial: killswitch, internal metrics and the generated license page are implemented; the remaining legal surface, status and watchdog remain |
 | M3.1 — Support (optional, post-public) | `/support`, outbound Tipeee/PayPal link, opt-in `/supporters`, footer link | Donation link works with no payment script; consent and removal process documented | Target |
 | M4 — v1 | PDF upload, share links, exports, optional public API, KMS-backed keys | Quality and security gates passed for both modes | Target |
@@ -2008,7 +2008,7 @@ Trademark: no exact BEAMLING filing surfaced in initial searches. Formal clearan
 | A11 | Alpha 1 does not fetch pages; snippets from the selected search provider supply the evidence | Confirmed |
 | A12 | Prompts are original adaptations, not verbatim copies of leaked prompts | Confirmed |
 | A13 | Alpha 1 requires Google sign-in; no guest or other identity provider | Confirmed |
-| A14 | Public launch deploys on Fly.io from a Docker image with Neon Postgres | Confirmed |
+| A14 | Public launch deploys on Google Cloud Run from a Docker image with Neon Postgres (moved from Fly.io on 2026-11-07: free allowance and keyless credentials) | Confirmed |
 | A15 | Default model is `deepseek/deepseek-v4.1-flash` via OpenRouter | Confirmed |
 | A16 | PostHog Cloud EU free tier is the Alpha 1 product analytics service; events are server-side and metadata-only | Confirmed |
 | A17 | Product documentation and application source are public under the MIT License; public feedback uses GitHub issues | Confirmed |

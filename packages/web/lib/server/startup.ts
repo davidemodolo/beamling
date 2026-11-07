@@ -9,7 +9,8 @@ import { log } from "./log";
 import { cleanupExpired, interruptStaleAnswers } from "./repo";
 import { APP_VERSION, BUILD_TIME, GIT_COMMIT } from "../version";
 
-const CLEANUP_INTERVAL_MS = 15 * 60_000;
+// Hourly: retention is measured in days, and a quiet instance should let Neon scale to zero.
+const CLEANUP_INTERVAL_MS = 60 * 60_000;
 /** Time running answers get to store their outcome before the process exits. */
 const SHUTDOWN_GRACE_MS = 8_000;
 

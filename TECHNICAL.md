@@ -91,6 +91,7 @@ The server does not fetch result pages, crawl the web or load remote media in an
 │  └─ e2e/                        Playwright suites
 ├─ packages/mascot/               Framework-agnostic mascot engine + React wrapper
 ├─ local/                         Caddy, Dex and LocalStack parity configuration
+├─ deploy/gcp/                    Google Cloud setup script, Cloud Run service and migration job
 ├─ Dockerfile                     Multi-stage standalone image
 ├─ docker-compose.yml             Production-parity local stack
 └─ pnpm-workspace.yaml
@@ -194,9 +195,9 @@ Production startup refuses to boot when any of these checks fails:
 | `PORT` | `3000` in Docker; Next.js default otherwise. |
 | `TRUSTED_PROXY_HOPS` | `1`; number of trusted proxies that append to `X-Forwarded-For`. `0` ignores the header and puts all clients in one IP bucket. |
 | `COOKIE_SECURE` | Forces Secure cookies on/off. Default: on in production unless `APP_URL` is localhost; on in development only for an HTTPS `APP_URL`. |
-| `MAX_CONCURRENT_CHATS` | `50` active streams across the database. `fly.toml` sets `30` to leave connection headroom. |
+| `MAX_CONCURRENT_CHATS` | `50` active streams across the database. `deploy/gcp/service.yaml` sets `30` to leave headroom below the per-instance request ceiling. |
 | `MAX_CONCURRENT_CHATS_PER_USER` | `2` active streams for one account, so one user cannot occupy every global slot. |
-| `PLATFORM_CONNECTION_LIMIT` | Optional platform connection ceiling (Fly uses `50`); startup warns when `MAX_CONCURRENT_CHATS` is not below it. |
+| `PLATFORM_CONNECTION_LIMIT` | Optional platform connection ceiling (Cloud Run `containerConcurrency`, `40` in production); startup warns when `MAX_CONCURRENT_CHATS` is not below it. |
 | `LOGINS_PER_IP_PER_HOUR` | `60` OIDC sign-in starts per hashed client IP per fixed hour. |
 | `AUTH_CALLBACKS_PER_IP_PER_HOUR` | `120` OIDC callback requests per hashed client IP per fixed hour. |
 | `NEW_ACCOUNTS_PER_HOUR` | `200` new accounts across the deployment per fixed hour. Returning users are not counted. |
@@ -295,7 +296,7 @@ Details:
 
 ### 4.1 Terms acceptance
 
-- `lib/legal.ts` defines `LEGAL_VERSION` (currently `2026-10-22`), the version of the terms and privacy notice an account must accept, plus `MINIMUM_AGE = 18`, `INACTIVE_ACCOUNT_MONTHS = 24`, `UNACCEPTED_ACCOUNT_DAYS = 7`, `CONVERSATION_RETENTION_DAYS = 60`, `MAX_CONVERSATIONS = 100`, `CONVERSATION_WARNING_THRESHOLD = 90` and `SHUTDOWN_NOTICE_DAYS = 14`.
+- `lib/legal.ts` defines `LEGAL_VERSION` (currently `2026-11-07`), the version of the terms and privacy notice an account must accept, plus `MINIMUM_AGE = 18`, `INACTIVE_ACCOUNT_MONTHS = 24`, `UNACCEPTED_ACCOUNT_DAYS = 7`, `CONVERSATION_RETENTION_DAYS = 60`, `MAX_CONVERSATIONS = 100`, `CONVERSATION_WARNING_THRESHOLD = 90` and `SHUTDOWN_NOTICE_DAYS = 14`.
 - `users.terms_version` and `users.terms_accepted_at` record the accepted version. A new account has none.
 - App pages call `requirePageUser`, which redirects to `/welcome?next=<path>` when `terms_version` differs from `LEGAL_VERSION`. `/welcome` accepts only `/chat`, `/chat/<uuid>` or `/onboarding` as `next`, and redirects there once the version matches.
 - `apiRoute` refuses every API call from such an account with `TERMS_REQUIRED` (403), except routes declared with `requireTerms: false`: `POST /api/account/terms`, `GET /api/account/export`, `POST /api/auth/logout` and `DELETE /api/account`. The browser API client redirects to `/welcome` on `TERMS_REQUIRED`, so a version change while the app is open sends the user to accept it.
@@ -566,7 +567,7 @@ On retry, the old answer is deleted before a new placeholder is created, so its 
 
 ### 6.6 Cleanup
 
-`startServer()` runs cleanup immediately and every 15 minutes:
+`startServer()` runs cleanup immediately and every hour (on Cloud Run only while the instance has CPU, i.e. during requests):
 
 - Delete retired accounts, at most 50 per run, through the same path as a user deletion (including the queued PostHog erasure), logging an `inactive_account_deleted` audit event for each:
   - accounts whose `last_seen_at` (last sign-in or daily session renewal) is more than 24 months old;
@@ -1281,7 +1282,7 @@ A `429` is retried once with the same short-wait policy as Brave.
 | `/privacy` | Privacy notice (Art. 13/14 GDPR): controller with address and optional VAT id, no DPO; data categories with legal basis (account, acceptance record, session, content, credentials, usage, hashed-IP security metadata, logs, optional analytics with opt-out); Google account used to email essential service notices (no newsletters or marketing); Google account required; no solely automated decisions; not for under-18s; provider traffic under the user's own accounts; essential cookies only; retention list (conversations 60 days after their last question, pinned or not, at most 100 per account with the least recently used unpinned ones deleted first; account data until deletion; inactive accounts after 24 months, unaccepted accounts after 7 days, sessions 30 days idle / 90 days max, hashed IPs and counters up to one hour, logs `LEGAL_LOG_RETENTION_DAYS`, backups `LEGAL_BACKUP_RETENTION_DAYS`, analytics until opt-out or deletion; everything on the closing date if the service closes, announced at least 14 days ahead by email and in the interface); recipients and transfers (Frankfurt hosting, EU-US Data Privacy Framework or SCCs); rights under Art. 15–21 with the self-service Settings controls, one-month answer and the Garante complaint route; re-acceptance on material changes |
 | `/terms` | Alpha terms: operator identity, free service, 18+ (or local age of majority), acceptance on first use and on material change, user responsibility for provider keys and costs, data loss and export, storage limits (60-day conversation expiry, 100 conversations per account, warning near the cap), acceptable use (illegal content, harassment, IP and privacy infringement, malware, EU AI Act Art. 5 practices, professional advice, foreign keys, scraping, resale), AI-generated answers, content ownership and MIT-licensed source (name and logo not licensed), as-is availability without affecting consumer rights, liability limits that never exclude wilful misconduct or gross negligence (Art. 1229 Italian Civil Code) or Consumer Code liability, suspension with notice and a chance to export, 24-month inactive deletion, closure of the service with at least 14 days' notice by email and in the interface (no new accounts meanwhile, export still possible, every account deleted on the date), email only for essential service notices, DSA reports and contact point, `LEGAL_GOVERNING_LAW` with consumer forum (Art. 66-bis Consumer Code) |
 | `/cookies` | Essential-cookie table (session: 30 days without use, at most 90 days after sign-in); no analytics or advertising cookies |
-| `/subprocessors` | "Data processors" page in two tables with purpose, location and privacy-policy link: processors that run Beamling under a DPA (Fly.io, Neon, Google Cloud KMS, optional PostHog Cloud, and an email row named by `LEGAL_MAIL_PROVIDER` when set) and providers the user chooses with their own account (Google sign-in, OpenRouter, Brave, Tavily, Exa) |
+| `/subprocessors` | "Data processors" page in two tables with purpose, location and privacy-policy link: processors that run Beamling under a DPA (Google Cloud for hosting, logs and KMS, Neon, optional PostHog Cloud, and an email row named by `LEGAL_MAIL_PROVIDER` when set) and providers the user chooses with their own account (Google sign-in, OpenRouter, Brave, Tavily, Exa) |
 | `/security` | Security controls, session lifetime, audit events, `security.txt` link and a vulnerability-disclosure policy with a good-faith safe harbor |
 | `/contact` | Operator identity, address and optional VAT id; monitored privacy/security/abuse contact; DSA single point of contact (Art. 11–12, English) and how to report illegal content |
 | `/status` | Human-readable readiness for the app, database, schema and KMS; a scheduled shutdown date (or that the service has shut down) above it |
@@ -1616,7 +1617,7 @@ Migrations are a release step, not an app-start side effect. The local compose `
 - Unhealthy: 503 with the failing component marked `down`; no error details are exposed.
 - No authentication and no cache headers. `/status` renders the same readiness state for people.
 - On `SIGTERM` or `SIGINT`, if `NEXT_MANUAL_SIG_HANDLE` is set, the process sets a global shutdown flag, rejects new `/api/chat` requests, aborts active chats, loops over late registrations, waits up to 8 seconds for outcomes, marks leftovers interrupted, closes the pg pool and exits.
-- The Docker Compose grace period is 15 seconds.
+- The Docker Compose grace period is 15 seconds; Cloud Run allows 10.
 
 ### 14.5 Versioning and releases
 
@@ -1624,22 +1625,47 @@ Migrations are a release step, not an app-start side effect. The local compose `
 - `pnpm version` prints it, `pnpm version:set 0.2.0` updates all three package files, and `pnpm version:check v0.2.0` rejects a mismatched tag.
 - `next.config.ts` injects `NEXT_PUBLIC_APP_VERSION`, `NEXT_PUBLIC_GIT_COMMIT` and `NEXT_PUBLIC_BUILD_TIME` at build time. `/api/health`, the landing footer and the sidebar show the same identity.
 - On a green push to `main`, CI creates the annotated tag `v<version>` if it does not exist, builds the production image, pushes `ghcr.io/<repo>:v<version>` and `:latest`, records the registry digest and creates a GitHub release with generated notes.
-- The deploy job deploys that digest with `flyctl deploy --image`, not a second source build, and runs a post-deploy `/api/health` smoke check.
+- The deploy job deploys that digest to Cloud Run (§14.6), not a second source build, and runs a post-deploy `/api/health` smoke check.
 - A new release requires a version bump. Pushing another commit without one leaves the existing tag and image untouched.
 
-### 14.6 Fly.io deployment
+### 14.6 Google Cloud Run deployment
 
-`fly.toml` describes the production topology: one shared-CPU 1 GB machine in `fra`, scale-to-zero, a 20-second shutdown window, HTTP health checks on `/api/health`, and the migration release command.
+Production runs on Cloud Run in `europe-west1` (Belgium), with Neon Postgres in Frankfurt and the Cloud KMS key in `europe-west3` (Frankfurt). `europe-west1` is used because Cloud Run custom-domain mapping is not available in `europe-west3`. All of it lives in the GCP project `beamling-prod`.
 
-- Production deploys are gated by the repository variable `FLY_DEPLOY_ENABLED=true`. When a new version tag is created, the `deploy` job in `ci.yml` installs pinned flyctl `0.5.5` and deploys the GHCR digest produced by the release job.
-- Required Fly secrets: `DATABASE_URL`, `DATABASE_URL_DIRECT`, `AUTH_SECRET`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `KMS_KEY_NAME`, `GCP_KMS_CREDENTIALS`, `KILL_SWITCH_SECRET`, `METRICS_SECRET`, `LEGAL_ENTITY`, `LEGAL_CONTACT_EMAIL` and, when analytics is enabled, the PostHog values. Optional: `LEGAL_ADDRESS` and `LEGAL_VAT_ID` (a VAT ID requires the address), and `LEGAL_LOG_RETENTION_DAYS`/`LEGAL_BACKUP_RETENTION_DAYS` when the Fly log or Neon backup retention differs from the 30/7-day defaults; `SMTP_URL`, `MAIL_FROM` and `LEGAL_MAIL_PROVIDER` to email a shutdown notice.
-- `SIGNUP_MODE=allowlist` is the Fly default. Set `SIGNUP_MODE=open` explicitly to open public registration, or add `SIGNUP_ALLOWED_EMAILS`/`SIGNUP_ALLOWED_EMAIL_DOMAINS`.
-- The public smoke URL comes from the repository variable `PUBLIC_APP_URL` (falling back to `https://beamling.app`).
-- `GCP_KMS_CREDENTIALS` is the service-account JSON. It lets the GCP client run on a host with no credentials file; Application Default Credentials remain the fallback.
-- `release_command = "node scripts/migrate.mjs"` applies the schema before the new machine receives traffic. Applied migrations store a SHA-256 checksum; editing an applied file fails the run instead of silently drifting.
-- Neon: `DATABASE_URL` is the pooled connection string (host contains `-pooler`) and `DATABASE_URL_DIRECT` the direct one, both with TLS; `DATABASE_SSL=true` is set in `fly.toml`. The release command runs migrations over the direct connection.
-- `APP_URL` defaults to `https://beamling.app`. Override it as a Fly secret for staging or a different domain, and register the matching Google OAuth callback.
-- The Fly app and certificate are not created by the repository. Create the app, set the secrets, enable the workflow variable and attach the custom domain before the first deploy.
+- **One-time setup:** `deploy/gcp/setup.sh` creates every Google Cloud resource and is safe to re-run. No service-account key exists; each identity holds only what it needs:
+
+  | Identity | Used by | Permissions |
+  |---|---|---|
+  | `beamling-app` | Cloud Run service | `cloudkms.cryptoKeyEncrypterDecrypter` on the one key; `secretmanager.secretAccessor` on the six app secrets |
+  | `beamling-migrate` | Cloud Run job `beamling-migrate` | `secretmanager.secretAccessor` on `DATABASE_URL_DIRECT` only |
+  | `beamling-deploy` | GitHub Actions `deploy` job | `run.developer` on the project and `iam.serviceAccountUser` on the two accounts above; no IAM, secret or KMS rights |
+
+- **Keyless deploys:** the `deploy` job exchanges GitHub's OIDC token through the Workload Identity pool `github` / provider `github-actions`. The provider's attribute condition accepts only the immutable repository and owner IDs, `refs/heads/main` and the `production` environment, and only the subject `repo:davidemodolo/beamling:environment:production` may impersonate `beamling-deploy`.
+- **Key:** the KMS key rotates every 90 days, and destroyed versions are recoverable for 120 days. Rows store the key name, not a version, so decrypt works across rotations. Admin, read and write audit logs are enabled for Cloud KMS.
+- **Secrets:** Secret Manager in `europe-west1` holds `DATABASE_URL`, `DATABASE_URL_DIRECT`, `AUTH_SECRET`, `OIDC_CLIENT_SECRET`, `KILL_SWITCH_SECRET` and `METRICS_SECRET` (`key: latest`, read when an instance starts). Values are added with `gcloud secrets versions add NAME --data-file=-`; neither the repository nor the setup script contains them.
+- **Images:** the release job pushes to public GHCR. The Artifact Registry remote repository `ghcr` (`europe-west1`) proxies `ghcr.io`, so Cloud Run deploys the same digest as `europe-west1-docker.pkg.dev/beamling-prod/ghcr/<owner>/<repo>@sha256:…`. Its cleanup policy keeps the five most recent versions and deletes others after 30 days.
+- **Topology:** `deploy/gcp/service.yaml` is the service definition:
+  - Scaling: 0–2 instances. The maximum is the spend cap.
+  - Billing and size: request-based billing (CPU only while a request or stream is in flight), startup CPU boost, 1 vCPU, 1 GiB.
+  - Concurrency and timeout: 40 concurrent requests per instance (`PLATFORM_CONNECTION_LIMIT=40`) and a 420-second request timeout, covering Deeper's 360 s plus storing the outcome.
+  - Probes: startup and liveness probes on the database-free `/api/live`.
+  - Non-secret configuration, including `LEGAL_ENTITY`, `LEGAL_CONTACT_EMAIL` and `LEGAL_BACKUP_RETENTION_DAYS=1` (Neon Free keeps 6 hours of history), is in the file.
+  - The deploy job fills in `${IMAGE}`, `${OIDC_CLIENT_ID}` (environment variable) and `${SIGNUP_ALLOWED_EMAILS}` (environment secret, so the list stays out of the repository and logs).
+- **Deploy order:** when a new version tag is created and the repository variable `GCP_DEPLOY_ENABLED=true`, the `deploy` job (environment `production`):
+  1. renders both manifests;
+  2. applies `deploy/gcp/migrate-job.yaml` and runs it with `--wait`, so the job applies `scripts/migrate.mjs` over `DATABASE_URL_DIRECT` (§14.3) and a failure stops the deploy;
+  3. applies the service with `gcloud run services replace`, which waits for the new revision to become ready;
+  4. smoke-tests `/api/health`.
+  Deploys never change IAM; public access (`allUsers` → `run.invoker`) is granted once by the setup script.
+- **GitHub settings:** environment `production` with variables `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_DEPLOY_SERVICE_ACCOUNT` and `OIDC_CLIENT_ID`, and secret `SIGNUP_ALLOWED_EMAILS`; repository variables `GCP_DEPLOY_ENABLED` and optionally `PUBLIC_APP_URL` (smoke-test URL, default `https://beamling.app`). The GHCR package must be public.
+- **Shutdown:** Cloud Run sends `SIGTERM` and allows 10 seconds; the server gives running answers 8 seconds to store their outcome (§14.4).
+- **Background work:** with request-based billing, an idle instance has no CPU, so the hourly cleanup (§6.6) runs only while the instance is serving.
+- **Logs:** structured JSON on stdout carries `severity` for Cloud Logging. The `_Default` sink writes to the EU bucket `beamling-eu` (`europe-west1`, 30-day retention), matching the privacy notice's `LEGAL_LOG_RETENTION_DAYS=30`.
+- **Spend:** a €5 monthly budget alert on the billing account (50%, 100% and forecast) and the two-instance maximum. Neon Free has its own compute allowance; the watchdog's readiness probe runs hourly so the database can scale to zero.
+- **Domain:** `beamling.app` is attached with Cloud Run domain mapping (Preview) to the `beamling` service, with Google-managed TLS. The domain must be verified in Search Console for the account that creates the mapping.
+- Optional operator details: `LEGAL_ADDRESS` and `LEGAL_VAT_ID` (a VAT ID requires the address), and `SMTP_URL`, `MAIL_FROM` and `LEGAL_MAIL_PROVIDER` to email a shutdown notice, are added to `service.yaml` when needed.
+- `APP_URL` is `https://beamling.app`; change it in `service.yaml` for another domain and register the matching Google OAuth callback.
+- `GCP_KMS_CREDENTIALS` (a service-account JSON key) is still supported for hosts outside Google Cloud; production does not use it.
 
 ### 14.7 Database pool
 
@@ -1658,7 +1684,7 @@ Migrations are a release step, not an app-start side effect. The local compose `
 - `GET /api/internal/metrics` requires a Bearer `METRICS_SECRET` and returns the flag, active stream count, configured stream cap and build identity.
 - `GET`/`POST /api/internal/shutdown` (Bearer `KILL_SWITCH_SECRET`) shows, schedules or cancels a service shutdown (§6.7, §14.10).
 - A missing or short secret disables its endpoint (404) and logs a production startup warning. A wrong bearer token returns 401 and logs an `internal_auth_failed` audit event. The bearer is compared as SHA-256 digests with `timingSafeEqual`, so the comparison is constant-time and does not reveal the secret's length. None of these endpoints uses a session or the public read limiter.
-- `.github/workflows/watchdog.yml` probes `/api/live`, `/api/health` and `/` every five minutes. Failure notifies GitHub and, when `WATCHDOG_WEBHOOK_URL` is configured, an operator webhook.
+- `.github/workflows/watchdog.yml` probes `/api/live` every five minutes and `/api/health` and `/` hourly. Failure notifies GitHub and, when `WATCHDOG_WEBHOOK_URL` is configured, an operator webhook.
 - There is no bundled error-tracking service; Sentry/Better Stack remain operator choices.
 
 ### 14.9 License inventory
@@ -1775,7 +1801,7 @@ The Playwright suite checks:
 | Credential protection | AES-256-GCM envelope encryption, AAD binding, master-key rotation |
 | Persistence | PostgreSQL 18, Drizzle schema, forward-only migration ledger |
 | Local deployment | Docker Compose app + PostgreSQL, standalone image, build identity, health check, graceful shutdown |
-| Production deploy config | `fly.toml`, gated Fly deploy job, GCP service-account secret support; no live deployment yet |
+| Production deploy config | `deploy/gcp/` (setup script, Cloud Run service and migration job), gated keyless deploy job; no live deployment yet |
 | Killswitch | Database flag, chat gate, internal kill/metrics/shutdown endpoints, GitHub Actions watchdog |
 | Observability | Structured JSON logs, security audit events, versioned health endpoint, build identity in the UI, optional server-side PostHog events |
 | Analytics | Opt-in server-side PostHog events with allowlisted metadata, HMAC ids, per-account opt-out, kill switch and deletion cleanup |
@@ -1786,14 +1812,14 @@ The Playwright suite checks:
 - **Sign-in outage:** check `/status`, then the OIDC issuer and Google OAuth client. A bad callback secret or a `503`/JSON error at `/api/auth/login` redirects to `/login?error=auth_unavailable`; the underlying cause is in the request log with its `requestId`.
 - **Answer outage:** check `/api/health` (`database`, `schema`, `kms`) and the `answer_failed` rate by error code. Use the kill switch for a provider-wide failure; existing streams continue.
 - **KMS or schema down:** health returns 503 with that component `down`. Do not bypass readiness or the migration checksum; restore the key/version or apply a new migration.
-- **Database pressure:** check the active-stream count in `/api/internal/metrics`, the pool size and Fly connection limits. Keep `MAX_CONCURRENT_CHATS` below `PLATFORM_CONNECTION_LIMIT`.
+- **Database pressure:** check the active-stream count in `/api/internal/metrics`, the pool size and the Cloud Run concurrency and instance limits. Keep `MAX_CONCURRENT_CHATS` below `PLATFORM_CONNECTION_LIMIT`.
 - **PostHog erasure failures:** query `analytics_erasures` ordered by `next_attempt_at`; failures are retried with backoff and logged after five attempts with a truncated distinct-id prefix.
-- **Rollback:** list releases with `flyctl releases`, then deploy the previous image digest with `flyctl deploy --image <digest>`. Migrations are forward-only; restore from a backup if a schema change must be undone.
+- **Rollback:** list revisions with `gcloud run revisions list --service beamling --region europe-west1`, then send traffic back with `gcloud run services update-traffic beamling --region europe-west1 --to-revisions <revision>=100`. The next deploy routes traffic to its new revision again. Migrations are forward-only; restore from a backup if a schema change must be undone.
 - **Shutting the service down:**
   1. Configure mail: set `SMTP_URL` (`smtps://` or `smtp://` with STARTTLS), `MAIL_FROM` and `LEGAL_MAIL_PROVIDER` (so `/subprocessors` names the provider), and deploy. `GET /api/internal/shutdown` reports `mailConfigured`.
-  2. Schedule: `POST /api/internal/shutdown` with `Authorization: Bearer $KILL_SWITCH_SECRET` and `{ "action": "schedule", "days": 14, "reason": "..." }` (`days` at least 14). Without mail the call returns `MAIL_NOT_CONFIGURED`; `notify: false` schedules without email (banner only). Sign-ups stop and the banner appears at once; notices start immediately and the 15-minute cleanup job resumes them.
+  2. Schedule: `POST /api/internal/shutdown` with `Authorization: Bearer $KILL_SWITCH_SECRET` and `{ "action": "schedule", "days": 14, "reason": "..." }` (`days` at least 14). Without mail the call returns `MAIL_NOT_CONFIGURED`; `notify: false` schedules without email (banner only). Sign-ups stop and the banner appears at once; notices start immediately and the hourly cleanup job resumes them.
   3. Monitor `GET /api/internal/shutdown` until `notified` equals `accounts`; `Shutdown notice could not be sent` errors in the log mean SMTP failures, retried on the next tick. `{ "action": "cancel" }` stops everything before the date; rescheduling re-sends the notice to every account.
   4. After the date the cleanup job deletes every account (`shutdown_account_deleted` audit events, `Service shutdown deleted accounts` warning); wait until `accounts` is 0 and the PostHog erasure queue is empty.
   5. Destroy the KMS key (all versions). This crypto-shreds the wrapped workspace and credential keys, so content and keys in database backups become unreadable.
-  6. Remove the Fly app, the Neon project and its backups, DNS and remaining secrets.
-- **Watchdog:** `.github/workflows/watchdog.yml` runs every five minutes and can be triggered manually. Set `WATCHDOG_WEBHOOK_URL` for operator notification. Sentry/Better Stack are optional operator choices, not bundled dependencies.
+  6. Delete the GCP project `beamling-prod` (Cloud Run, secrets, logs, key ring), the Neon project and its backups, and the DNS records.
+- **Watchdog:** `.github/workflows/watchdog.yml` probes `/api/live` every five minutes and the full readiness check (`/api/health`, landing page) hourly and on manual dispatch, so Neon can scale to zero between checks. Set `WATCHDOG_WEBHOOK_URL` for operator notification. Sentry/Better Stack are optional operator choices, not bundled dependencies.

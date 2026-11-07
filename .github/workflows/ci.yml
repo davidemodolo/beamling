@@ -145,30 +145,53 @@ jobs:
 
   deploy:
     needs: release
-    if: needs.release.outputs.released == 'true' && vars.FLY_DEPLOY_ENABLED == 'true'
+    if: needs.release.outputs.released == 'true' && vars.GCP_DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: production
     permissions:
       contents: read
+      # Keyless deploy: GitHub's OIDC token is exchanged for short-lived Google credentials. The
+      # Workload Identity provider accepts only this repository's production environment on main.
+      id-token: write
     concurrency:
       group: deploy-production
       cancel-in-progress: false
+    env:
+      REGION: europe-west1
+      PROJECT_ID: beamling-prod
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      # Pinned to master as of 2026-10-30; flyctl itself is pinned to 0.5.5.
-      - uses: superfly/flyctl-actions/setup-flyctl@98172f70657cb3e15db199af139be99bd3e61200
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
-          version: 0.5.5
-      - name: Deploy the released digest
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        with:
+          version: 592.0.0
+      - name: Render manifests for the released digest
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-          IMAGE: ${{ needs.release.outputs.image }}
+          RELEASED_IMAGE: ${{ needs.release.outputs.image }}
+          OIDC_CLIENT_ID: ${{ vars.OIDC_CLIENT_ID }}
+          SIGNUP_ALLOWED_EMAILS: ${{ secrets.SIGNUP_ALLOWED_EMAILS }}
         run: |
-          test -n "$IMAGE"
-          flyctl deploy --image "$IMAGE" --ha=false
+          case "$RELEASED_IMAGE" in ghcr.io/*@sha256:*) ;; *) echo "Unexpected image: $RELEASED_IMAGE"; exit 1 ;; esac
+          test -n "$OIDC_CLIENT_ID"
+          # Cloud Run pulls the same digest through the Artifact Registry proxy of ghcr.io.
+          export IMAGE="$REGION-docker.pkg.dev/$PROJECT_ID/ghcr/${RELEASED_IMAGE#ghcr.io/}"
+          mkdir -p "$RUNNER_TEMP/deploy"
+          for file in service.yaml migrate-job.yaml; do
+            envsubst '$IMAGE $OIDC_CLIENT_ID $SIGNUP_ALLOWED_EMAILS' < "deploy/gcp/$file" > "$RUNNER_TEMP/deploy/$file"
+          done
+          if grep -n '\${' "$RUNNER_TEMP"/deploy/*.yaml; then echo "Unrendered placeholder"; exit 1; fi
+      - name: Run migrations
+        run: |
+          gcloud run jobs replace "$RUNNER_TEMP/deploy/migrate-job.yaml" --region "$REGION" --project "$PROJECT_ID" --quiet >/dev/null
+          gcloud run jobs execute beamling-migrate --region "$REGION" --project "$PROJECT_ID" --wait
+      - name: Deploy the service
+        run: gcloud run services replace "$RUNNER_TEMP/deploy/service.yaml" --region "$REGION" --project "$PROJECT_ID" --quiet >/dev/null
       - name: Post-deploy smoke test
         env:
           SMOKE_URL: ${{ vars.PUBLIC_APP_URL || 'https://beamling.app' }}
