@@ -172,7 +172,8 @@ test("production refuses unsafe configuration", async (t) => {
   assert.match(errorsWith({ LEGAL_ENTITY: undefined }), /LEGAL_ENTITY/);
   assert.match(errorsWith({ LEGAL_CONTACT_EMAIL: undefined }), /LEGAL_CONTACT_EMAIL/);
   assert.match(errorsWith({ LEGAL_CONTACT_EMAIL: "not-an-email" }), /LEGAL_CONTACT_EMAIL/);
-  assert.match(errorsWith({ LEGAL_ADDRESS: undefined }), /LEGAL_ADDRESS/);
+  assert.doesNotMatch(errorsWith({ LEGAL_ADDRESS: undefined }), /LEGAL_ADDRESS/);
+  assert.match(errorsWith({ LEGAL_ADDRESS: undefined, LEGAL_VAT_ID: "IT00000000000" }), /LEGAL_ADDRESS/);
   assert.match(errorsWith({ SMTP_URL: "https://mail.example" }), /SMTP_URL/);
   assert.match(errorsWith({ MAIL_FROM: undefined }), /MAIL_FROM/);
   assert.match(errorsWith({ LEGAL_MAIL_PROVIDER: undefined }), /LEGAL_MAIL_PROVIDER/);

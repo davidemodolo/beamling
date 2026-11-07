@@ -152,7 +152,7 @@ Configuration is read from environment variables at request/startup time. There 
 | `KMS_KEY_ID` | AWS KMS key id or alias when `KMS_PROVIDER=aws`. |
 | `LEGAL_ENTITY` | Controller/operator name shown in the privacy policy, terms and contact page. Required outside localhost. |
 | `LEGAL_CONTACT_EMAIL` | Monitored privacy/security/abuse address, also published in `/.well-known/security.txt`. Required outside localhost and must look like an email address. |
-| `LEGAL_ADDRESS` | Postal address of the operator shown on the privacy notice, terms and contact page. Required outside localhost. |
+| `LEGAL_ADDRESS` | Postal address of the operator shown on the privacy notice, terms and contact page when set. Optional for a private, non-commercial operator; required outside localhost when `LEGAL_VAT_ID` is set. |
 
 Production startup refuses to boot when any of these checks fails:
 
@@ -164,7 +164,7 @@ Production startup refuses to boot when any of these checks fails:
 - `AUTH_SECRET` is not a valid 32-byte base64 value.
 - `OIDC_CLIENT_ID` or `OIDC_CLIENT_SECRET` is missing.
 - `OIDC_ISSUER` is not HTTPS outside localhost, or is not `https://accounts.google.com` outside localhost (Google-only alpha).
-- `LEGAL_ENTITY`, `LEGAL_ADDRESS` or a valid `LEGAL_CONTACT_EMAIL` is missing outside localhost.
+- `LEGAL_ENTITY` or a valid `LEGAL_CONTACT_EMAIL` is missing outside localhost, or `LEGAL_VAT_ID` is set without `LEGAL_ADDRESS`.
 - `LEGAL_LOG_RETENTION_DAYS` or `LEGAL_BACKUP_RETENTION_DAYS` is set outside localhost but is not a positive whole number.
 - `SMTP_URL` is set outside localhost but is not a valid `smtp://` or `smtps://` URL, or `MAIL_FROM` or `LEGAL_MAIL_PROVIDER` is missing.
 - `SIGNUP_MODE` is set to anything other than `open`, `allowlist` or `paused`.
@@ -1632,7 +1632,7 @@ Migrations are a release step, not an app-start side effect. The local compose `
 `fly.toml` describes the production topology: one shared-CPU 1 GB machine in `fra`, scale-to-zero, a 20-second shutdown window, HTTP health checks on `/api/health`, and the migration release command.
 
 - Production deploys are gated by the repository variable `FLY_DEPLOY_ENABLED=true`. When a new version tag is created, the `deploy` job in `ci.yml` installs pinned flyctl `0.5.5` and deploys the GHCR digest produced by the release job.
-- Required Fly secrets: `DATABASE_URL`, `DATABASE_URL_DIRECT`, `AUTH_SECRET`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `KMS_KEY_NAME`, `GCP_KMS_CREDENTIALS`, `KILL_SWITCH_SECRET`, `METRICS_SECRET`, `LEGAL_ENTITY`, `LEGAL_ADDRESS`, `LEGAL_CONTACT_EMAIL` and, when analytics is enabled, the PostHog values. Optional: `LEGAL_VAT_ID`, and `LEGAL_LOG_RETENTION_DAYS`/`LEGAL_BACKUP_RETENTION_DAYS` when the Fly log or Neon backup retention differs from the 30/7-day defaults; `SMTP_URL`, `MAIL_FROM` and `LEGAL_MAIL_PROVIDER` to email a shutdown notice.
+- Required Fly secrets: `DATABASE_URL`, `DATABASE_URL_DIRECT`, `AUTH_SECRET`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `KMS_KEY_NAME`, `GCP_KMS_CREDENTIALS`, `KILL_SWITCH_SECRET`, `METRICS_SECRET`, `LEGAL_ENTITY`, `LEGAL_CONTACT_EMAIL` and, when analytics is enabled, the PostHog values. Optional: `LEGAL_ADDRESS` and `LEGAL_VAT_ID` (a VAT ID requires the address), and `LEGAL_LOG_RETENTION_DAYS`/`LEGAL_BACKUP_RETENTION_DAYS` when the Fly log or Neon backup retention differs from the 30/7-day defaults; `SMTP_URL`, `MAIL_FROM` and `LEGAL_MAIL_PROVIDER` to email a shutdown notice.
 - `SIGNUP_MODE=allowlist` is the Fly default. Set `SIGNUP_MODE=open` explicitly to open public registration, or add `SIGNUP_ALLOWED_EMAILS`/`SIGNUP_ALLOWED_EMAIL_DOMAINS`.
 - The public smoke URL comes from the repository variable `PUBLIC_APP_URL` (falling back to `https://beamling.app`).
 - `GCP_KMS_CREDENTIALS` is the service-account JSON. It lets the GCP client run on a host with no credentials file; Application Default Credentials remain the fallback.

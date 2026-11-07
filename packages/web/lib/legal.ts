@@ -18,7 +18,7 @@ function days(name: string, fallback: number): number {
   return Number.isInteger(value) && value > 0 ? value : fallback;
 }
 
-/** Public operator details. Production requires entity, address and contact email at boot. */
+/** Public operator details. Production requires entity and contact email at boot; address only with a VAT ID. */
 export function legalDetails(): LegalDetails {
   return {
     entity: process.env.LEGAL_ENTITY?.trim() || "the Beamling operator",
