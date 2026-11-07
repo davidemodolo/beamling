@@ -1479,13 +1479,14 @@ frame-ancestors 'none'
 
 ### 13.6 Supply chain and release checks
 
-- CI runs `pnpm audit --prod --audit-level high` and a Gitleaks history scan on every push and pull request.
+- CI runs `pnpm audit --audit-level moderate` over production and development dependencies, and a Gitleaks history scan, on every push and pull request.
 - GitHub Actions are pinned to full commit SHAs, the CI PostgreSQL service image is pinned to a digest, and the runtime base image is pinned to a multi-arch digest. `actions/checkout` runs with `persist-credentials: false` in the test and deploy jobs, so the token is not left in `.git/config` while tests, the build and Playwright run third-party code. Dependency install uses `--ignore-scripts`; the mascot package build is explicit.
 - The release job records the pushed GHCR digest; deploy uses that digest and verifies `/api/health` afterward.
 - CI fails on unused files, exports or dependencies (`pnpm check:unused`, knip) and on any duplicated block of 8+ lines (`pnpm check:dupes`, jscpd with a 0% threshold).
 - Dependabot checks npm, GitHub Actions and Docker weekly.
 - The built image is scanned separately; the current image has no HIGH, CRITICAL or MEDIUM findings after removing the npm tree and applying Alpine security updates.
-- `pnpm audit` still reports two development-only tooling advisories (`braces` via ESLint, `esbuild` via drizzle-kit). Neither is in the runtime image.
+- `pnpm audit` reports no known vulnerabilities. `pnpm-workspace.yaml` overrides two development-only packages to their patched versions, `minimatch` (ESLint) and the `esbuild` used by drizzle-kit's `@esbuild-kit` loader; drop each override once its parent ships the fix.
+- A Trivy scan of the production image (Node 26.13.0, Alpine 3.24.4) reports no known vulnerabilities at any severity.
 
 ### 13.7 Data deletion
 

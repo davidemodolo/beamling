@@ -7,3 +7,9 @@ ignoredOptionalDependencies:
 allowBuilds:
   esbuild: false
   protobufjs: false
+# Patched versions for two dev-only advisories, forced past their parents' ranges:
+# minimatch >=7 <11.0.1 (via eslint) and esbuild <=0.24.2 (via drizzle-kit's @esbuild-kit loader).
+# Drop each entry once the parent package ships a release that includes the fix.
+overrides:
+  "minimatch@>=7.0.0 <11.0.1": 11.0.5
+  "@esbuild-kit/core-utils>esbuild": 0.25.12
