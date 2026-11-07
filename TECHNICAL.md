@@ -1422,6 +1422,7 @@ frame-ancestors 'none'
 
 - Development adds `'unsafe-eval'` and `ws: wss:` for hot reload.
 - Pages are rendered dynamically so Next.js can attach the nonce to its scripts.
+- The proxy skips `/api`, `/_next/static`, `/_next/image` and the static icons in `public/` (`favicon.ico` with 16/32/48 px, `icon.svg`, `apple-touch-icon.png`; light eyes with their beams).
 - API responses carry `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`.
 - Global headers: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Resource-Policy: same-origin`, `Origin-Agent-Cluster: ?1`, `X-Permitted-Cross-Domain-Policies: none`, `Referrer-Policy: strict-origin-when-cross-origin`, restrictive `Permissions-Policy`, and HSTS. Production CSP adds `upgrade-insecure-requests`.
 - `poweredByHeader` is disabled.

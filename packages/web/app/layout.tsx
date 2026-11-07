@@ -48,7 +48,11 @@ export async function generateMetadata(): Promise<Metadata> {
       url: "/",
     },
     icons: {
-      icon: "/mark.svg",
+      icon: [
+        { url: "/favicon.ico", sizes: "48x48" },
+        { url: "/icon.svg", type: "image/svg+xml" },
+      ],
+      apple: "/apple-touch-icon.png",
     },
   };
 }
