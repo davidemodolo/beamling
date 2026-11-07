@@ -12,7 +12,8 @@
 #   - beamling-deploy   (GitHub Actions):    deploy Cloud Run + act as the two runtime accounts,
 #                                            reachable only from the production environment of
 #                                            this repository on main, via keyless OIDC.
-# No service-account keys are created.
+# No service-account keys are created. The account-wide budget and billing kill switch are set up
+# separately by billing-guard.sh.
 set -euo pipefail
 
 PROJECT_ID="${PROJECT_ID:-beamling-prod}"
@@ -21,8 +22,7 @@ KMS_LOCATION="${KMS_LOCATION:-europe-west3}"
 GITHUB_REPO="${GITHUB_REPO:-davidemodolo/beamling}"
 GITHUB_REPO_ID="${GITHUB_REPO_ID:-1427513799}"       # immutable; survives a rename
 GITHUB_OWNER_ID="${GITHUB_OWNER_ID:-36373601}"
-BILLING_ACCOUNT="${BILLING_ACCOUNT:-}"                # optional: links billing + a budget alert
-BUDGET="${BUDGET:-5EUR}"
+BILLING_ACCOUNT="${BILLING_ACCOUNT:-}"                # optional: links billing (budget: billing-guard.sh)
 
 SECRETS=(DATABASE_URL DATABASE_URL_DIRECT AUTH_SECRET OIDC_CLIENT_SECRET KILL_SWITCH_SECRET METRICS_SECRET)
 
@@ -44,17 +44,7 @@ fi
 step "APIs (only what production uses)"
 g services enable cloudkms.googleapis.com iam.googleapis.com iamcredentials.googleapis.com \
   sts.googleapis.com run.googleapis.com artifactregistry.googleapis.com \
-  secretmanager.googleapis.com billingbudgets.googleapis.com
-
-if [[ -n "$BILLING_ACCOUNT" ]] && ! g billing budgets list --billing-account "$BILLING_ACCOUNT" \
-  --billing-project "$PROJECT_ID" --format='value(displayName)' | grep -qx "Beamling monthly"; then
-  step "Budget alert"
-  g billing budgets create --billing-account "$BILLING_ACCOUNT" --billing-project "$PROJECT_ID" \
-    --display-name "Beamling monthly" --budget-amount "$BUDGET" \
-    --filter-projects "projects/$PROJECT_ID" \
-    --threshold-rule percent=0.5 --threshold-rule percent=1.0 \
-    --threshold-rule percent=1.0,basis=forecasted-spend >/dev/null
-fi
+  secretmanager.googleapis.com
 
 step "KMS key ring and key"
 exists g kms keyrings describe beamling --location "$KMS_LOCATION" ||
@@ -163,4 +153,5 @@ Done. GitHub environment "production" variables:
   GCP_DEPLOY_SERVICE_ACCOUNT=$DEPLOY_SA
   KMS_KEY_NAME=$KEY
 Add secret values with: gcloud secrets versions add NAME --data-file=- --project $PROJECT_ID
+Then run: BILLING_ACCOUNT=<id> deploy/gcp/billing-guard.sh
 EOF

@@ -91,7 +91,7 @@ The server does not fetch result pages, crawl the web or load remote media in an
 │  └─ e2e/                        Playwright suites
 ├─ packages/mascot/               Framework-agnostic mascot engine + React wrapper
 ├─ local/                         Caddy, Dex and LocalStack parity configuration
-├─ deploy/gcp/                    Google Cloud setup script, Cloud Run service and migration job
+├─ deploy/gcp/                    Google Cloud setup, Cloud Run service and migration job, billing kill switch
 ├─ Dockerfile                     Multi-stage standalone image
 ├─ docker-compose.yml             Production-parity local stack
 └─ pnpm-workspace.yaml
@@ -1661,7 +1661,12 @@ Production runs on Cloud Run in `europe-west1` (Belgium), with Neon Postgres in 
 - **Shutdown:** Cloud Run sends `SIGTERM` and allows 10 seconds; the server gives running answers 8 seconds to store their outcome (§14.4).
 - **Background work:** with request-based billing, an idle instance has no CPU, so the hourly cleanup (§6.6) runs only while the instance is serving.
 - **Logs:** structured JSON on stdout carries `severity` for Cloud Logging. The `_Default` sink writes to the EU bucket `beamling-eu` (`europe-west1`, 30-day retention), matching the privacy notice's `LEGAL_LOG_RETENTION_DAYS=30`.
-- **Spend:** a €5 monthly budget alert on the billing account (50%, 100% and forecast) and the two-instance maximum. Neon Free has its own compute allowance; the watchdog's readiness probe runs hourly so the database can scale to zero.
+- **Spend:** the two-instance maximum, plus a hard stop for the whole billing account, set up by `deploy/gcp/billing-guard.sh`:
+  - The budget "Account hard limit" (€5 a month, all projects on the account) emails the billing admins at 50%, 90%, 100% and when the forecast passes 100%, and publishes every notification to the Pub/Sub topic `billing-guard`.
+  - An Eventarc trigger runs the workflow `billing-guard` (`deploy/gcp/billing-guard.workflow.yaml`, `europe-west1`) for each message. When `costAmount` reaches `budgetAmount`, it detaches billing from every project on the account, `beamling-prod` last, which stops all paid services. Under budget it returns without action; a message with `"dryRun": true` only returns the projects it would stop.
+  - Its identity `billing-guard` holds `billing.viewer` on the billing account and `billing.projectManager` on each linked project (re-run the script after linking a new project), plus `workflows.invoker` and `logging.logWriter`.
+  - Budget data lags by hours, so spend can pass €5 slightly before the stop. Recovery is manual: link billing to each project again. Disabled billing that is left unresolved can lead Google to delete resources, including the KMS key that protects every workspace, so re-enable it promptly.
+- Neon Free has its own compute allowance; the watchdog's readiness probe runs hourly so the database can scale to zero.
 - **Domain:** `beamling.app` is attached with Cloud Run domain mapping (Preview) to the `beamling` service, with Google-managed TLS. The domain must be verified in Search Console for the account that creates the mapping.
 - Optional operator details: `LEGAL_ADDRESS` and `LEGAL_VAT_ID` (a VAT ID requires the address), and `SMTP_URL`, `MAIL_FROM` and `LEGAL_MAIL_PROVIDER` to email a shutdown notice, are added to `service.yaml` when needed.
 - `APP_URL` is `https://beamling.app`; change it in `service.yaml` for another domain and register the matching Google OAuth callback.
