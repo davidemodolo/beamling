@@ -384,7 +384,7 @@ Target: under three minutes from first visit to first cited answer.
 2. The client creates a user message optimistically and calls `POST /api/chat`.
 3. The server resolves the credentials, decrypts them in memory, and starts the pipeline.
 4. The server emits `meta` (conversation, message and user-message ids, plus conversations removed by the per-account cap) and `stage: queued`. The selected model and search provider are shown from the request, stored settings and answer metadata.
-5. Query understanding runs: normalization, language detection and, for Deep, a planner call. Deeper starts an agent loop instead. Quick does not use an LLM rewrite in Alpha 1.
+5. Query understanding runs: normalization, language detection and, for Deep, a planner call. Deeper starts an agent loop instead. Quick runs the research loop with a one-search budget: one model step writes a single self-contained query from the question and recent conversation.
 6. The server emits `stage: searching` with a real detail such as "Planning 4 searches" or "Searching 2 of 4".
 7. For Quick, one search runs on the selected provider. For Deep, 3–5 sub-queries run with bounded concurrency. For Deeper, the model calls a search tool with 1–4 queries per step; each query emits `search` with `searching`, then `done`/`failed` and its result count. Each completion emits `progress`. The loop stops when the model says the evidence is sufficient, when it reaches 60 searches, or when the time limit stops the run.
 8. The server ranks and deduplicates the returned results, emits `stage: reading`, then `sources` with the final, stable numbering.
@@ -561,7 +561,7 @@ The implemented pipeline is OpenRouter plus one selected search provider. It has
 ### 11.1 Stages
 
 1. **Normalize.** Trim, collapse whitespace, detect language, reject empty or oversized input. Keep the user question intact for the answer; cap the search query to the selected provider's documented limit.
-2. **Plan.** Quick uses the normalized question as the search query; no LLM rewrite in Alpha 1. Deep calls the planner to produce 3–5 independent sub-queries. If planner JSON is still invalid after one repair attempt, fall back to the normalized question and mark the run as degraded Deep rather than failing the whole answer.
+2. **Plan.** Quick lets the model write one search query (the research loop with a one-search budget, so follow-ups are searched in context); there is no fallback to the raw question. Deep calls the planner to produce 3–5 independent sub-queries. If planner JSON is still invalid after one repair attempt, fall back to the normalized question and mark the run as degraded Deep rather than failing the whole answer.
 3. **Retrieve.** Call the selected search provider. Capture URL, title, hostname, date, rank and the provider snippet. Do not fetch pages in Alpha 1.
 4. **Normalize and rank.** Canonicalize URLs, deduplicate exact URLs and cap results per site. Current code takes results round-robin by provider rank and fills remaining slots with capped results; recency and query-coverage scoring are target behavior. Brave results with no snippet are discarded; if no usable source remains, emit `stage: no-sources`, skip generation and return the canned insufficient-sources answer.
 5. **Select and assemble.** Trim to the context budget, assign stable source numbers from 1, and wrap each source in a numbered `<source>` block with metadata.

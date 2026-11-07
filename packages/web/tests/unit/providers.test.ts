@@ -4,16 +4,29 @@ import { ApiError } from "../../lib/server/http";
 import { searchBrave, validateBraveKey } from "../../lib/server/providers/brave";
 import { exaError, searchExa, validateExaKey } from "../../lib/server/providers/exa";
 import { searchTavily, tavilyError, validateTavilyKey } from "../../lib/server/providers/tavily";
-import { DEFAULT_LLM_MODEL, OPENROUTER_MODEL_IDS, isAllowedModel } from "../../lib/provider-catalog";
+import { DEFAULT_LLM_MODEL, MODELS, isAllowedModel } from "../../lib/provider-catalog";
+import { modelHttpError, streamChat } from "../../lib/server/providers/llm";
+import { openRouterModels } from "../../lib/server/providers/openrouter";
 import { configureUnitEnv, mockFetch, jsonResponse, isApiError } from "./helpers";
 
 configureUnitEnv();
+
+const openRouterChat = (options: { model?: string; maxTokens?: number; signal?: AbortSignal } = {}) =>
+  streamChat({
+    provider: "openrouter",
+    adapter: openRouterModels,
+    key: "sk",
+    apiModel: options.model ?? "m",
+    messages: [{ role: "user", content: "hi" }],
+    maxTokens: options.maxTokens ?? 1,
+    signal: options.signal,
+  });
 
 test("DeepSeek V4.1 Flash is the default and is allowlisted", () => {
   assert.equal(DEFAULT_LLM_MODEL, "deepseek/deepseek-v4.1-flash");
   assert.equal(isAllowedModel(DEFAULT_LLM_MODEL), true);
   assert.equal(isAllowedModel("openrouter/auto"), false);
-  assert.equal(OPENROUTER_MODEL_IDS.length, 5);
+  assert.equal(MODELS.filter((model) => model.provider === "openrouter").length, 5);
 });
 
 test("Brave validates and searches only the base Web Search endpoint", async (t) => {
@@ -207,17 +220,16 @@ test("a network failure is an outage, never a rejected key", async (t) => {
   mockFetch(t, () => {
     throw new TypeError("fetch failed");
   });
-  const { validateOpenRouterKey, openRouterChat } = await import("../../lib/server/providers/openrouter");
+  const { validateOpenRouterKey } = await import("../../lib/server/providers/openrouter");
   await assert.rejects(() => validateBraveKey("BSA-offline-unique"), isApiError("PROVIDER_UNAVAILABLE", "brave"));
   await assert.rejects(() => validateOpenRouterKey("sk-or-offline"), isApiError("PROVIDER_UNAVAILABLE", "openrouter"));
   await assert.rejects(
-    () => openRouterChat({ key: "sk", model: "m", messages: [], maxTokens: 1 }),
+    () => openRouterChat(),
     isApiError("PROVIDER_UNAVAILABLE", "openrouter"),
   );
 });
 
 test("a stop from the caller stays an abort", async (t) => {
-  const { openRouterChat } = await import("../../lib/server/providers/openrouter");
   mockFetch(t, (_url, init) => {
     if (init?.signal?.aborted) throw new DOMException("Aborted", "AbortError");
     throw new TypeError("fetch failed");
@@ -225,13 +237,13 @@ test("a stop from the caller stays an abort", async (t) => {
   const controller = new AbortController();
   controller.abort();
   await assert.rejects(
-    () => openRouterChat({ key: "sk", model: "m", messages: [], maxTokens: 1, signal: controller.signal }),
+    () => openRouterChat({ signal: controller.signal }),
     (error: unknown) => error instanceof DOMException && error.name === "AbortError",
   );
 });
 
-test("OpenRouter maps statuses and mid-stream errors to stable codes", async (t) => {
-  const { openRouterChat, openRouterError } = await import("../../lib/server/providers/openrouter");
+test("model providers map statuses and mid-stream errors to stable codes", async (t) => {
+  const openRouterError = (status: number, message?: string) => modelHttpError("openrouter", status, message);
   assert.equal(openRouterError(401).code, "CREDENTIAL_INVALID");
   assert.equal(openRouterError(402).code, "INSUFFICIENT_CREDITS");
   assert.equal(openRouterError(404).code, "MODEL_NOT_FOUND");
@@ -250,21 +262,20 @@ test("OpenRouter maps statuses and mid-stream errors to stable codes", async (t)
   ].join("\n\n");
   mockFetch(t, () => new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } }));
   await assert.rejects(
-    () => openRouterChat({ key: "sk", model: "m", messages: [], maxTokens: 1 }),
+    () => openRouterChat(),
     isApiError("PROVIDER_UNAVAILABLE", "openrouter"),
   );
 });
 
-test("OpenRouter reports the resolved model and upstream provider", async (t) => {
-  const { openRouterChat } = await import("../../lib/server/providers/openrouter");
+test("OpenRouter reports the resolved model, upstream provider and cost", async (t) => {
   const body = [
     'data: {"model":"deepseek/deepseek-v4.1-flash-0901","provider":"DeepInfra","choices":[{"delta":{"content":"Hello"}}]}',
-    'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":2,"cost":0.0001}}',
+    'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":2,"total_tokens":12,"cost":0.0001}}',
     "data: [DONE]",
     "",
   ].join("\n\n");
   mockFetch(t, () => new Response(body, { status: 200 }));
-  const result = await openRouterChat({ key: "sk", model: "deepseek/deepseek-v4.1-flash", messages: [], maxTokens: 5 });
+  const result = await openRouterChat({ model: "deepseek/deepseek-v4.1-flash", maxTokens: 5 });
   assert.equal(result.content, "Hello");
   assert.equal(result.model, "deepseek/deepseek-v4.1-flash-0901");
   assert.equal(result.provider, "DeepInfra");
@@ -307,11 +318,10 @@ test("malformed provider success bodies map to an outage, not a TypeError", asyn
 });
 
 test("OpenRouter rejects a stream that ends without a completion marker", async (t) => {
-  const { openRouterChat } = await import("../../lib/server/providers/openrouter");
   const body = 'data: {"choices":[{"delta":{"content":"partial"}}]}\n\n';
   mockFetch(t, () => new Response(body, { status: 200 }));
   await assert.rejects(
-    () => openRouterChat({ key: "sk", model: "m", messages: [], maxTokens: 1 }),
+    () => openRouterChat(),
     isApiError("PROVIDER_UNAVAILABLE", "openrouter"),
   );
 });

@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { BUDGET_PERIODS, BRAVE_PLANS } from "@/lib/contracts";
+import { BUDGET_PERIODS, BRAVE_PLANS, isCredentialProvider } from "@/lib/contracts";
+import { PROVIDERS } from "@/lib/provider-catalog";
 import { ApiError, idParam, json, notFound, parseBody } from "@/lib/server/http";
 import { deleteCredential, getCredentialById, updateCredentialLimits } from "@/lib/server/repo";
 import { apiRoute } from "@/lib/server/route";
@@ -21,13 +22,13 @@ export const PATCH = apiRoute<{ params: Promise<{ id: string }> }>(async ({ requ
   if (!existing) throw notFound("Credential not found.");
   const input = await parseBody(request, schema);
   if (
-    existing.provider !== "brave" &&
+    !(isCredentialProvider(existing.provider) && PROVIDERS[existing.provider].keyLimits) &&
     (input.plan !== undefined ||
       input.expiresOn !== undefined ||
       input.budgetUsd !== undefined ||
       input.budgetPeriod !== undefined)
   ) {
-    throw new ApiError("INVALID_PROVIDER", "Plan and limits apply only to Brave Search keys.", 400);
+    throw new ApiError("INVALID_PROVIDER", "Plan and limits do not apply to this key.", 400);
   }
   if (input.expiresOn) {
     const expiry = new Date(`${input.expiresOn}T23:59:59Z`);

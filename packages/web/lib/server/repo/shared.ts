@@ -196,7 +196,8 @@ export function mapCredential(row: CredentialRow, usage?: CredentialUsageSummary
     status: CREDENTIAL_STATUSES.includes(row.status as CredentialStatus)
       ? (row.status as CredentialStatus)
       : "unverified",
-    plan: row.provider === "brave" ? (row.plan === "paid" ? "paid" : "free") : undefined,
+    // Only providers with key limits store a plan.
+    plan: row.plan == null ? undefined : row.plan === "paid" ? "paid" : "free",
     expiresOn: row.expiresOn ?? undefined,
     budgetUsd: row.budgetUsd == null ? undefined : Number(row.budgetUsd),
     budgetPeriod: row.budgetPeriod === "total" ? "total" : row.budgetPeriod === "month" ? "month" : undefined,

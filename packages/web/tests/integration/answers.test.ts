@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test, type TestContext } from "node:test";
 import { closePoolAfterTests, configureIntegrationEnv, skip, withEnv, createAccount, ask, eventData, storedAnswer } from "./helpers";
 
 configureIntegrationEnv();
@@ -92,11 +92,11 @@ test("Deeper mode runs the research loop and keeps every search trace", { skip }
   assert.equal(answer?.status, "complete");
 });
 
-test("Deeper's agent loop calls the search tool and sums step cost", { skip }, async (t) => {
-  const userId = await createAccount(t);
-  withEnv(t, { BEAMLING_FAKE_PROVIDERS: "0", BRAVE_MIN_INTERVAL_MS: "0" });
+/** Real-provider path with mocked HTTP: Brave returns one source; OpenRouter plays the agent and the writer. */
+function mockProviders(t: TestContext) {
   const originalFetch = globalThis.fetch;
   const calls: string[] = [];
+  const toolRequests: { messages?: { role: string; content?: unknown }[]; tools?: unknown[] }[] = [];
   const sse = (lines: unknown[]) =>
     new Response(lines.map((line) => `data: ${JSON.stringify(line)}\n\n`).join("") + "data: [DONE]\n\n", {
       headers: { "Content-Type": "text/event-stream" },
@@ -115,7 +115,7 @@ test("Deeper's agent loop calls the search tool and sums step cost", { skip }, a
     const body = JSON.parse(String(init?.body ?? "{}")) as {
       stream?: boolean;
       tools?: unknown[];
-      messages?: { role: string }[];
+      messages?: { role: string; content?: unknown }[];
     };
     const base = { id: "gen-test", object: "chat.completion.chunk", created: 1, model: "deepseek/deepseek-v4.1-flash" };
     const json = (message: unknown, finishReason: string, cost: number, prompt: number, completion: number) =>
@@ -131,6 +131,7 @@ test("Deeper's agent loop calls the search tool and sums step cost", { skip }, a
         }),
         { headers: { "Content-Type": "application/json" } },
       );
+    if (body.tools?.length) toolRequests.push(body);
     if (body.tools?.length && !body.messages?.some((message) => message.role === "tool")) {
       return json(
         {
@@ -156,6 +157,13 @@ test("Deeper's agent loop calls the search tool and sums step cost", { skip }, a
     globalThis.fetch = originalFetch;
   });
 
+  return { calls, toolRequests };
+}
+
+test("Deeper's agent loop calls the search tool and sums step cost", { skip }, async (t) => {
+  const userId = await createAccount(t);
+  withEnv(t, { BEAMLING_FAKE_PROVIDERS: "0", BRAVE_MIN_INTERVAL_MS: "0" });
+  const { calls } = mockProviders(t);
   const { events, prepared } = await ask(userId, { question: "Prove the agent loop", mode: "deeper" });
   assert.equal(calls.filter((url) => url.startsWith("https://api.search.brave.com")).length, 1);
   const search = eventData<{ query: string; status: string }>(events, "search");
@@ -166,6 +174,26 @@ test("Deeper's agent loop calls the search tool and sums step cost", { skip }, a
   assert.match(answer?.content ?? "", /Mock deeper answer/);
   assert.equal(answer?.sources?.length, 1);
   assert.ok((answer?.usage?.costUsd ?? 0) >= 0.0004, "agent steps and synthesis are summed");
+});
+
+test("Quick runs the agent for exactly one search, written with the conversation in view", { skip }, async (t) => {
+  const userId = await createAccount(t);
+  withEnv(t, { BEAMLING_FAKE_PROVIDERS: "0", BRAVE_MIN_INTERVAL_MS: "0" });
+  const { calls, toolRequests } = mockProviders(t);
+
+  const first = await ask(userId, { question: "What is alpha?", mode: "quick" });
+  assert.equal(toolRequests.length, 1, "Quick stops after the forced search step");
+  assert.equal(calls.filter((url) => url.startsWith("https://api.search.brave.com")).length, 1);
+  assert.equal(eventData<{ query: string }>(first.events, "search").query, "alpha evidence");
+  const { answer } = await storedAnswer(userId, first.prepared.conversationId);
+  assert.equal(answer?.status, "complete");
+  assert.equal(answer?.usage?.searchRequests, 1);
+  assert.ok((answer?.usage?.costUsd ?? 0) >= 0.0003, "the search step and the answer are both billed");
+
+  await ask(userId, { question: "And in Germany?", mode: "quick", conversationId: first.prepared.conversationId });
+  const followUp = JSON.stringify(toolRequests[1]?.messages ?? []);
+  assert.match(followUp, /CONVERSATION SO FAR/);
+  assert.match(followUp, /What is alpha\?/);
 });
 
 test("an invalid plan is repaired once, then the run degrades instead of failing", { skip }, async (t) => {

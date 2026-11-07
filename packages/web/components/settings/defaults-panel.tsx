@@ -3,12 +3,14 @@
 import { Icon } from "@/components/ui/icon";
 import { errorMessage } from "@/lib/api";
 import { useToast } from "@/lib/hooks/use-toast";
-import { OPENROUTER_MODELS, SEARCH_PROVIDERS } from "@/lib/provider-catalog";
+import { MODEL_GROUPS, SEARCH_PROVIDERS, modelProvider, providerInfo, searchProviderInfo } from "@/lib/provider-catalog";
 import { useAccount } from "@/lib/store";
 import { MODE_HINTS, MODE_ICONS, MODE_LABELS, MODES } from "@/lib/modes";
 
 export function DefaultsPanel() {
-  const { settings, updateSettings } = useAccount();
+  const { settings, updateSettings, credentials } = useAccount();
+  const keyed = new Set(credentials.map((credential) => credential.provider));
+  const notices = [...new Set([providerInfo(modelProvider(settings.llmModel)).notice, searchProviderInfo(settings.defaultSearchProvider).notice])].filter(Boolean);
   const [toast, showToast] = useToast();
 
   const save = (patch: Parameters<typeof updateSettings>[0], message: string) => {
@@ -46,17 +48,22 @@ export function DefaultsPanel() {
           </div>
 
           <div className="field">
-            <label className="label" htmlFor="llm-model">OpenRouter model</label>
+            <label className="label" htmlFor="llm-model">Model</label>
             <select
               id="llm-model"
               className="select"
               value={settings.llmModel}
               onChange={(event) => save({ llmModel: event.target.value }, "Model updated")}
             >
-              {OPENROUTER_MODELS.map((model) => (
-                <option key={model.id} value={model.id}>{model.name}</option>
+              {MODEL_GROUPS.map(({ provider, models }) => (
+                <optgroup key={provider.id} label={keyed.has(provider.id) ? provider.name : `${provider.name} · no key`}>
+                  {models.map((model) => (
+                    <option key={model.id} value={model.id}>{model.name}</option>
+                  ))}
+                </optgroup>
               ))}
             </select>
+            <p className="hint">Runs on your {providerInfo(modelProvider(settings.llmModel)).name} key.</p>
           </div>
 
           <div className="field">
@@ -68,11 +75,20 @@ export function DefaultsPanel() {
               onChange={(event) => save({ defaultSearchProvider: event.target.value as typeof settings.defaultSearchProvider }, "Search provider updated")}
             >
               {SEARCH_PROVIDERS.map((provider) => (
-                <option key={provider.id} value={provider.id}>{provider.name}</option>
+                <option key={provider.id} value={provider.id}>
+                  {keyed.has(provider.id) ? provider.name : `${provider.name} · no key`}
+                </option>
               ))}
             </select>
             <p className="hint">You can change it for an individual answer from the composer.</p>
           </div>
+
+          {notices.map((notice) => (
+            <div className="notice" key={notice}>
+              <Icon name="alert" size={16} />
+              <div>{notice}</div>
+            </div>
+          ))}
         </div>
       </section>
 

@@ -1,15 +1,16 @@
 import { randomUUID } from "node:crypto";
-import { searchProviderName } from "../../provider-catalog";
+import type { CredentialProvider } from "../../contracts";
+import { providerName, PROVIDERS, type ModelInfo } from "../../provider-catalog";
 import type { Message, Mode, SearchProvider, SearchTrace, Source, Usage } from "../../types";
 import { ApiError } from "../http";
 import type { Prompt } from "../prompts";
 import { search } from "../providers";
-import type { ChatMessage, ChatResult } from "../providers/openrouter";
+import type { ChatMessage, ChatResult } from "../providers/llm";
 import { rankSources } from "../ranking";
 import { recordCredentialUsage } from "../repo";
 
-/** List-price estimate per search request. Provider-reported costs are not returned by the adapters yet. */
-export const SEARCH_COST_PER_REQUEST: Record<SearchProvider, number> = { brave: 0.005, tavily: 0.008, exa: 0.005 };
+/** List-price estimate per search request, from the catalog. Adapters do not report search costs. */
+export const searchCostPerRequest = (provider: SearchProvider): number => PROVIDERS[provider].searchCostUsd ?? 0;
 export const QUICK_SOURCE_LIMIT = 8;
 export const DEEP_SOURCE_LIMIT = 20;
 export const DEEP_RESULTS_PER_QUERY = 6;
@@ -29,7 +30,9 @@ export interface PreparedChat {
   userMessageId: string;
   question: string;
   mode: Mode;
+  /** The model id stored with the answer. */
   model: string;
+  llm: ModelInfo;
   llmKey: string;
   searchProvider: SearchProvider;
   searchKey: string;
@@ -94,7 +97,7 @@ export function finalUsage(state: RunState, startedAt: number, searchProvider: S
     tokensIn: state.promptTokens,
     tokensOut: state.completionTokens,
     costUsd: Number(state.costUsd.toFixed(6)),
-    searchCostUsd: Number((state.searchRequests * SEARCH_COST_PER_REQUEST[searchProvider]).toFixed(6)),
+    searchCostUsd: Number((state.searchRequests * searchCostPerRequest(searchProvider)).toFixed(6)),
     latencyMs: Date.now() - startedAt,
     searchRequests: state.searchRequests,
     searchProvider,
@@ -123,9 +126,8 @@ export function everySearchFailed(provider: SearchProvider): ApiError {
   return new ApiError("SEARCH_FAILED", "Every web search failed, so no answer was written. Try again shortly.", 502, provider);
 }
 
-export function credentialMissing(provider: "openrouter" | SearchProvider): ApiError {
-  const name = provider === "openrouter" ? "an OpenRouter" : `a ${searchProviderName(provider)}`;
-  return new ApiError("CREDENTIAL_MISSING", `Add ${name} key before asking a question.`, 400, provider);
+export function credentialMissing(provider: CredentialProvider): ApiError {
+  return new ApiError("CREDENTIAL_MISSING", `Add your ${providerName(provider)} key before asking a question.`, 400, provider);
 }
 
 /** Runs `worker` over `items` with at most `limit` in flight; stops picking new items once aborted. */
@@ -152,7 +154,7 @@ async function searchSources(ctx: RunContext, query: string, count: number): Pro
     signal: ctx.signal,
     plan: ctx.prepared.searchPlan,
   });
-  await recordCredentialUsage(ctx.prepared.searchCredentialId, SEARCH_COST_PER_REQUEST[ctx.prepared.searchProvider]).catch(() => {});
+  await recordCredentialUsage(ctx.prepared.searchCredentialId, searchCostPerRequest(ctx.prepared.searchProvider)).catch(() => {});
   return results.map((result) => ({
     id: randomUUID(),
     title: result.title,
@@ -203,10 +205,10 @@ export async function runSearches(
 }
 
 /** Ranks new results after the existing sources, without renumbering them, up to `limit` in total. */
-export function appendSources(state: RunState, batches: SourceBatch[], limit: number): Source[] {
+export function appendSources(state: RunState, batches: SourceBatch[], limit: number, perSite = 3): Source[] {
   const added = rankSources(batches, {
     limit: limit - state.sources.length,
-    perSite: 3,
+    perSite,
     exclude: state.sources,
     startPosition: state.sources.length + 1,
   });

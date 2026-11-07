@@ -1,60 +1,54 @@
+/**
+ * The provider registry: one adapter per provider. A model provider supplies an AI SDK model
+ * factory; a search provider supplies a search function; both supply a key check. The mapped type
+ * makes the compiler require the right capabilities for every id in `contracts.ts`.
+ */
+import type { CredentialProvider, LlmProvider, SearchProvider } from "../../contracts";
+import type { ModelInfo } from "../../provider-catalog";
 import { isFakeProviders } from "../env";
-import type { SearchProvider } from "../../types";
 import { searchBrave, validateBraveKey } from "./brave";
 import { searchExa, validateExaKey } from "./exa";
 import { fakeChat, fakeSearch, fakeValidateKey } from "./fake";
-import { openRouterChat, validateOpenRouterKey, type ChatMessage, type ChatPurpose } from "./openrouter";
+import { streamChat, type ChatMessage, type ChatPurpose, type ChatResult, type LlmAdapter } from "./llm";
+import { openRouterModels, validateOpenRouterKey } from "./openrouter";
 import type { RetrievedSource, SearchOptions } from "./shared";
 import { searchTavily, validateTavilyKey } from "./tavily";
 
-export type ProviderKeyName = "openrouter" | SearchProvider;
+type SearchFn = (key: string, query: string, options: SearchOptions) => Promise<RetrievedSource[]>;
+type KeyCheck = (key: string, options: { plan: "free" | "paid" }) => Promise<void>;
 
-export async function validateProviderKey(
-  provider: ProviderKeyName,
-  key: string,
-  plan: "free" | "paid" = "free",
-): Promise<void> {
-  if (isFakeProviders()) {
-    await fakeValidateKey(key, provider);
-    return;
-  }
-  if (provider === "openrouter") {
-    await validateOpenRouterKey(key);
-    return;
-  }
-  if (provider === "tavily") {
-    await validateTavilyKey(key);
-    return;
-  }
-  if (provider === "exa") {
-    await validateExaKey(key);
-    return;
-  }
-  await validateBraveKey(key, plan);
+type Adapter<P extends CredentialProvider> = { validateKey: KeyCheck } & (P extends LlmProvider ? { llm: LlmAdapter } : unknown) &
+  (P extends SearchProvider ? { search: SearchFn } : unknown);
+
+const ADAPTERS: { [P in CredentialProvider]: Adapter<P> } = {
+  openrouter: { validateKey: (key) => validateOpenRouterKey(key), llm: openRouterModels },
+  brave: { validateKey: (key, { plan }) => validateBraveKey(key, plan), search: searchBrave },
+  tavily: { validateKey: (key) => validateTavilyKey(key), search: searchTavily },
+  exa: { validateKey: (key) => validateExaKey(key), search: searchExa },
+};
+
+export const llmAdapter = (provider: LlmProvider): LlmAdapter => ADAPTERS[provider].llm;
+
+export async function validateProviderKey(provider: CredentialProvider, key: string, plan: "free" | "paid" = "free"): Promise<void> {
+  if (isFakeProviders()) return fakeValidateKey(key, provider);
+  return ADAPTERS[provider].validateKey(key, { plan });
 }
 
-export async function search(
-  provider: SearchProvider,
-  key: string,
-  query: string,
-  options: SearchOptions,
-): Promise<RetrievedSource[]> {
+export async function search(provider: SearchProvider, key: string, query: string, options: SearchOptions): Promise<RetrievedSource[]> {
   if (isFakeProviders()) return fakeSearch(query, options.count, options.signal, provider);
-  if (provider === "tavily") return searchTavily(key, query, options);
-  if (provider === "exa") return searchExa(key, query, options);
-  return searchBrave(key, query, options);
+  return ADAPTERS[provider].search(key, query, options);
 }
 
 export async function chat(options: {
   purpose: ChatPurpose;
   key: string;
-  model: string;
+  model: ModelInfo;
   messages: ChatMessage[];
   maxTokens: number;
   signal?: AbortSignal;
   onDelta?: (text: string) => void;
   onReasoning?: (text: string) => void;
-}) {
+}): Promise<ChatResult> {
   if (isFakeProviders()) {
     return fakeChat({
       purpose: options.purpose,
@@ -64,5 +58,15 @@ export async function chat(options: {
       onReasoning: options.onReasoning,
     });
   }
-  return openRouterChat(options);
+  return streamChat({
+    provider: options.model.provider,
+    adapter: llmAdapter(options.model.provider),
+    key: options.key,
+    apiModel: options.model.apiModel,
+    messages: options.messages,
+    maxTokens: options.maxTokens,
+    signal: options.signal,
+    onDelta: options.onDelta,
+    onReasoning: options.onReasoning,
+  });
 }

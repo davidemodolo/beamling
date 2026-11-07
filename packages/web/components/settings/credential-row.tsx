@@ -25,7 +25,8 @@ export function CredentialRow({
   label: string;
   busy: boolean;
   deleting: boolean;
-  onValidate: () => void;
+  /** Absent for a key that can no longer be checked (retired provider). */
+  onValidate?: () => void;
   onDelete: () => void;
   onLimits?: () => void;
 }) {
@@ -44,7 +45,7 @@ export function CredentialRow({
           {STATUS_LABEL[credential.status]}
           {credential.lastValidatedAt ? ` · checked ${shortDate(credential.lastValidatedAt)}` : " · not checked yet"}
         </span>
-        {credential.provider === "brave" ? (
+        {credential.plan ? (
           <span style={{ color: "var(--muted)" }}>
             {credential.plan === "paid" ? "Paid plan" : "Free · 1 req/s"}
             {credential.expiresOn ? ` · expires ${credential.expiresOn}` : ""}
@@ -72,7 +73,7 @@ export function CredentialRow({
           </>
         ) : (
           <>
-            {credential.status === "unverified" ? (
+            {onValidate && credential.status === "unverified" ? (
               <button type="button" className="btn btn-secondary btn-sm" onClick={onValidate} disabled={busy}>
                 {busy ? <Icon name="loader" size={13} className="spin" /> : <Icon name="check" size={13} />}
                 Validate
@@ -83,16 +84,18 @@ export function CredentialRow({
                 Limits
               </button>
             ) : null}
-            <button
-              type="button"
-              className="btn btn-ghost btn-icon btn-sm"
-              onClick={onValidate}
-              disabled={busy}
-              aria-label={`Validate ${label}`}
-              title="Validate again"
-            >
-              <Icon name={busy ? "loader" : "refresh"} size={14} className={busy ? "spin" : undefined} />
-            </button>
+            {onValidate ? (
+              <button
+                type="button"
+                className="btn btn-ghost btn-icon btn-sm"
+                onClick={onValidate}
+                disabled={busy}
+                aria-label={`Validate ${label}`}
+                title="Validate again"
+              >
+                <Icon name={busy ? "loader" : "refresh"} size={14} className={busy ? "spin" : undefined} />
+              </button>
+            ) : null}
             <button
               type="button"
               className="btn btn-ghost btn-icon btn-sm"

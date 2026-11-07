@@ -3,7 +3,7 @@ import { newCitations } from "../citations";
 import { detectLanguage } from "../language";
 import { deepPrompt, deeperPrompt, quickPrompt, type Prompt } from "../prompts";
 import { chat } from "../providers";
-import type { ChatResult } from "../providers/openrouter";
+import type { ChatResult } from "../providers/llm";
 import { addUsage, promptMessages, type PreparedChat, type RunContext, type RunState } from "./context";
 
 const SYNTHESIS_MAX_TOKENS: Record<Mode, number> = { quick: 8192, deep: 16384, deeper: 24576 };
@@ -24,12 +24,12 @@ function synthesisPrompt(prepared: PreparedChat, state: RunState, queries: strin
 /** Streams the final answer and emits citations as they complete. */
 export async function streamSynthesis(ctx: RunContext, state: RunState, queries: string[]): Promise<ChatResult> {
   const { prepared, signal, emit } = ctx;
-  emit("stage", { stage: "writing", detail: `Writing with ${prepared.model}` });
+  emit("stage", { stage: "writing", detail: `Writing with ${prepared.llm.name}` });
   const seen = new Set<number>();
   const result = await chat({
     purpose: "answer",
     key: prepared.llmKey,
-    model: prepared.model,
+    model: prepared.llm,
     messages: promptMessages(synthesisPrompt(prepared, state, queries)),
     maxTokens: SYNTHESIS_MAX_TOKENS[prepared.mode],
     signal,

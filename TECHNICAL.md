@@ -62,19 +62,19 @@ The server does not fetch result pages, crawl the web or load remote media in an
 │  ├─ app/                        Pages and route handlers
 │  ├─ components/                 React UI
 │  ├─ lib/                        Client state, API client, shared types
-│  │  ├─ provider-catalog.ts       Client/server-safe provider catalog
+│  │  ├─ provider-catalog.ts       Client/server-safe provider catalog: providers, capabilities, models
 │  │  ├─ contracts.ts              Domain enums shared by routes and types
 │  │  ├─ stream-events.ts          Shared SSE event union and parser
 │  ├─ lib/server/                 Server-only code
-│  │  ├─ providers/               OpenRouter, Brave, Tavily, Exa, fixtures
+│  │  ├─ providers/               Provider registry, shared AI SDK model layer, adapters, fixtures
 │  │  ├─ repo/                    Database access
 │  │  ├─ answer-pipeline.ts       Answer pipeline entry: prepareChat, runChat, outcome handling
 │  │  ├─ answer/                  Pipeline stages
 │  │  │  ├─ context.ts            Run state, limits, shared search loop and source appending
 │  │  │  ├─ prepare.ts            Settings, keys and the stored exchange before streaming
-│  │  │  ├─ retrieval.ts          Quick/Deep retrieval and the freshness heuristic
+│  │  │  ├─ retrieval.ts          Deep retrieval (and fixture runs) and the freshness heuristic
 │  │  │  ├─ deep.ts               Deep planner (with repair) and evidence-gap pass
-│  │  │  ├─ deeper.ts             Deeper research agent and its search tool
+│  │  │  ├─ research.ts           Quick and Deeper research loop (budgets) and its search tool
 │  │  │  ├─ synthesis.ts          Streamed answer and citation events
 │  │  │  └─ outcome.ts            Stored outcome, abort classification and analytics
 │  │  ├─ auth.ts                  Google OIDC flow and account upsert
@@ -109,8 +109,8 @@ Toolchain:
 | ORM | Drizzle ORM 0.45.4, `pg` 8.23.1 |
 | Validation | Zod 4.6.7 |
 | Email | Nodemailer 10.2.0 (shutdown notice only) |
-| Agent loop | AI SDK 7.0.148 `ToolLoopAgent` with `@openrouter/ai-sdk-provider` 3.1.0 (Deeper only) |
-| SSE parsing | `eventsource-parser` 4.1.2 |
+| Model calls | AI SDK 7.0.163 (`streamText`, `ToolLoopAgent`) with `@openrouter/ai-sdk-provider` 3.1.0 |
+| SSE parsing (browser) | `eventsource-parser` 4.1.3 |
 | Test runner | Node test runner through `tsx`; Playwright 1.65.0 |
 | Runtime target | Node.js 26 LTS in Docker and CI |
 
@@ -316,6 +316,8 @@ IP handling:
 
 ### 5.1 Accepted credentials
 
+Every provider has one key, whatever it is used for. The provider catalog (`lib/provider-catalog.ts`) lists each provider's name, key format and link, whether its check is free, whether its key has limits (plan, expiry, budget), its search list price and an optional notice. The provider ids and their capabilities (models, search) are in `lib/contracts.ts`.
+
 | Kind | Provider | Validation call |
 |---|---|---|
 | `llm` | `openrouter` | `GET https://openrouter.ai/api/v1/key`, 15-second timeout |
@@ -323,9 +325,9 @@ IP handling:
 | `search` | `tavily` | `GET https://api.tavily.com/usage`; spends no credit and rejects a key whose usage has reached its limit |
 | `search` | `exa` | `POST https://api.exa.ai/search` with one highlight result |
 
-Brave and Exa have no free key check, so their validation spends one search request. `POST /api/credentials` accepts `validate: false` for Brave and Exa only (any other provider returns `INVALID_INPUT`) to skip the call: the key is encrypted and saved with `status = unverified` and no `last_validated_at`. The Keys panel and onboarding offer this as a "Validate the key now" checkbox (on by default) for Brave and Exa, and an unverified key shows a Validate button that calls the revalidation endpoint. An unverified key is used for answers like any other; a wrong one fails at the first search.
+Brave and Exa have no free key check, so their validation spends one search request. `POST /api/credentials` accepts `validate: false` only for providers without a free check (Brave and Exa; any other provider returns `INVALID_INPUT`) to skip the call: the key is encrypted and saved with `status = unverified` and no `last_validated_at`. The Keys panel and onboarding offer this as a "Validate the key now" checkbox (on by default) for Brave and Exa, and an unverified key shows a Validate button that calls the revalidation endpoint. An unverified key is used for answers like any other; a wrong one fails at the first search.
 
-The API schema accepts OpenRouter as the only LLM provider and Brave, Tavily or Exa as search providers. A credential kind must match its provider (`llm` ↔ `openrouter`, `search` ↔ one launch search provider).
+`POST /api/credentials` takes `{ provider, key, ... }`. The stored kind is derived from the provider: `llm` for a provider with models (even when its key also serves search), `search` otherwise. It is kept as a column because it is bound into the ciphertext's AAD. A `kind` sent by an older client is accepted only if it agrees. Plan, expiry and budget are accepted only for providers with key limits (Brave). A stored key whose provider is no longer in the catalog is listed in Settings as unsupported and can only be deleted; its revalidation returns `INVALID_PROVIDER`.
 
 ### 5.2 Envelope encryption
 
@@ -617,7 +619,7 @@ It then applies:
 `prepareChat()`:
 
 1. Loads settings, falling back to the default model if the stored model is no longer allowlisted.
-2. Resolves the selected search provider (`searchProvider`, else the workspace default) and loads the OpenRouter and selected search credentials in parallel.
+2. Resolves the model (the saved model, else the default) and the selected search provider (`searchProvider`, else the workspace default), then loads the key of the model's provider and of the search provider. When one provider serves both, its key is read once.
 3. Returns `CREDENTIAL_MISSING` for the missing provider; returns `CREDENTIAL_UNREADABLE` when a stored row cannot be decrypted.
 4. Reuses the requested conversation after an ownership check, or creates a new conversation.
 5. Calls `createExchange()`.
@@ -628,15 +630,16 @@ Errors before the SSE response are normal JSON responses with the stable error e
 ### 7.2 Quick mode
 
 ```text
-normalized question
+question + recent conversation
+  → research loop with the Quick budget (one step, forced search tool, exactly one query)
   → one search on the selected provider (count 8)
-  → rank/dedupe/cap by site
+  → rank/dedupe/cap by site (2 per site)
   → if zero usable sources: canned insufficient-sources answer
-  → otherwise prompt + OpenRouter stream
+  → otherwise prompt + model stream
   → sanitize citations and persist
 ```
 
-Quick does not rewrite the question with an LLM. It uses the normalized question as the single search query.
+Quick is the same loop as Deeper (§7.4) with `QUICK_BUDGET`: 1 step, 1 search, 1 query per call, 8 sources, 400 output tokens. The single step writes a self-contained search query from the question and the last six messages, so follow-ups such as "and in Germany?" are searched in context. There is no fallback to the raw question: a failed step fails the answer like any model error. The step's tokens and cost are added to the answer usage.
 
 ### 7.3 Deep mode
 
@@ -671,11 +674,11 @@ Evidence-gap behavior:
 
 ### 7.4 Deeper mode
 
-Deeper is an agentic research loop, implemented with AI SDK `ToolLoopAgent` and the official OpenRouter provider. It runs only when the user selects Deeper; Quick and Deep keep their existing pipelines.
+Deeper is an agentic research loop (`answer/research.ts`), implemented with AI SDK `ToolLoopAgent` and the selected model's provider adapter. Quick uses the same loop with a one-search budget; Deep keeps its planned pipeline.
 
 ```text
-question
-  → ToolLoopAgent (same selected OpenRouter model)
+question + recent conversation
+  → ToolLoopAgent (the selected model)
       tool: search({ queries: string[1..4] })
       → selected provider with concurrency 2, 6 results per query
       → rank/dedupe/append, stable positions, max 60 sources
@@ -694,10 +697,10 @@ Loop controls:
 - A terminal credential/plan/quota error is retained and rethrown instead of being replaced by a generic `SEARCH_FAILED`.
 - Every search emits the normal `search` and `progress` SSE events. The final writer uses the existing citation and `truncated` contract.
 - Agent output text is not shown as the answer; it only signals that research is complete. A separate synthesis call writes the cited report.
-- Research-agent tokens and OpenRouter cost are read from each AI SDK step's `providerMetadata.openrouter` and added to the answer usage.
+- Research-agent tokens are read from each AI SDK step; cost and the upstream host come from the provider adapter's `stepUsage` (OpenRouter: `providerMetadata.openrouter`). Both are added to the answer usage.
 - Timeout is 360 seconds. A stop, timeout or shutdown keeps partial synthesis text exactly like Deep.
 
-`[fixture:...]` behavior does not apply to Deeper. With `BEAMLING_FAKE_PROVIDERS=1`, Deeper uses three deterministic fixture searches and skips the AI SDK network path.
+`[fixture:...]` behavior does not apply to Deeper. With `BEAMLING_FAKE_PROVIDERS=1`, the research loop skips the AI SDK network path: Quick searches the question itself and Deeper runs three deterministic fixture searches.
 
 ### 7.5 Retrieval and ranking
 
@@ -1117,6 +1120,35 @@ The UI maps `CREDENTIAL_MISSING`, `CREDENTIAL_INVALID`, `CREDENTIAL_UNREADABLE`,
 
 ## 11. Provider behavior
 
+### 11.0 Registry and shared model layer
+
+`lib/server/providers/index.ts` maps every provider id to an adapter. A mapped type makes the compiler require a key check for every provider, a model adapter for every model provider and a search function for every search provider. Adding a provider means listing it in `contracts.ts`, describing it in `provider-catalog.ts` and registering its adapter; removing one is the reverse.
+
+A model adapter (`LlmAdapter` in `providers/llm.ts`) supplies only:
+
+- `model(key, apiModel)`: an AI SDK language model;
+- `providerOptions`: per-request options (OpenRouter: usage accounting);
+- `stepUsage(step)`: the step's cost in USD and the upstream host.
+
+Everything else is shared. `streamChat` (planner, gap review and the final answer) and the research loop call the model through the AI SDK with `maxRetries: 0`; system prompts are passed as `instructions`. Shared behavior:
+
+- Text and reasoning deltas are forwarded as they arrive; usage, cost and the resolved model are summed per step.
+- A stream that ends without a provider finish reason is `PROVIDER_UNAVAILABLE`, so a cut-off answer is never stored as complete.
+- A caller abort stays an abort; network failures are `PROVIDER_UNAVAILABLE`.
+- HTTP errors (and in-stream error codes) map to stable codes:
+
+| Status/condition | Beamling code |
+|---|---|
+| `400` with context-length wording | `CONTEXT_TOO_LARGE` |
+| `401`, `403` | `CREDENTIAL_INVALID` (HTTP 400 to the browser) |
+| `402` | `INSUFFICIENT_CREDITS` |
+| `404` | `MODEL_NOT_FOUND` |
+| `429` | `PROVIDER_RATE_LIMITED` |
+| `408`, `5xx` | `PROVIDER_UNAVAILABLE` |
+| Other `4xx` | `PROVIDER_ERROR` |
+
+Provider auth failures are deliberately returned as HTTP 400 by the Beamling API, so the browser's 401 always means “workspace session missing,” not “provider key rejected.”
+
 ### 11.1 OpenRouter
 
 Validation:
@@ -1130,49 +1162,7 @@ X-Title: Beamling
 
 Validation spends no generation tokens. It uses a 15-second timeout.
 
-Chat:
-
-```http
-POST https://openrouter.ai/api/v1/chat/completions
-Authorization: Bearer <key>
-Content-Type: application/json
-HTTP-Referer: <APP_URL>
-X-Title: Beamling
-```
-
-```json
-{
-  "model": "deepseek/deepseek-v4.1-flash",
-  "messages": [{ "role": "system", "content": "..." }],
-  "max_tokens": 8192,
-  "temperature": 0.2,
-  "stream": true
-}
-```
-
-The SSE parser:
-
-- Ignores `[DONE]` and empty data.
-- Reads `choices[0].delta.content` as text.
-- Reads `model`, `provider`, `choices[0].finish_reason` and `usage`.
-- Treats a top-level `error` object as a terminal provider error.
-- Treats a connection reset mid-stream as `PROVIDER_UNAVAILABLE`.
-- Preserves a caller abort as an abort, not a provider failure.
-- Cancels the response reader on a mid-stream error.
-
-OpenRouter errors:
-
-| Status/condition | Beamling code |
-|---|---|
-| `400` with context-length wording | `CONTEXT_TOO_LARGE` |
-| `401`, `403` | `CREDENTIAL_INVALID` (HTTP 400 to the browser) |
-| `402` | `INSUFFICIENT_CREDITS` |
-| `404` | `MODEL_NOT_FOUND` |
-| `429` | `PROVIDER_RATE_LIMITED` |
-| `408`, `5xx` | `PROVIDER_UNAVAILABLE` |
-| Other `4xx` | `PROVIDER_ERROR` |
-
-Provider auth failures are deliberately returned as HTTP 400 by the Beamling API, so the browser's 401 always means “workspace session missing,” not “provider key rejected.”
+Models run through `@openrouter/ai-sdk-provider` (`compatibility: "strict"`, app name Beamling, `HTTP-Referer: <APP_URL>`) with `usage: { include: true }`, so each step reports the billed cost and the upstream host in `providerMetadata.openrouter`. The answer stores both.
 
 ### 11.2 Brave
 
@@ -1276,7 +1266,7 @@ A `429` is retried once with the same short-wait policy as Brave.
 | `/` | Public cinematic landing page with a scripted demo, feature cards, provider list, CTA to `/onboarding` or `/chat`, and the full legal footer |
 | `/login` | Google-only sign-in page; redirects to `/onboarding` or `/chat` after the callback. Sign-in start failures redirect back with `auth_unavailable` or `login_rate_limited` instead of returning JSON. Copy says the Terms and Privacy notice are accepted after sign-in and that Beamling is for people aged 18 and over. While a shutdown is scheduled it shows the closing date and that new accounts are no longer accepted; after the date it says Beamling has shut down and hides the sign-in button. `service_closing` and `service_closed` errors have their own copy. |
 | `/welcome` | Terms acceptance step (§4.1), not indexed. Signed-out visitors go to `/login`; accounts already on the current version go to `next`. Shows "Before you start" for a new account or "Updated terms" after a version change, three short points (AI-generated answers, the user's responsibility for provider keys and costs, encryption/export/deletion), an "I am at least 18" checkbox and an "I accept the Terms and have read the Privacy notice" checkbox, Accept and Sign out buttons, and a note that accounts that never accept are deleted after seven days. |
-| `/onboarding` | Account setup form: OpenRouter key, default model, search-provider picker and provider key, plus Brave plan/expiry/budget when Brave is selected; validates and saves, then routes to `/chat` |
+| `/onboarding` | Account setup form: default model (grouped by provider) and that provider's key, search-provider picker and its key (asked once when one provider serves both), plus plan/expiry/budget for providers with key limits; validates and saves, then routes to `/chat` |
 | `/chat` | New-question view; loads workspace state, conversation list and threads. While a shutdown is scheduled, the layout shows an alert banner above the app with the closing date and a "Download my data" button that opens Settings → Account |
 | `/chat/[id]` | Conversation view; loads the newest 60 messages and supports earlier-message pagination |
 | `/privacy` | Privacy notice (Art. 13/14 GDPR): controller with address and optional VAT id, no DPO; data categories with legal basis (account, acceptance record, session, content, credentials, usage, hashed-IP security metadata, logs, optional analytics with opt-out); Google account used to email essential service notices (no newsletters or marketing); Google account required; no solely automated decisions; not for under-18s; provider traffic under the user's own accounts; essential cookies only; retention list (conversations 60 days after their last question, pinned or not, at most 100 per account with the least recently used unpinned ones deleted first; account data until deletion; inactive accounts after 24 months, unaccepted accounts after 7 days, sessions 30 days idle / 90 days max, hashed IPs and counters up to one hour, logs `LEGAL_LOG_RETENTION_DAYS`, backups `LEGAL_BACKUP_RETENTION_DAYS`, analytics until opt-out or deletion; everything on the closing date if the service closes, announced at least 14 days ahead by email and in the interface); recipients and transfers (Frankfurt hosting, EU-US Data Privacy Framework or SCCs); rights under Art. 15–21 with the self-service Settings controls, one-month answer and the Garante complaint route; re-acceptance on material changes |
@@ -1329,14 +1319,14 @@ Behaviour:
 
 ### 12.3 Onboarding
 
-- Requires an OpenRouter key if none is stored.
-- Requires a key for the selected search provider if none is stored.
-- The user can switch the selected provider before adding its key.
+- Requires a key for the selected model's provider if none is stored; changing the model to another provider switches the key field.
+- Requires a key for the selected search provider if none is stored. When the model's provider is also the search provider, the search card says it uses the same key and shows no second field.
+- The user can switch the selected provider before adding its key. A provider's notice is shown under its key field.
 - Brave requires a plan (`Free · 1 request/second` or `Paid / provider plan`) and accepts optional expiry and monthly budget. All three are user-declared.
 - “Get a key” links open the provider dashboards in a new tab.
 - Keys are masked inputs with show/hide toggles.
 - Saving validates each key through the server; a failure keeps the form open with provider copy.
-- The user can choose one of the five allowlisted models; the selection is saved only if it differs from the current default.
+- The user can choose any allowlisted model; the selection is saved only if it differs from the current default.
 - If a key is already connected, the field can replace it.
 - Once both keys exist, “Start asking” routes to `/chat`; the default model and search provider are preserved.
 
@@ -1370,8 +1360,8 @@ Settings is a modal with three keyboard-navigable tabs:
 
 | Tab | Behavior |
 |---|---|
-| Keys | Add/replace/validate/delete OpenRouter, Brave, Tavily and Exa credentials; optional save without validation for Brave and Exa; masked last four, status, Brave plan, declared expiry/budget, estimated spend and warnings; edit Brave limits |
-| Defaults | Default mode (Quick/Deep/Deeper), OpenRouter model select, default search provider (Brave/Tavily/Exa) |
+| Keys | One card per catalog provider (what the key is used for, a key link and the provider's notice): add/replace/validate/delete; optional save without validation for providers without a free check (Brave, Exa); masked last four, status, plan, declared expiry/budget, estimated spend and warnings, and limits editing for providers with key limits (Brave). Keys of providers removed from the catalog are listed as unsupported, delete only |
+| Defaults | Default mode (Quick/Deep/Deeper), model select grouped by provider (marked `· no key` when that provider has no key), default search provider (same marking), and the notices of the selected providers |
 | Account | Google name/email, conversation and credential counts, session explanation (30 days without use, 90 days after sign-in), sign out, sign out everywhere; "Your data" card with **Download my data** (`GET /api/account/export`) and an **Exclude me from product analytics** checkbox (`PATCH /api/settings { analyticsOptOut }`); delete account with typed `DELETE`; link to the accepted terms and privacy notice |
 
 Deleting the account hard-deletes server data and the wrapped workspace key, clears the client store and session cookie, and routes to `/`.
@@ -1789,7 +1779,7 @@ The Playwright suite checks:
 | Message history | 60-message pages, earlier pages, source attachment |
 | Streaming | SSE stages, progress, sources, deltas, citations, usage, done/error; heartbeat |
 | Cancellation | Local and cross-instance stop, partial text kept, timeout and shutdown handling |
-| Models | Five allowlisted OpenRouter models, default DeepSeek V4.1 Flash |
+| Models | Allowlisted models per provider in the catalog (five through OpenRouter), default DeepSeek V4.1 Flash |
 | Costs | OpenRouter actual generation cost, selected-provider list-price estimate, tokens, latency, search count |
 | Search transparency | Persisted per-answer search trace, collapsed by default |
 | Reasoning transparency | Provider-supplied reasoning, persisted encrypted and collapsed by default |
