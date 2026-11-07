@@ -1341,6 +1341,8 @@ Behaviour:
 
 ### 12.4 Chat view
 
+`components/chat-view.tsx` composes the pane from `components/chat/`: `ChatTopbar`, `useSourcesPanel` (selected source, panel or sheet, citation handlers), `useThreadScroll` (follows new text until the user scrolls up) and `useFollowStoredAnswer` (polls an answer still being written elsewhere).
+
 - Header: conversation title, mode, selected model name, selected search-provider label, source-count button, account avatar.
 - Answer cards show **Searches** (query, status, result count) and **Model reasoning** as `<details>` panels, collapsed by default. The same panels appear live while the answer streams.
 - Sidebar: title search over loaded pages, a Pinned section, Today/Yesterday/Previous groups in UTC, exact-title links, per-conversation pin/unpin and delete confirmation, “Show older conversations” pagination, a retention note ("Chats are deleted 60 days after their last message"), which from 90 conversations also shows "N of 100 chats. New chats replace the oldest unpinned ones." as a highlighted status, Settings entry, signed-in email and sign-out.
