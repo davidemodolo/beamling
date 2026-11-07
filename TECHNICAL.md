@@ -68,7 +68,15 @@ The server does not fetch result pages, crawl the web or load remote media in an
 │  ├─ lib/server/                 Server-only code
 │  │  ├─ providers/               OpenRouter, Brave, Tavily, Exa, fixtures
 │  │  ├─ repo/                    Database access
-│  │  ├─ answer-pipeline.ts       Answer pipeline
+│  │  ├─ answer-pipeline.ts       Answer pipeline entry: prepareChat, runChat, outcome handling
+│  │  ├─ answer/                  Pipeline stages
+│  │  │  ├─ context.ts            Run state, limits, shared search loop and source appending
+│  │  │  ├─ prepare.ts            Settings, keys and the stored exchange before streaming
+│  │  │  ├─ retrieval.ts          Quick/Deep retrieval and the freshness heuristic
+│  │  │  ├─ deep.ts               Deep planner (with repair) and evidence-gap pass
+│  │  │  ├─ deeper.ts             Deeper research agent and its search tool
+│  │  │  ├─ synthesis.ts          Streamed answer and citation events
+│  │  │  └─ outcome.ts            Stored outcome, abort classification and analytics
 │  │  ├─ auth.ts                  Google OIDC flow and account upsert
 │  │  ├─ kms.ts                   Env/AWS/GCP KMS adapters
 │  │  ├─ workspace-key.ts          Per-account content encryption

@@ -48,10 +48,6 @@ export function isClientDisconnect(reason: unknown): boolean {
   return reason instanceof Error && reason.name === CLIENT_DISCONNECT;
 }
 
-export function isUserStop(reason: unknown): boolean {
-  return reason instanceof Error && reason.name === USER_STOP;
-}
-
 // Fast path for stops and deletions that land on the instance running the answer. Other instances
 // reach it through the message row, which every running answer polls. Kept on globalThis because
 // Next.js bundles route handlers and instrumentation (the shutdown hook) as separate module copies.
