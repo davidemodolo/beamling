@@ -2,20 +2,20 @@
 
 ## Registry and shared model layer
 
-`lib/server/providers/index.ts` maps every provider id to an adapter. A mapped type makes the compiler require a key check for every provider, a model adapter for every model provider and a search function for every search provider. Adding a provider means listing it in `contracts.ts`, describing it in `provider-catalog.ts` and registering its adapter; removing one is the reverse.
+`lib/server/providers/index.ts` maps each provider id to an adapter. A mapped type makes the compiler require a key check for every provider, a model adapter for every model provider and a search function for every search provider. To add a provider: list it in `contracts.ts`, describe it in `provider-catalog.ts`, register its adapter. Removing is the reverse.
 
 A model adapter (`LlmAdapter` in `providers/llm.ts`) supplies only:
 
-- `model(key, apiModel)`: an AI SDK language model;
-- `providerOptions`: per-request options (OpenRouter: usage accounting);
-- `stepUsage(step)`: the step's cost in USD and the upstream host.
+- `model(key, apiModel)`: an AI SDK language model.
+- `providerOptions`: per-request options (OpenRouter: usage accounting).
+- `stepUsage(step)`: the step's USD cost and upstream host.
 
-Everything else is shared. `streamChat` (planner, gap review and the final answer) and the research loop call the model through the AI SDK with `maxRetries: 0`; system prompts are passed as `instructions`. Shared behavior:
+The rest is shared. `streamChat` (planner, gap review, final answer) and the research loop call the AI SDK with `maxRetries: 0`; system prompts go in `instructions`.
 
-- Text and reasoning deltas are forwarded as they arrive; usage, cost and the resolved model are summed per step.
-- A stream that ends without a provider finish reason is `PROVIDER_UNAVAILABLE`, so a cut-off answer is never stored as complete.
+- Text and reasoning deltas are forwarded as they arrive; usage, cost and resolved model are summed per step.
+- A stream ending without a finish reason is `PROVIDER_UNAVAILABLE`, so a cut-off answer is never stored as complete.
 - A caller abort stays an abort; network failures are `PROVIDER_UNAVAILABLE`.
-- HTTP errors (and in-stream error codes) map to stable codes:
+- HTTP errors and in-stream error codes map as follows:
 
 | Status/condition | Beamling code |
 |---|---|
@@ -27,11 +27,27 @@ Everything else is shared. `streamChat` (planner, gap review and the final answe
 | `408`, `5xx` | `PROVIDER_UNAVAILABLE` |
 | Other `4xx` | `PROVIDER_ERROR` |
 
-Provider auth failures are deliberately returned as HTTP 400 by the Beamling API, so the browser's 401 always means “workspace session missing,” not “provider key rejected.”
+Provider auth failures return HTTP 400, so a browser 401 always means the Beamling session is missing.
+
+## Search adapters
+
+Shared rules for Brave, Tavily, Exa and DeepSeek search:
+
+- Errors: `401`/`403` `CREDENTIAL_INVALID`, `402` `INSUFFICIENT_CREDITS`, `429` `PROVIDER_RATE_LIMITED`, `408`/`5xx` `PROVIDER_UNAVAILABLE`, other `4xx` `PROVIDER_ERROR`. Provider-specific codes are listed per provider.
+- A `429` is retried once if the requested wait is at most 5 seconds (1 second when no `Retry-After`); otherwise the `429` is returned.
+- Snippets are tag-stripped and capped at 1,800 characters; results without a usable snippet are dropped.
+- Each successful search records one request and a list-price estimate in `credential_usage` (`searchCostUsd` in `provider-catalog.ts`):
+
+| Provider | Estimate per search |
+|---|---|
+| Brave | `$0.005` |
+| Tavily | `$0.008` |
+| Exa | `$0.005` |
+| DeepSeek | `$0.00075` |
 
 ## OpenRouter
 
-Validation:
+Validation spends no tokens and times out after 15 seconds:
 
 ```http
 GET https://openrouter.ai/api/v1/key
@@ -40,103 +56,58 @@ HTTP-Referer: <APP_URL>
 X-Title: Beamling
 ```
 
-Validation spends no generation tokens. It uses a 15-second timeout.
-
-Models run through `@openrouter/ai-sdk-provider` (`compatibility: "strict"`, app name Beamling, `HTTP-Referer: <APP_URL>`) with `usage: { include: true }`, so each step reports the billed cost and the upstream host in `providerMetadata.openrouter`. The answer stores both.
+Models run through `@openrouter/ai-sdk-provider` (`compatibility: "strict"`, app name Beamling, `HTTP-Referer: <APP_URL>`) with `usage: { include: true }`. Each step reports billed cost and upstream host in `providerMetadata.openrouter`; the answer stores both.
 
 ## Brave
 
-Validation and retrieval use the base Web Search endpoint only. The adapter does not call Brave's LLM-context endpoint, request extra snippets, or fetch any result URL.
+Validation and retrieval use only the base Web Search endpoint. No LLM-context endpoint, extra snippets or result-URL fetches.
 
-Plan-aware spacing:
+Spacing per key, across instances:
 
-- `free` keys use `BRAVE_MIN_INTERVAL_MS` (default 1,100 ms) per key across instances.
-- `paid` keys use `BRAVE_PAID_MIN_INTERVAL_MS` (default 0).
-- The plan comes from the saved credential, not from Brave. Validation and retrieval both use it.
-- Every successful search records one request and the `$0.005` list-price estimate in `credential_usage` for that credential. Fixture searches record the same usage.
+- `free` plan: `BRAVE_MIN_INTERVAL_MS` (default 1,100 ms).
+- `paid` plan: `BRAVE_PAID_MIN_INTERVAL_MS` (default 0).
+- The plan comes from the saved credential, not from Brave.
 
-Response mapping:
+A `429` retry waits for `Retry-After`, else the first `X-RateLimit-Reset` value. Fixture searches record the same usage.
 
-```json
-{
-  "web": {
-    "results": [
-      {
-        "title": "…",
-        "url": "https://…",
-        "description": "…",
-        "age": "2026-10-01"
-      }
-    ]
-  }
-}
-```
+Response mapping (`web.results[]`: `title`, `url`, `description`, `age`):
 
 - Title and description are tag-stripped and entity-decoded.
-- A result without a description is unusable and is dropped.
-- `age` is used only when it has a `YYYY-MM-DD` prefix and is parseable.
-- Results keep the provider's order; positions are assigned later by the ranking step.
+- Results without a description are dropped.
+- `age` is used only with a parseable `YYYY-MM-DD` prefix.
+- Provider order is kept; positions are assigned by ranking.
 
-Error mapping:
-
-| Status/condition | Beamling code |
-|---|---|
-| `401`, `403`, invalid subscription token | `CREDENTIAL_INVALID` |
-| `402` | `INSUFFICIENT_CREDITS` |
-| Error detail “not included in the plan” or code `OPTION_NOT_IN_PLAN` (any status) | `BRAVE_PLAN_MISSING_SEARCH` |
-| `429` | `PROVIDER_RATE_LIMITED` |
-| `408`, `5xx` | `PROVIDER_UNAVAILABLE` |
-| Other `4xx` | `PROVIDER_ERROR` |
+Extra error: error detail "not included in the plan" or code `OPTION_NOT_IN_PLAN` (any status) → `BRAVE_PLAN_MISSING_SEARCH`. An invalid subscription token is `CREDENTIAL_INVALID`.
 
 ## Tavily
 
-Retrieval uses `POST https://api.tavily.com/search` with `Authorization: Bearer <key>`. The adapter never requests raw page content, images or a generated answer.
+Retrieval: `POST https://api.tavily.com/search`, `Authorization: Bearer <key>`. Never requests raw content, images or a generated answer.
 
-- Validation calls `GET https://api.tavily.com/usage` with the same header, which reports credits without spending one. `401` maps to `CREDENTIAL_INVALID`; a `key.usage` at or above a non-null `key.limit` maps to `QUOTA_EXCEEDED`.
-- Retrieval uses `search_depth=basic`, `max_results=1–20`, `include_published_date=true`, `safe_search=true`, and `topic=news` only for a recent-information question.
-- A freshness window maps to `time_range`: `day`, `week`, `month` or `year`.
-- Results map `title`, `url`, `content` and `published_date`; `content` is tag-stripped and capped at 1,800 characters. Results without a usable snippet are dropped.
-- Every successful request records one request and the `$0.008` list-price estimate in `credential_usage`.
-
-| Status | Beamling code |
-|---|---|
-| `401`, `403` | `CREDENTIAL_INVALID` |
-| `432` | `SEARCH_PLAN_MISSING` |
-| `433` | `QUOTA_EXCEEDED` |
-| `402` | `INSUFFICIENT_CREDITS` |
-| `429` | `PROVIDER_RATE_LIMITED` |
-| `408`, `5xx` | `PROVIDER_UNAVAILABLE` |
-| Other `4xx` | `PROVIDER_ERROR` |
-
-A `429` is retried once when `Retry-After` asks for at most 5 seconds (1 second when absent); a longer wait returns the `429`.
+- Validation: `GET https://api.tavily.com/usage` (spends nothing). `401` → `CREDENTIAL_INVALID`; `key.usage` at or above a non-null `key.limit` → `QUOTA_EXCEEDED`.
+- Parameters: `search_depth=basic`, `max_results=1–20`, `include_published_date=true`, `safe_search=true`, `topic=news` only for recent-information questions.
+- Freshness maps to `time_range`: `day`, `week`, `month` or `year`.
+- Maps `title`, `url`, `content`, `published_date`.
+- Extra errors: `432` → `SEARCH_PLAN_MISSING`, `433` → `QUOTA_EXCEEDED`.
 
 ## Exa
 
-Validation and retrieval use `POST https://api.exa.ai/search` with `x-api-key: <key>`.
+Validation and retrieval: `POST https://api.exa.ai/search`, `x-api-key: <key>`.
 
-- Validation sends a short probe with `numResults=1`, `type="auto"` and `contents={"highlights":true}`.
-- Retrieval uses `type="auto"`, `numResults=1–100`, `moderation=true` and `contents.highlights=true`.
-- A freshness window maps to `startPublishedDate`; the adapter never requests full page text or a summary.
-- Results map `title`, `url`, `publishedDate` and the joined `highlights` array. Highlights are tag-stripped and capped at 1,800 characters. Results without a usable highlight are dropped.
-- Every successful request records one request and the `$0.005` list-price estimate in `credential_usage`.
-
-| Status | Beamling code |
-|---|---|
-| `401`, `403` | `CREDENTIAL_INVALID` |
-| `402` | `INSUFFICIENT_CREDITS` |
-| `429` | `PROVIDER_RATE_LIMITED` |
-| `408`, `5xx` | `PROVIDER_UNAVAILABLE` |
-| Other `4xx` | `PROVIDER_ERROR` |
-
-A `429` is retried once under the same rule as Tavily.
+- Validation: a probe with `numResults=1`, `type="auto"`, `contents={"highlights":true}`.
+- Retrieval: `type="auto"`, `numResults=1–100`, `moderation=true`, `contents.highlights=true`.
+- Freshness maps to `startPublishedDate`. Never requests full text or a summary.
+- Maps `title`, `url`, `publishedDate` and the joined `highlights`.
 
 ## DeepSeek
 
-One key serves both capabilities; it is stored as `llm` and read once when the same answer uses DeepSeek for the model and for search.
+One key serves model and search. It is stored as `llm` and read once when an answer uses DeepSeek for both.
 
-Models run through `@ai-sdk/deepseek` 3.0.80. The catalog offers `deepseek:deepseek-flash` ("DeepSeek V4.1 Flash · direct", API model `deepseek-flash`). Every request sends `thinking: { type: "disabled" }`: the prompts expect direct replies, and DeepSeek rejects a forced tool choice (the research loop's first step) in thinking mode. DeepSeek reports tokens but no price, so the adapter estimates each step's cost from the list price (Flash: $0.30 per million cache-miss input tokens, $0.006 cache-hit, $1.20 output at peak; half off-peak). Peak is 01:00–04:00 and 06:00–10:00 UTC on weekdays; Chinese public holidays are off-peak at DeepSeek but are priced as peak, so the estimate can only be high.
+Model:
 
-Validation calls `GET https://api.deepseek.com/user/balance`, which spends nothing. A key whose balance reports `is_available: false` is rejected with `INSUFFICIENT_CREDITS`.
+- `@ai-sdk/deepseek` 3.0.80; catalog entry `deepseek:deepseek-flash` ("DeepSeek V4.1 Flash · direct", API model `deepseek-flash`).
+- Every request sends `thinking: { type: "disabled" }`: prompts expect direct replies, and thinking mode rejects the forced tool choice of the research loop's first step.
+- DeepSeek reports tokens but no price. Cost is estimated from `PEAK_PRICES` in `deepseek.ts`; off-peak is half. Peak is 01:00–04:00 and 06:00–10:00 UTC on weekdays. Chinese holidays are priced as peak, so the estimate can only be high.
+- Validation: `GET https://api.deepseek.com/user/balance` (spends nothing). `is_available: false` → `INSUFFICIENT_CREDITS`.
 
 Search:
 
@@ -144,20 +115,21 @@ Search:
 POST https://api.deepseek.com/v1/tools/search
 Authorization: Bearer <key>
 Content-Type: application/json
-```
 
-```json
 { "query": "<at most 128 characters>", "count": 8 }
 ```
 
-- `count` is the mode's results per query (8 in Quick, 6 in Deep and Deeper), clamped to 1–50.
-- The query is shortened to fit DeepSeek's 128-character limit. When the question asks for recent information, an `after:YYYY-MM-DD` operator is appended within the limit.
-- Each result's `summary` (600–800 characters, written for models) is the source snippet; the short `snippet` is the fallback. `date` is the publication date.
-- The list-price estimate is `$0.00075` per successful search, recorded in `credential_usage`.
-- Errors: `401`/`403` `CREDENTIAL_INVALID`, `402` `INSUFFICIENT_CREDITS`, `429` `PROVIDER_RATE_LIMITED` after one retry, `408`/`5xx` `PROVIDER_UNAVAILABLE`, other `4xx` `PROVIDER_ERROR`.
+- `count` is the mode's results per query (8 Quick, 6 Deep and Deeper), clamped to 1–50.
+- The query is shortened to 128 characters. Recent-information questions get an `after:YYYY-MM-DD` operator within the limit.
+- `summary` is the snippet, with `snippet` as fallback; `date` is the publication date.
 
-The catalog notice says DeepSeek is based in China, that its models and search may process questions there, and that Beamling takes no responsibility for how it handles data. It is shown on the DeepSeek key card, under its onboarding key field and in Defaults when DeepSeek is selected. OpenRouter's notice says some of its hosts, such as DeepSeek's own, are in China and can be excluded in OpenRouter's settings.
+## Provider notices
+
+Catalog notices show on the key card in Settings → Keys, under the onboarding key field, and in Defaults when the provider is selected:
+
+- DeepSeek: "DeepSeek is based in China and may process your questions there. Beamling does not control DeepSeek or how it handles your data."
+- OpenRouter: "Some OpenRouter hosts are in China; you can exclude them in OpenRouter's settings. Beamling does not control these hosts or how they handle your data."
 
 ## Fixtures
 
-`lib/server/providers/fake.ts` mirrors the `chat`, `search` and validation interfaces. It is selected by `isFakeProviders()` and is used by local tests and Playwright. Fixture content is deterministic, with marker-based failure modes for planner repair, plan failure, partial search and no-source behavior.
+`lib/server/providers/fake.ts` mirrors the chat, search and validation interfaces. Selected by `isFakeProviders()`; used by local tests and Playwright. Output is deterministic, with marker-triggered failures for planner repair, plan failure, partial search and no sources.
