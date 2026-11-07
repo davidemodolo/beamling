@@ -3,11 +3,14 @@
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSidebar } from "./sidebar-context";
+import { ChatTopbar } from "./chat/chat-topbar";
+import { useFollowStoredAnswer } from "./chat/use-follow-stored-answer";
+import { useSourcesPanel } from "./chat/use-sources-panel";
+import { useThreadScroll } from "./chat/use-thread-scroll";
 import { EmptyState, LoadErrorState, NotFoundState, Thread, ThreadSkeleton, UserBubble, WorkingAnswer } from "./chat-thread";
 import { Composer } from "./composer";
 import { SourcesPanel, SourcesSheet } from "./sources";
 import { Icon } from "./ui/icon";
-import { UserAvatar } from "./user-avatar";
 import { useAnswerStreams, type LiveAnswer } from "@/lib/answer-streams";
 import { api, errorMessage } from "@/lib/api";
 import { useIsMobile } from "@/lib/hooks/use-is-mobile";
@@ -15,15 +18,12 @@ import { useToast } from "@/lib/hooks/use-toast";
 import { isSearchProvider, llmModelName, searchProviderName } from "@/lib/provider-catalog";
 import { useAccount, useConversations, type ThreadMessage } from "@/lib/store";
 import { MODE_LABELS } from "@/lib/modes";
-import type { Mode, SearchProvider, Source } from "@/lib/types";
+import type { Mode, SearchProvider } from "@/lib/types";
 import { collapseWhitespace } from "@/lib/utils";
 
 interface ChatViewProps {
   conversationId?: string;
 }
-
-/** How often a conversation is reloaded while an answer from elsewhere is still being written. */
-const STREAMING_POLL_MS = 4000;
 
 export function ChatView({ conversationId }: ChatViewProps) {
   const pathname = usePathname();
@@ -63,6 +63,7 @@ function ChatPane({ conversationId }: ChatViewProps) {
   const { conversations, threads, loadThread, loadEarlierMessages, createConversation, setConversationMode, removeMessages } = useConversations();
   const streams = useAnswerStreams();
   const isMobile = useIsMobile();
+  const [toast, showToast] = useToast();
 
   // Set once a new chat has created its conversation (the URL is rewritten in place).
   const [localId, setLocalId] = useState<string | null>(null);
@@ -84,15 +85,22 @@ function ChatPane({ conversationId }: ChatViewProps) {
     () => new Set(credentials.filter((credential) => credential.kind === "search").map((credential) => credential.provider)),
     [credentials],
   );
-  const [activeSource, setActiveSource] = useState<number | null>(null);
-  const [sourceMessageId, setSourceMessageId] = useState<string | null>(null);
-  const [sourcesHidden, setSourcesHidden] = useState(false);
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [toast, showToast] = useToast();
+
+  const sources = useSourcesPanel({ live, messages, searchProvider, isMobile, showToast });
+  const { threadRef, onScroll: onThreadScroll, stick, release } = useThreadScroll({
+    liveText: live?.content,
+    liveStage: live?.stage,
+    messageCount: messages.length,
+  });
+  const storedStreaming = useFollowStoredAnswer({
+    conversationId: activeId,
+    messages: thread?.messages,
+    streamingHere: !!live,
+    reload: loadThread,
+  });
+  const followStored = !!storedStreaming;
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const threadRef = useRef<HTMLDivElement>(null);
-  const stickRef = useRef(true);
   const creatingRef = useRef(false);
   const mountedRef = useRef(false);
   const wasLiveRef = useRef(false);
@@ -111,31 +119,17 @@ function ChatPane({ conversationId }: ChatViewProps) {
     void loadThread(conversationId).catch(() => {});
   }, [conversationId, canLoad, loadThread]);
 
-  // An answer started in another tab (or before a reload) is still being written: follow it.
-  const storedStreaming = live
-    ? undefined
-    : thread?.messages.find(
-        (message) => message.role === "assistant" && (message.status === "streaming" || message.status === "pending"),
-      );
-  const followStored = !!storedStreaming;
-  useEffect(() => {
-    if (!followStored || !activeId) return;
-    const timer = window.setInterval(() => void loadThread(activeId).catch(() => {}), STREAMING_POLL_MS);
-    return () => window.clearInterval(timer);
-  }, [followStored, activeId, loadThread]);
-
+  // Return focus to the composer when an answer finishes.
   useEffect(() => {
     if (wasLiveRef.current && !live && !isMobile) inputRef.current?.focus();
     wasLiveRef.current = !!live;
   }, [live, isMobile]);
 
+  const { reset: resetSources } = sources;
   const beforeStart = useCallback(() => {
-    setActiveSource(null);
-    setSourceMessageId(null);
-    setSheetOpen(false);
-    setSourcesHidden(false);
-    stickRef.current = true;
-  }, []);
+    resetSources();
+    stick();
+  }, [resetSources, stick]);
 
   const submit = useCallback(async () => {
     const question = collapseWhitespace(input);
@@ -186,85 +180,23 @@ function ChatPane({ conversationId }: ChatViewProps) {
     [activeId, live, thread, streams, mode, searchProvider, removeMessages, beforeStart],
   );
 
-  useEffect(() => {
-    if (!stickRef.current) return;
-    const el = threadRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [live?.content, live?.stage, messages.length]);
-
-  const lastAssistant = useMemo(() => messages.findLast((message) => message.role === "assistant"), [messages]);
-  const contextMessage = (sourceMessageId && messages.find((message) => message.id === sourceMessageId)) || lastAssistant;
-  const sources = live ? live.sources : contextMessage?.sources ?? [];
-  const sourceProvider = live?.searchProvider ?? contextMessage?.searchProvider ?? searchProvider;
-  const providerName = searchProviderName(sourceProvider);
-  const selectedProviderName = searchProviderName(searchProvider);
-  const modelName = llmModelName(settings.llmModel);
-  const loadingSources = !!live && !live.sources.length && (live.stage === "searching" || live.stage === "reading");
-  const showSources = !sourcesHidden && (sources.length > 0 || loadingSources);
-
-  const openSource = useCallback(
-    (source: Source) => {
-      setActiveSource(source.position);
-      const scrollToSource = () => {
-        document.getElementById(`source-${source.position}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-      };
-      if (isMobile) {
-        setSheetOpen(true);
-        window.setTimeout(scrollToSource, 160);
-        return;
-      }
-      setSourcesHidden(false);
-      window.setTimeout(scrollToSource, 90);
-    },
-    [isMobile],
-  );
-
-  const onCitation = useCallback(
-    (messageId: string, source: Source) => {
-      setSourceMessageId(messageId);
-      openSource(source);
-    },
-    [openSource],
-  );
-
-  const onOpenSources = useCallback(
-    (messageId: string) => {
-      setSourceMessageId(messageId);
-      if (isMobile) setSheetOpen(true);
-      else setSourcesHidden(false);
-    },
-    [isMobile],
-  );
-
-  const onLiveCitation = (position: number) => {
-    const source = live?.sources.find((s) => s.position === position);
-    if (source) openSource(source);
-  };
-
-  const toggleSources = () => {
-    if (isMobile) {
-      setSheetOpen(true);
-      return;
+  const stop = () => {
+    if (live && activeId) streams.stop(activeId);
+    else if (storedStreaming) {
+      // The answer runs elsewhere: ask the server to stop it; the poll picks up the result.
+      void api("/api/chat/stop", { method: "POST", body: JSON.stringify({ messageId: storedStreaming.id }) }).catch(
+        (cause) => showToast(errorMessage(cause, "Could not stop the answer")),
+      );
     }
-    if (!sources.length && !loadingSources) {
-      showToast("This answer has no sources");
-      return;
-    }
-    setSourcesHidden((hidden) => !hidden);
-  };
-
-  const onThreadScroll = () => {
-    const el = threadRef.current;
-    if (!el) return;
-    stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 160;
   };
 
   const showEarlier = () => {
     if (!activeId) return;
-    stickRef.current = false;
+    release();
     loadEarlierMessages(activeId).catch((cause) => showToast(errorMessage(cause, "Could not load earlier messages")));
   };
 
+  const modelName = llmModelName(settings.llmModel);
   // A failed initial load is shown by the shell; don't claim the conversation is missing.
   const loadFailed = !!error && !user;
   const loading = !!conversationId && (!ready || !thread || thread.status === "loading");
@@ -274,40 +206,24 @@ function ChatPane({ conversationId }: ChatViewProps) {
 
   return (
     <main className="main-pane" id="main">
-      <header className="topbar">
-        <button type="button" className="btn btn-ghost btn-icon mobile-only" onClick={openSidebar} aria-label="Open conversations">
-          <Icon name="menu" size={18} />
-        </button>
-        <div className="topbar-title">
-          <strong>{summary?.title ?? (conversationId ? "Loading…" : "New question")}</strong>
-          <span>
-            {MODE_LABELS[mode]} · {modelName} · {selectedProviderName}
-          </span>
-        </div>
-        <div className="topbar-actions">
-          {sources.length || loadingSources ? (
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              onClick={toggleSources}
-              aria-label={`Sources, ${sources.length}`}
-              aria-expanded={isMobile ? sheetOpen : showSources}
-              aria-controls={isMobile ? (sheetOpen ? "sources-sheet" : undefined) : showSources ? "sources-pane" : undefined}
-              title="Sources"
-            >
-              <Icon name={sourcesHidden ? "panel-right" : "layers"} size={15} />
-              <span className="mono" style={{ fontSize: 11 }}>
-                {sources.length}
-              </span>
-            </button>
-          ) : null}
-          <button type="button" className="avatar-button" onClick={() => openSettings()} aria-label="Open settings">
-            <UserAvatar name={user?.name} email={user?.email} avatarUrl={user?.avatarUrl} />
-          </button>
-        </div>
-      </header>
+      <ChatTopbar
+        title={summary?.title ?? (conversationId ? "Loading…" : "New question")}
+        subtitle={`${MODE_LABELS[mode]} · ${modelName} · ${searchProviderName(searchProvider)}`}
+        user={user}
+        isMobile={isMobile}
+        sources={{
+          count: sources.sources.length,
+          loading: sources.loading,
+          hidden: sources.hidden,
+          panelOpen: sources.panelOpen,
+          sheetOpen: sources.sheetOpen,
+          onToggle: sources.toggle,
+        }}
+        onOpenSidebar={openSidebar}
+        onOpenSettings={() => openSettings()}
+      />
 
-      <div className={`chat-layout ${showSources ? "with-sources" : ""}`}>
+      <div className={`chat-layout ${sources.panelOpen ? "with-sources" : ""}`}>
         <div className="thread-scroll" ref={threadRef} onScroll={onThreadScroll}>
           <p className="sr-only" aria-live="polite">
             {activeId ? streams.announcements[activeId] ?? "" : ""}
@@ -337,8 +253,8 @@ function ChatPane({ conversationId }: ChatViewProps) {
                 <Thread
                   messages={messages}
                   retryId={retryId}
-                  onCitation={onCitation}
-                  onOpenSources={onOpenSources}
+                  onCitation={sources.onCitation}
+                  onOpenSources={sources.onOpenSources}
                   onRetry={onRetry}
                 />
                 {live ? (
@@ -349,7 +265,7 @@ function ChatPane({ conversationId }: ChatViewProps) {
                       providerName={searchProviderName(live.searchProvider)}
                       modelName={modelName}
                       onStop={() => activeId && streams.stop(activeId)}
-                      onCitation={onLiveCitation}
+                      onCitation={sources.onLiveCitation}
                     />
                   </>
                 ) : null}
@@ -358,14 +274,14 @@ function ChatPane({ conversationId }: ChatViewProps) {
           </div>
         </div>
 
-        {showSources ? (
+        {sources.panelOpen ? (
           <SourcesPanel
-            sources={sources}
-            active={activeSource}
-            loading={loadingSources}
-            onSelect={setActiveSource}
-            provider={providerName}
-            onClose={() => setSourcesHidden(true)}
+            sources={sources.sources}
+            active={sources.activeSource}
+            loading={sources.loading}
+            onSelect={sources.selectSource}
+            provider={sources.providerName}
+            onClose={sources.closePanel}
           />
         ) : null}
       </div>
@@ -374,15 +290,7 @@ function ChatPane({ conversationId }: ChatViewProps) {
         value={input}
         onChange={setInput}
         onSubmit={() => void submit()}
-        onStop={() => {
-          if (live && activeId) streams.stop(activeId);
-          else if (storedStreaming) {
-            // The answer runs elsewhere: ask the server to stop it; the poll picks up the result.
-            void api("/api/chat/stop", { method: "POST", body: JSON.stringify({ messageId: storedStreaming.id }) }).catch(
-              (cause) => showToast(errorMessage(cause, "Could not stop the answer")),
-            );
-          }
-        }}
+        onStop={stop}
         busy={!!live || followStored}
         stopping={!!live?.stopping}
         disabled={!ready || loadFailed || notFound}
@@ -399,17 +307,13 @@ function ChatPane({ conversationId }: ChatViewProps) {
       />
 
       <SourcesSheet
-        open={sheetOpen}
-        onClose={() => setSheetOpen(false)}
-        sources={sources}
-        active={activeSource}
-        loading={loadingSources}
-        onSelect={(position) => {
-          setActiveSource(position);
-          const source = sources.find((s) => s.position === position);
-          if (source) openSource(source);
-        }}
-        provider={providerName}
+        open={sources.sheetOpen}
+        onClose={sources.closeSheet}
+        sources={sources.sources}
+        active={sources.activeSource}
+        loading={sources.loading}
+        onSelect={sources.onSheetSelect}
+        provider={sources.providerName}
       />
 
       {toast}
