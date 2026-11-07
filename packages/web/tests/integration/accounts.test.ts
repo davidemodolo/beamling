@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { test } from "node:test";
 import { LEGAL_VERSION } from "../../lib/legal";
-import { closePoolAfterTests, configureIntegrationEnv, skip, withEnv, saveKey, createAccount, ask } from "./helpers";
+import { jsonResponse, mockFetch, withEnv } from "../helpers";
+import { closePoolAfterTests, configureIntegrationEnv, skip, saveKey, createAccount, ask } from "./helpers";
 
 configureIntegrationEnv();
 closePoolAfterTests();
@@ -145,14 +146,10 @@ test("Brave requests for one key are spaced across instances", { skip }, async (
 
   const { searchBrave } = await import("../../lib/server/providers/brave");
   withEnv(t, { BRAVE_MIN_INTERVAL_MS: "120" });
-  const original = globalThis.fetch;
   const startedAt: number[] = [];
-  globalThis.fetch = (async () => {
+  mockFetch(t, () => {
     startedAt.push(Date.now());
-    return new Response(JSON.stringify({ web: { results: [{ title: "t", url: "https://example.org/r", description: "s" }] } }));
-  }) as typeof fetch;
-  t.after(() => {
-    globalThis.fetch = original;
+    return jsonResponse({ web: { results: [{ title: "t", url: "https://example.org/r", description: "s" }] } });
   });
   const apiKey = `BSA-${randomBytes(6).toString("hex")}`;
   await Promise.all([searchBrave(apiKey, "one", { count: 1 }), searchBrave(apiKey, "two", { count: 1 })]);

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test, type TestContext } from "node:test";
-import { closePoolAfterTests, configureIntegrationEnv, skip, withEnv, createAccount, ask, eventData, storedAnswer, saveKey } from "./helpers";
+import { jsonResponse, mockFetch, withEnv } from "../helpers";
+import { closePoolAfterTests, configureIntegrationEnv, skip, createAccount, ask, eventData, storedAnswer, saveKey } from "./helpers";
 
 configureIntegrationEnv();
 closePoolAfterTests();
@@ -94,23 +95,16 @@ test("Deeper mode runs the research loop and keeps every search trace", { skip }
 
 /** Real-provider path with mocked HTTP: Brave returns one source; OpenRouter plays the agent and the writer. */
 function mockProviders(t: TestContext) {
-  const originalFetch = globalThis.fetch;
-  const calls: string[] = [];
   const toolRequests: { messages?: { role: string; content?: unknown }[]; tools?: unknown[] }[] = [];
   const sse = (lines: unknown[]) =>
     new Response(lines.map((line) => `data: ${JSON.stringify(line)}\n\n`).join("") + "data: [DONE]\n\n", {
       headers: { "Content-Type": "text/event-stream" },
     });
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    calls.push(url);
+  const calls = mockFetch(t, (url, init) => {
     if (new URL(url).hostname === "api.search.brave.com") {
-      return new Response(
-        JSON.stringify({
-          web: { results: [{ title: "Alpha source", url: "https://example.org/alpha", description: "Alpha evidence." }] },
-        }),
-        { headers: { "Content-Type": "application/json" } },
-      );
+      return jsonResponse({
+        web: { results: [{ title: "Alpha source", url: "https://example.org/alpha", description: "Alpha evidence." }] },
+      });
     }
     const body = JSON.parse(String(init?.body ?? "{}")) as {
       stream?: boolean;
@@ -119,18 +113,15 @@ function mockProviders(t: TestContext) {
     };
     const base = { id: "gen-test", object: "chat.completion.chunk", created: 1, model: "deepseek/deepseek-v4.1-flash" };
     const json = (message: unknown, finishReason: string, cost: number, prompt: number, completion: number) =>
-      new Response(
-        JSON.stringify({
-          id: "gen-test",
-          object: "chat.completion",
-          created: 1,
-          model: "deepseek/deepseek-v4.1-flash",
-          provider: "MockProvider",
-          choices: [{ index: 0, message, finish_reason: finishReason }],
-          usage: { prompt_tokens: prompt, completion_tokens: completion, total_tokens: prompt + completion, cost },
-        }),
-        { headers: { "Content-Type": "application/json" } },
-      );
+      jsonResponse({
+        id: "gen-test",
+        object: "chat.completion",
+        created: 1,
+        model: "deepseek/deepseek-v4.1-flash",
+        provider: "MockProvider",
+        choices: [{ index: 0, message, finish_reason: finishReason }],
+        usage: { prompt_tokens: prompt, completion_tokens: completion, total_tokens: prompt + completion, cost },
+      });
     if (body.tools?.length) toolRequests.push(body);
     if (body.tools?.length && !body.messages?.some((message) => message.role === "tool")) {
       return json(
@@ -152,9 +143,6 @@ function mockProviders(t: TestContext) {
       { ...base, provider: "MockProvider", choices: [{ index: 0, delta: { content: "Mock deeper answer with evidence [1]." }, finish_reason: null }] },
       { ...base, choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 40, completion_tokens: 10, total_tokens: 50, cost: 0.0002 } },
     ]);
-  }) as typeof fetch;
-  t.after(() => {
-    globalThis.fetch = originalFetch;
   });
 
   return { calls, toolRequests };

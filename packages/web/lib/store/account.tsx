@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { api, ApiRequestError } from "../api";
 import { DEFAULT_SETTINGS } from "../data";
-import type { AppState, BravePlan, BudgetPeriod, Credential, CredentialProvider, Settings, User } from "../types";
+import type { AppState, BravePlan, Credential, CredentialProvider, Settings, User } from "../types";
 
 export interface CredentialInput {
   provider: CredentialProvider;
@@ -11,11 +11,10 @@ export interface CredentialInput {
   plan?: BravePlan;
   expiresOn?: string | null;
   budgetUsd?: number | null;
-  budgetPeriod?: BudgetPeriod | null;
   validate?: boolean;
 }
 
-export type CredentialLimits = Pick<CredentialInput, "plan" | "expiresOn" | "budgetUsd" | "budgetPeriod">;
+export type CredentialLimits = Pick<CredentialInput, "plan" | "expiresOn" | "budgetUsd">;
 
 export interface AccountValue {
   user: User | null;

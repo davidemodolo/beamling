@@ -14,7 +14,6 @@ import {
 } from "drizzle-orm/pg-core";
 import type {
   BravePlan,
-  BudgetPeriod,
   CredentialKind,
   CredentialProvider,
   CredentialStatus,
@@ -91,7 +90,8 @@ export const credentials = pgTable(
     plan: text("plan").$type<BravePlan>(),
     expiresOn: date("expires_on", { mode: "string" }),
     budgetUsd: numeric("budget_usd", { precision: 12, scale: 2 }),
-    budgetPeriod: text("budget_period").$type<BudgetPeriod>(),
+    // Budgets are monthly: "month" when a budget is set, null otherwise.
+    budgetPeriod: text("budget_period").$type<"month">(),
     budgetStartedAt: timestamp("budget_started_at", { withTimezone: true }),
     lastValidatedAt: timestamp("last_validated_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

@@ -58,7 +58,7 @@ create table credentials (
   plan text check (plan in ('free','paid')),
   expires_on date,
   budget_usd numeric(12,2),
-  budget_period text check (budget_period in ('month','total')),
+  budget_period text check (budget_period = 'month'),
   budget_started_at timestamptz,
   last_validated_at timestamptz,
   created_at timestamptz not null default now(),

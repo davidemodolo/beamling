@@ -120,7 +120,6 @@ test("Brave plan, expiry and budget are stored as user-declared limits", async (
       plan: "free",
       expiresOn: "2030-01-31",
       budgetUsd: 5,
-      budgetPeriod: "month",
     },
   });
   expect(created.status()).toBe(201);

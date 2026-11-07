@@ -40,7 +40,7 @@ Each requirement has a priority (P0 = Alpha 1 target, P1 = private alpha/v1, P2 
 - **FR-61 (P0):** When adding a Brave key, the user declares whether it is on the **Free** plan (1 request/second) or a **Paid / provider** plan. The declared plan is stored with the credential and controls Beamling's per-key request spacing.
   - Acceptance: Free keys never exceed one request per second across all app instances; Paid keys are not forced to the Free interval; switching plans can be done without re-entering the key.
 - **FR-62 (P0):** The user may declare an optional key expiry date and budget, because the provider API does not expose them reliably.
-  - Acceptance: expiry is a future date; budget is a positive USD amount with a `month` or `total` period; the UI labels both as user-declared, never provider-verified.
+  - Acceptance: expiry is a future date; budget is a positive monthly USD amount; the UI labels both as user-declared, never provider-verified.
 - **FR-63 (P0):** Beamling tracks estimated search requests and cost per credential and warns before a declared budget or expiry becomes a problem.
   - Acceptance: warning at 80% and 100% of the declared budget, and 14 days, 7 days and 1 day before expiry; warnings name the key and are dismissible per period; warnings never claim to know the provider's real balance.
 - **FR-64 (P0):** Replacing a key with the same fingerprint preserves its declared limits and usage period; replacing it with a different key starts a new usage period.

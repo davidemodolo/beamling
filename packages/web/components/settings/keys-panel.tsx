@@ -8,42 +8,37 @@ import { useToast } from "@/lib/hooks/use-toast";
 import { isCredentialProvider } from "@/lib/contracts";
 import { ALL_PROVIDERS, providerUses, type ProviderInfo } from "@/lib/provider-catalog";
 import { useAccount } from "@/lib/store";
-import { credentialInput, DEFAULT_BUDGET_PERIOD } from "@/lib/credential-form";
+import { credentialInput, EMPTY_LIMITS, limitsPayload, type CredentialLimitDraft } from "@/lib/credential-form";
 import type { Credential } from "@/lib/types";
 import { CredentialRow } from "./credential-row";
+import { KeyLimitFields, ValidateNowField } from "./key-fields";
+
+function limitsOf(credential: Credential | undefined): CredentialLimitDraft {
+  return {
+    plan: credential?.plan ?? "free",
+    expiresOn: credential?.expiresOn ?? "",
+    budgetUsd: credential?.budgetUsd?.toString() ?? "",
+  };
+}
 
 function LimitsForm({
-  plan,
-  expiry,
-  budget,
+  provider,
+  limits,
   error,
-  onPlan,
-  onExpiry,
-  onBudget,
+  onLimits,
   onCancel,
   onSave,
 }: {
-  plan: "free" | "paid";
-  expiry: string;
-  budget: string;
+  provider: ProviderInfo;
+  limits: CredentialLimitDraft;
   error: string;
-  onPlan: (value: "free" | "paid") => void;
-  onExpiry: (value: string) => void;
-  onBudget: (value: string) => void;
+  onLimits: (value: CredentialLimitDraft) => void;
   onCancel: () => void;
   onSave: () => void;
 }) {
   return (
     <div style={{ padding: "16px 18px", borderTop: "1px solid var(--line)", display: "grid", gap: 10 }}>
-      <label className="label" htmlFor="brave-limits-plan">Brave plan</label>
-      <select id="brave-limits-plan" className="select" value={plan} onChange={(event) => onPlan(event.target.value === "paid" ? "paid" : "free")}>
-        <option value="free">Free · 1 request/second</option>
-        <option value="paid">Paid / provider plan</option>
-      </select>
-      <label className="label" htmlFor="brave-limits-expiry">Key expiry (optional)</label>
-      <input id="brave-limits-expiry" className="input" type="date" value={expiry} onChange={(event) => onExpiry(event.target.value)} />
-      <label className="label" htmlFor="brave-limits-budget">Monthly budget in USD (optional)</label>
-      <input id="brave-limits-budget" className="input" type="number" min="0.01" step="0.01" value={budget} onChange={(event) => onBudget(event.target.value)} placeholder="5.00" />
+      <KeyLimitFields id={`${provider.id}-limits`} provider={provider} value={limits} onChange={onLimits} />
       {error ? <p className="validation-err" role="alert">{error}</p> : null}
       <div style={{ display: "flex", gap: 8 }}>
         <button type="button" className="btn btn-primary btn-sm" onClick={onSave}>Save limits</button>
@@ -63,9 +58,8 @@ export function KeysPanel() {
   const [validating, setValidating] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [limitsFor, setLimitsFor] = useState<string | null>(null);
-  const [plan, setPlan] = useState<"free" | "paid">("free");
-  const [expiry, setExpiry] = useState("");
-  const [budget, setBudget] = useState("");
+  // Shared by the key form and the limits form; only one is open per provider at a time.
+  const [limits, setLimits] = useState<CredentialLimitDraft>(EMPTY_LIMITS);
   const [limitsError, setLimitsError] = useState("");
   const [toast, showToast] = useToast();
 
@@ -74,13 +68,10 @@ export function KeysPanel() {
   const retired = credentials.filter((item) => !isCredentialProvider(item.provider));
 
   const start = (provider: ProviderInfo) => {
-    const existing = credentialFor(provider);
     setEditing(provider.id);
     setKey("");
     setValidateNow(true);
-    setPlan(existing?.plan ?? "free");
-    setExpiry(existing?.expiresOn ?? "");
-    setBudget(existing?.budgetUsd?.toString() ?? "");
+    setLimits(limitsOf(credentialFor(provider)));
     setError("");
   };
 
@@ -100,16 +91,7 @@ export function KeysPanel() {
     setPending(true);
     setError("");
     try {
-      await addCredential(
-        credentialInput({
-          provider: provider.id,
-          key: value,
-          plan,
-          expiresOn: expiry,
-          budgetUsd: budget,
-          validateNow,
-        }),
-      );
+      await addCredential(credentialInput(provider.id, value, { limits, validateNow }));
       showToast(!provider.freeValidation && !validateNow ? `${provider.name} key saved, not validated` : `${provider.name} key saved`);
       cancel();
     } catch (cause) {
@@ -133,21 +115,14 @@ export function KeysPanel() {
 
   const openLimits = (credential: Credential) => {
     setLimitsFor(credential.id);
-    setPlan(credential.plan ?? "free");
-    setExpiry(credential.expiresOn ?? "");
-    setBudget(credential.budgetUsd?.toString() ?? "");
+    setLimits(limitsOf(credential));
     setLimitsError("");
   };
 
   const saveLimits = async (credential: Credential) => {
     setLimitsError("");
     try {
-      await updateCredentialLimits(credential.id, {
-        plan,
-        expiresOn: expiry || null,
-        budgetUsd: budget ? Number(budget) : null,
-        budgetPeriod: DEFAULT_BUDGET_PERIOD,
-      });
+      await updateCredentialLimits(credential.id, limitsPayload(limits));
       showToast("Key limits updated");
       setLimitsFor(null);
     } catch (cause) {
@@ -203,13 +178,10 @@ export function KeysPanel() {
               )}
               {limitsFor === credential?.id ? (
                 <LimitsForm
-                  plan={plan}
-                  expiry={expiry}
-                  budget={budget}
+                  provider={provider}
+                  limits={limits}
                   error={limitsError}
-                  onPlan={setPlan}
-                  onExpiry={setExpiry}
-                  onBudget={setBudget}
+                  onLimits={setLimits}
                   onCancel={() => setLimitsFor(null)}
                   onSave={() => void saveLimits(credential)}
                 />
@@ -223,23 +195,17 @@ export function KeysPanel() {
               {editing === provider.id ? (
                 <KeyForm
                   id={`${provider.id}-key`}
-                  label={`${provider.name} API key`}
-                  placeholder={provider.placeholder}
+                  provider={provider}
                   value={key}
                   pending={pending}
                   error={error}
                   onChange={setKey}
                   onCancel={cancel}
                   onSave={() => void save(provider)}
-                  plan={plan}
-                  expiry={expiry}
-                  budget={budget}
-                  showLimits={Boolean(provider.keyLimits)}
+                  limits={limits}
+                  onLimits={setLimits}
                   validateNow={provider.freeValidation ? undefined : validateNow}
                   onValidateNow={setValidateNow}
-                  onPlan={setPlan}
-                  onExpiry={setExpiry}
-                  onBudget={setBudget}
                 />
               ) : null}
             </div>
@@ -282,43 +248,31 @@ export function KeysPanel() {
 
 function KeyForm({
   id,
-  label,
-  placeholder,
+  provider,
   value,
   pending,
   error,
   onChange,
   onCancel,
   onSave,
-  plan,
-  expiry,
-  budget,
-  showLimits,
+  limits,
+  onLimits,
   validateNow,
   onValidateNow,
-  onPlan,
-  onExpiry,
-  onBudget,
 }: {
   id: string;
-  label: string;
-  placeholder: string;
+  provider: ProviderInfo;
   value: string;
   pending: boolean;
   error: string;
   onChange: (value: string) => void;
   onCancel: () => void;
   onSave: () => void;
-  plan: "free" | "paid";
-  expiry: string;
-  budget: string;
-  showLimits: boolean;
+  limits: CredentialLimitDraft;
+  onLimits: (value: CredentialLimitDraft) => void;
   /** Undefined when validation is free and always runs. */
   validateNow?: boolean;
   onValidateNow: (value: boolean) => void;
-  onPlan: (value: "free" | "paid") => void;
-  onExpiry: (value: string) => void;
-  onBudget: (value: string) => void;
 }) {
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -327,22 +281,9 @@ function KeyForm({
 
   return (
     <form onSubmit={submit} style={{ padding: "16px 18px", borderTop: "1px solid var(--line)", display: "grid", gap: 10 }}>
-      <label className="label" htmlFor={id}>{label}</label>
-      <SecretKeyInput id={id} value={value} onChange={onChange} placeholder={placeholder} invalid={!!error} />
-      {showLimits ? (
-        <div style={{ display: "grid", gap: 8 }}>
-          <label className="label" htmlFor={`${id}-plan`}>Brave plan</label>
-          <select id={`${id}-plan`} className="select" value={plan} onChange={(event) => onPlan(event.target.value === "paid" ? "paid" : "free")}>
-            <option value="free">Free · 1 request/second</option>
-            <option value="paid">Paid / provider plan</option>
-          </select>
-          <label className="label" htmlFor={`${id}-expiry`}>Key expiry (optional)</label>
-          <input id={`${id}-expiry`} className="input" type="date" value={expiry} onChange={(event) => onExpiry(event.target.value)} />
-          <label className="label" htmlFor={`${id}-budget`}>Monthly budget in USD (optional)</label>
-          <input id={`${id}-budget`} className="input" type="number" min="0.01" step="0.01" value={budget} onChange={(event) => onBudget(event.target.value)} placeholder="5.00" />
-          <p className="hint">Set on the Brave dashboard. Used only for warnings.</p>
-        </div>
-      ) : null}
+      <label className="label" htmlFor={id}>{provider.name} API key</label>
+      <SecretKeyInput id={id} value={value} onChange={onChange} placeholder={provider.placeholder} invalid={!!error} />
+      {provider.keyLimits ? <KeyLimitFields id={id} provider={provider} value={limits} onChange={onLimits} /> : null}
       {validateNow !== undefined ? <ValidateNowField id={id} checked={validateNow} onChange={onValidateNow} /> : null}
       {error ? (
         <p className="validation-err" role="alert">
@@ -359,22 +300,5 @@ function KeyForm({
         </button>
       </div>
     </form>
-  );
-}
-
-/** Opt-out for providers whose only key check is a billable search request. */
-export function ValidateNowField({ id, checked, onChange }: { id: string; checked: boolean; onChange: (value: boolean) => void }) {
-  return (
-    <div>
-      <label className="check-row" htmlFor={`${id}-validate`}>
-        <input id={`${id}-validate`} type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
-        Validate the key now
-      </label>
-      <p className="hint">
-        {checked
-          ? "Checking runs one search request on your key."
-          : "The key is saved as unverified. Use Validate in Settings to check it later; a wrong key fails at the first answer."}
-      </p>
-    </div>
   );
 }

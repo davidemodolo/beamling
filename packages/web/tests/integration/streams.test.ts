@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { closePoolAfterTests, configureIntegrationEnv, skip, OTHER_USER_ID, type ChatEvents, withEnv, createAccount, eventData, storedAnswer } from "./helpers";
+import { withEnv } from "../helpers";
+import { closePoolAfterTests, configureIntegrationEnv, skip, OTHER_USER_ID, type ChatEvents, createAccount, eventData, storedAnswer } from "./helpers";
 
 configureIntegrationEnv();
 closePoolAfterTests();

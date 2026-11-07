@@ -1,5 +1,5 @@
-export type { BravePlan, BudgetPeriod, CredentialKind, CredentialProvider, CredentialStatus, Mode, SearchProvider } from "./contracts";
-import type { BravePlan, BudgetPeriod, CredentialKind, CredentialStatus, MessageStatus, Mode, SearchProvider } from "./contracts";
+export type { BravePlan, CredentialKind, CredentialProvider, CredentialStatus, Mode, SearchProvider } from "./contracts";
+import type { BravePlan, CredentialKind, CredentialStatus, MessageStatus, Mode, SearchProvider } from "./contracts";
 
 type Role = "user" | "assistant";
 
@@ -97,8 +97,8 @@ export interface Credential {
   status: CredentialStatus;
   plan?: BravePlan;
   expiresOn?: string;
+  /** Monthly budget, counted from the start of the month or from when it was set. */
   budgetUsd?: number;
-  budgetPeriod?: BudgetPeriod;
   budgetStartedAt?: string;
   spentUsd?: number;
   requests?: number;

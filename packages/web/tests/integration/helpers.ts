@@ -28,17 +28,6 @@ export const OTHER_USER_ID = "00000000-0000-4000-8000-000000000000";
 
 export type ChatEvents = { name: string; data: unknown }[];
 
-export function withEnv(t: TestContext, values: Record<string, string>) {
-  const previous = Object.fromEntries(Object.keys(values).map((key) => [key, process.env[key]]));
-  Object.assign(process.env, values);
-  t.after(() => {
-    for (const [key, value] of Object.entries(previous)) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
-  });
-}
-
 export async function saveKey(
   userId: string,
   kind: "llm" | "search",

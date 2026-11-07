@@ -101,13 +101,13 @@ The script itself remains env-adapter only.
 | User and assistant message content | AES-256-GCM ciphertext under the account's workspace key |
 | Source URL/title/domain/snippet | AES-256-GCM ciphertext under the account's workspace key |
 | Search trace and model reasoning | AES-256-GCM ciphertext under the account's workspace key |
-
-Content reads fail closed: a non-empty value without the `enc:v1:` envelope is rejected instead of being served as trusted plaintext. The only plaintext values tolerated are the empty string and the fixed synchronous `INTERRUPTED` message.
 | Stored provider error messages | AES-256-GCM ciphertext; the fixed `INTERRUPTED` message remains plaintext |
 | Usage counters and costs | Plaintext metadata |
 | Request logs | Structured JSON; no request bodies or credentials; database parameters are not logged |
 
-Content envelopes are `enc:v1:<base64url JSON>` with nonce, ciphertext, tag and key version. The AAD is `beamling:content:v1:<userId>:<table>:<rowId>:<field>`. Plaintext rows from before this change are still readable: any value without the `enc:v1:` prefix is returned as-is. The workspace key is cached per process (up to 500 accounts) after its first KMS unwrap.
+Content envelopes are `enc:v1:<base64url JSON>` with nonce, ciphertext, tag and key version. The AAD is `beamling:content:v1:<userId>:<table>:<rowId>:<field>`. The workspace key is cached per process (up to 500 accounts) after its first KMS unwrap.
+
+Content reads fail closed: a value without the `enc:v1:` envelope is rejected instead of being served as trusted plaintext. The only plaintext values accepted are the empty string and the fixed "The answer was interrupted." message.
 
 Every account gets a `user_data_keys` row on first sign-in. Deleting the account cascades the wrapped key and content rows. A database-only compromise still yields ciphertext, but the application process can decrypt content for the owning account; this is not end-to-end encryption.
 
@@ -116,7 +116,7 @@ Every account gets a `user_data_keys` row on first sign-in. Deleting the account
 - Brave keys require a user-declared plan: `free` or `paid`.
 - `free` uses `BRAVE_MIN_INTERVAL_MS` (default 1,100 ms) per key across instances.
 - `paid` uses `BRAVE_PAID_MIN_INTERVAL_MS` (default 0).
-- Optional `expires_on`, `budget_usd` and `budget_period` (`month` or `total`) are stored as user-declared metadata. The Brave API is not queried for them. Tavily and Exa currently store only the credential and daily request/cost usage; provider-plan metadata is Brave-only.
-- `credential_usage` stores daily requests and estimated cost. `listCredentials` sums the current month or all time and exposes `spentUsd`, `requests` and a warning: `budget_100`, `budget_80`, `expiry_1`, `expiry_7` or `expiry_14`.
+- Optional `expires_on` and a monthly `budget_usd` are stored as user-declared metadata. The Brave API is not queried for them. Other providers store only the credential and daily request/cost usage; provider-plan metadata is Brave-only. `budget_period` is written as `month` whenever a budget is set; the API does not take or return it.
+- `credential_usage` stores daily requests and estimated cost. `listCredentials` sums the current month, from `budget_started_at` when the budget was set this month, and exposes `spentUsd`, `requests` and a warning: `budget_100`, `budget_80`, `expiry_1`, `expiry_7` or `expiry_14`.
 - A warning never blocks a search. Provider `402` remains authoritative.
 - The UI labels the limits as set by the user, not as provider facts.

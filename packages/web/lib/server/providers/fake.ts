@@ -29,7 +29,7 @@ export async function fakeValidateKey(key: string, provider: CredentialProvider)
   }
 }
 
-export async function fakeSearch(query: string, count: number, signal?: AbortSignal, provider: SearchProvider = "brave"): Promise<RetrievedSource[]> {
+export async function fakeSearch(provider: SearchProvider, query: string, count: number, signal?: AbortSignal): Promise<RetrievedSource[]> {
   await sleep(30);
   aborted(signal);
   if (query.includes(FAILING_QUERY)) {
@@ -66,10 +66,7 @@ export async function fakeSearch(query: string, count: number, signal?: AbortSig
       publishedAt: "2026-08-20T00:00:00.000Z",
     },
   ];
-  return base.slice(0, Math.max(1, Math.min(count, base.length))).map((source, index) => ({
-    ...source,
-    position: index + 1,
-  }));
+  return base.slice(0, Math.max(1, Math.min(count, base.length)));
 }
 
 function result(content: string, usage: ChatResult["usage"]): ChatResult {

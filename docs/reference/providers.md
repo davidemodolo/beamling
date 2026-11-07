@@ -75,8 +75,7 @@ Response mapping:
 - Title and description are tag-stripped and entity-decoded.
 - A result without a description is unusable and is dropped.
 - `age` is used only when it has a `YYYY-MM-DD` prefix and is parseable.
-- The first usable result gets position 1, then 2, and so on within that query batch.
-- Final positions are assigned by the ranking step, not by the provider.
+- Results keep the provider's order; positions are assigned later by the ranking step.
 
 Error mapping:
 

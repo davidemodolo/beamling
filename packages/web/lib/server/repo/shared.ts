@@ -6,7 +6,6 @@ import { decryptText } from "../workspace-key";
 import type {
   ConversationSummary,
   Credential,
-  CredentialStatus,
   Message,
   SearchTrace,
   Settings,
@@ -23,11 +22,9 @@ type SettingsRow = typeof settings.$inferSelect;
 
 /**
  * A streaming answer older than this outlived the longest route (Deeper, 6 minutes) plus a grace
- * period, so it belongs to a crashed or restarted instance. The old 3-minute value matched Quick/Deep
- * but cut off a healthy Deeper run.
+ * period, so it belongs to a crashed or restarted instance.
  */
 export const STALE_STREAMING_SECONDS = 8 * 60;
-const CREDENTIAL_STATUSES: CredentialStatus[] = ["active", "invalid", "rate_limited", "unverified"];
 
 export function iso(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
@@ -191,17 +188,14 @@ function warningFor(row: CredentialRow, usage: CredentialUsageSummary | undefine
 export function mapCredential(row: CredentialRow, usage?: CredentialUsageSummary): Credential {
   return {
     id: row.id,
-    kind: row.kind === "search" ? "search" : "llm",
+    kind: row.kind,
     provider: row.provider,
     last4: row.last4 ?? "0000",
-    status: CREDENTIAL_STATUSES.includes(row.status as CredentialStatus)
-      ? (row.status as CredentialStatus)
-      : "unverified",
+    status: row.status,
     // Only providers with key limits store a plan.
-    plan: row.plan == null ? undefined : row.plan === "paid" ? "paid" : "free",
+    plan: row.plan ?? undefined,
     expiresOn: row.expiresOn ?? undefined,
     budgetUsd: row.budgetUsd == null ? undefined : Number(row.budgetUsd),
-    budgetPeriod: row.budgetPeriod === "total" ? "total" : row.budgetPeriod === "month" ? "month" : undefined,
     budgetStartedAt: row.budgetStartedAt ? iso(row.budgetStartedAt) : undefined,
     spentUsd: usage?.spentUsd,
     requests: usage?.requests,

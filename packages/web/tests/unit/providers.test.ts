@@ -7,7 +7,8 @@ import { searchTavily, tavilyError, validateTavilyKey } from "../../lib/server/p
 import { DEFAULT_LLM_MODEL, MODELS, isAllowedModel } from "../../lib/provider-catalog";
 import { modelHttpError, streamChat } from "../../lib/server/providers/llm";
 import { openRouterModels } from "../../lib/server/providers/openrouter";
-import { configureUnitEnv, mockFetch, jsonResponse, isApiError } from "./helpers";
+import { jsonResponse, mockFetch } from "../helpers";
+import { configureUnitEnv, isApiError } from "./helpers";
 
 configureUnitEnv();
 
@@ -44,7 +45,7 @@ test("Brave validates and searches only the base Web Search endpoint", async (t)
       },
     }),
   );
-  await validateBraveKey("BSA-web-plan-unique");
+  await validateBraveKey("BSA-web-plan-unique", "free");
   const sources = await searchBrave("BSA-web-plan-unique", "test", { count: 2 });
   assert.equal(calls.length, 2);
   assert.ok(calls.every((url) => url.includes("/res/v1/web/search")));
@@ -153,7 +154,7 @@ test("Tavily retries a 429 once and Exa surfaces a rejected request", async (t) 
 test("Brave explains keys with no search capability", async (t) => {
   mockFetch(t, () => jsonResponse({ error: { detail: "The option is not included in the plan" } }, 422));
   await assert.rejects(
-    () => validateBraveKey("BSA-no-search-unique"),
+    () => validateBraveKey("BSA-no-search-unique", "free"),
     (error: unknown) => isApiError("BRAVE_PLAN_MISSING_SEARCH")(error) && /Search plan/.test((error as Error).message),
   );
 });
@@ -221,7 +222,7 @@ test("a network failure is an outage, never a rejected key", async (t) => {
     throw new TypeError("fetch failed");
   });
   const { validateOpenRouterKey } = await import("../../lib/server/providers/openrouter");
-  await assert.rejects(() => validateBraveKey("BSA-offline-unique"), isApiError("PROVIDER_UNAVAILABLE", "brave"));
+  await assert.rejects(() => validateBraveKey("BSA-offline-unique", "free"), isApiError("PROVIDER_UNAVAILABLE", "brave"));
   await assert.rejects(() => validateOpenRouterKey("sk-or-offline"), isApiError("PROVIDER_UNAVAILABLE", "openrouter"));
   await assert.rejects(
     () => openRouterChat(),
@@ -299,8 +300,8 @@ test("Brave drops unsafe URLs and results without a snippet", async (t) => {
   );
   const sources = await searchBrave("BSA-filter-unique", "test", { count: 5 });
   assert.deepEqual(
-    sources.map((source) => [source.url, source.position]),
-    [["https://example.org/good", 1]],
+    sources.map((source) => source.url),
+    ["https://example.org/good"],
   );
 });
 

@@ -60,7 +60,7 @@ These fields are **user-declared**, not provider-verified. The Brave validation 
 |---|---|---|
 | Brave plan | `credentials.plan` (`free` or `paid`) | Required for Brave keys; defaults to `free` in the UI. `free` enforces 1 request/second per key. |
 | Expiry | `credentials.expires_on` (`date`, nullable) | Must be in the future when set. Displayed with 14/7/1-day warnings. |
-| Budget | `credentials.budget_usd` (`numeric(12,2)`, nullable) and `budget_period` (`month` or `total`) | Positive USD amount. Sum estimated usage from the period start; warn at 80% and 100%. |
+| Budget | `credentials.budget_usd` (`numeric(12,2)`, nullable), monthly | Positive USD amount. Sum estimated usage from the start of the month (or from when the budget was set); warn at 80% and 100%. |
 | Usage | `credential_usage` rows per credential per day: requests and estimated cost | Updated atomically after a search request. Free-plan requests still count. |
 
 Rules:

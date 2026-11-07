@@ -69,7 +69,7 @@ export const POST = apiRoute(async ({ request, user }) => {
   analytics.capture(user.id, "question_asked", {
     mode: prepared.mode,
     search_provider: prepared.searchProvider,
-    llm_model: prepared.model,
+    llm_model: prepared.llm.id,
   });
 
   const internal = new AbortController();

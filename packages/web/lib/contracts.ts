@@ -38,8 +38,5 @@ export type CredentialStatus = (typeof CREDENTIAL_STATUSES)[number];
 export const BRAVE_PLANS = ["free", "paid"] as const;
 export type BravePlan = (typeof BRAVE_PLANS)[number];
 
-export const BUDGET_PERIODS = ["month", "total"] as const;
-export type BudgetPeriod = (typeof BUDGET_PERIODS)[number];
-
 export const MESSAGE_STATUSES = ["pending", "streaming", "complete", "stopped", "error"] as const;
 export type MessageStatus = (typeof MESSAGE_STATUSES)[number];

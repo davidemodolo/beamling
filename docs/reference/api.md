@@ -37,7 +37,7 @@ Error envelope:
 | `PATCH` | `/api/conversations/:id` | Required | `{ mode?, pinned? }` (at least one) | `{ conversation }` |
 | `DELETE` | `/api/conversations/:id` | Required | — | `{ ok: true }` |
 | `POST` | `/api/credentials/:id/validate` | Required | — | `{ credential }` |
-| `PATCH` | `/api/credentials/:id` | Required | `{ plan?, expiresOn?, budgetUsd?, budgetPeriod? }` | `{ credential }` |
+| `PATCH` | `/api/credentials/:id` | Required | `{ plan?, expiresOn?, budgetUsd? }` | `{ credential }` |
 | `DELETE` | `/api/credentials/:id` | Required | — | `{ ok: true }` |
 | `PATCH` | `/api/settings` | Required | `{ llmModel?, defaultSearchProvider?, defaultMode?, analyticsOptOut? }` | `{ settings }` |
 | `POST` | `/api/account/terms` | Required, terms not required | `{ version, confirmAge: true }` | `{ ok: true, version }` |
