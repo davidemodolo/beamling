@@ -41,6 +41,39 @@ test("onboarding connects keys and keeps the saved model and mode", async ({ pag
   expect(problems).toEqual([]);
 });
 
+test("onboarding with DeepSeek asks for one key that serves the model and search", async ({ page }) => {
+  const problems = watchConsole(page);
+  await signIn(page.request);
+  await page.goto("/onboarding");
+  await page.locator("#llm-model").selectOption("deepseek:deepseek-flash");
+  await page.locator("#search-provider").selectOption("deepseek");
+  await expect(page.getByText("Uses your DeepSeek key from above.")).toBeVisible();
+  await expect(page.locator("#search-key")).toHaveCount(0);
+  await expect(page.getByText(/DeepSeek is based in China/)).toBeVisible();
+  await page.locator("#llm-key").fill("test-deepseek-key");
+  await page.getByRole("button", { name: "Start asking" }).click();
+  await expect(page).toHaveURL(/\/chat$/);
+  const state = await (await page.request.get("/api/state")).json();
+  expect(state.credentials.map((credential: { provider: string; kind: string }) => [credential.provider, credential.kind])).toEqual([
+    ["deepseek", "llm"],
+  ]);
+  expect(state.settings.llmModel).toBe("deepseek:deepseek-flash");
+  expect(state.settings.defaultSearchProvider).toBe("deepseek");
+  expect(problems).toEqual([]);
+});
+
+test("onboarding saves a key for a search provider without key limits", async ({ page }) => {
+  await signIn(page.request);
+  await page.goto("/onboarding");
+  await page.locator("#search-provider").selectOption("tavily");
+  await page.locator("#llm-key").fill("test-openrouter-key");
+  await page.locator("#search-key").fill("test-tavily-key");
+  await page.getByRole("button", { name: "Start asking" }).click();
+  await expect(page).toHaveURL(/\/chat$/);
+  const state = await (await page.request.get("/api/state")).json();
+  expect(state.credentials.map((credential: { provider: string }) => credential.provider).sort()).toEqual(["openrouter", "tavily"]);
+});
+
 test("a Quick answer streams with citations, cost breakdown and sources", async ({ page }) => {
   const problems = watchConsole(page);
   await connectKeys(page.request);

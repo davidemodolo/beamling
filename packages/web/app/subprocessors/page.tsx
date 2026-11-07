@@ -15,7 +15,8 @@ const PROCESSORS = [
 /** Providers the user chooses and connects with their own account and key. */
 const USER_PROVIDERS = [
   ["Google", "Sign-in. Google shares your account identifier, verified email, name and picture with Beamling.", "Global", "https://policies.google.com/privacy"],
-  ["OpenRouter", "Model routing. Receives your question, retrieved snippets and conversation context, and may route them to an upstream model provider.", "United States and upstream providers' locations", "https://openrouter.ai/privacy"],
+  ["OpenRouter", "Model routing. Receives your question, retrieved snippets and conversation context, and may route them to an upstream model provider.", "United States and upstream providers' locations, which can include China", "https://openrouter.ai/privacy"],
+  ["DeepSeek", "Models and search, when you choose DeepSeek. Receives your question, search queries, retrieved snippets and conversation context.", "China", "https://cdn.deepseek.com/policies/en-US/deepseek-privacy-policy.html"],
   ["Brave Search", "Search, when you choose Brave. Receives search queries.", "United States", "https://search.brave.com/help/privacy-policy"],
   ["Tavily", "Search, when you choose Tavily. Receives search queries.", "United States", "https://tavily.com/privacy"],
   ["Exa", "Search, when you choose Exa. Receives search queries.", "United States", "https://exa.ai/privacy-policy"],

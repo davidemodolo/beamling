@@ -7,6 +7,7 @@ import type { CredentialProvider, LlmProvider, SearchProvider } from "../../cont
 import type { ModelInfo } from "../../provider-catalog";
 import { isFakeProviders } from "../env";
 import { searchBrave, validateBraveKey } from "./brave";
+import { deepSeekModels, searchDeepSeek, validateDeepSeekKey } from "./deepseek";
 import { searchExa, validateExaKey } from "./exa";
 import { fakeChat, fakeSearch, fakeValidateKey } from "./fake";
 import { streamChat, type ChatMessage, type ChatPurpose, type ChatResult, type LlmAdapter } from "./llm";
@@ -22,6 +23,7 @@ type Adapter<P extends CredentialProvider> = { validateKey: KeyCheck } & (P exte
 
 const ADAPTERS: { [P in CredentialProvider]: Adapter<P> } = {
   openrouter: { validateKey: (key) => validateOpenRouterKey(key), llm: openRouterModels },
+  deepseek: { validateKey: (key) => validateDeepSeekKey(key), llm: deepSeekModels, search: searchDeepSeek },
   brave: { validateKey: (key, { plan }) => validateBraveKey(key, plan), search: searchBrave },
   tavily: { validateKey: (key) => validateTavilyKey(key), search: searchTavily },
   exa: { validateKey: (key) => validateExaKey(key), search: searchExa },

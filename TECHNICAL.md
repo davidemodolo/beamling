@@ -4,7 +4,7 @@
 **Last verified against the code:** 2026-10-22.
 **Scope:** the web application, API, database schema, answer pipeline, browser UI, security controls, tests and local deployment.
 
-Beamling is a hosted, bring-your-own-key answer engine. A visitor signs in with Google, connects an OpenRouter key and a Brave, Tavily or Exa search key, and asks questions in Quick, Deep or Deeper mode. The server searches the web, builds a grounded prompt from the retrieved snippets, streams an OpenRouter answer over SSE, and persists the conversation, sources and usage data.
+Beamling is a hosted, bring-your-own-key answer engine. A visitor signs in with Google, connects a model-provider key (OpenRouter or DeepSeek) and a search-provider key (Brave, Tavily, Exa or DeepSeek; one DeepSeek key can serve both), and asks questions in Quick, Deep or Deeper mode. The server searches the web, builds a grounded prompt from the retrieved snippets, streams the model's answer over SSE, and persists the conversation, sources and usage data.
 
 The application is a single Next.js service plus a small workspace package for the mascot. There is no separate backend, queue, worker or client-side orchestration.
 
@@ -296,7 +296,7 @@ Details:
 
 ### 4.1 Terms acceptance
 
-- `lib/legal.ts` defines `LEGAL_VERSION` (currently `2026-11-07`), the version of the terms and privacy notice an account must accept, plus `MINIMUM_AGE = 18`, `INACTIVE_ACCOUNT_MONTHS = 24`, `UNACCEPTED_ACCOUNT_DAYS = 7`, `CONVERSATION_RETENTION_DAYS = 60`, `MAX_CONVERSATIONS = 100`, `CONVERSATION_WARNING_THRESHOLD = 90` and `SHUTDOWN_NOTICE_DAYS = 14`.
+- `lib/legal.ts` defines `LEGAL_VERSION` (currently `2026-11-07.2`), the version of the terms and privacy notice an account must accept, plus `MINIMUM_AGE = 18`, `INACTIVE_ACCOUNT_MONTHS = 24`, `UNACCEPTED_ACCOUNT_DAYS = 7`, `CONVERSATION_RETENTION_DAYS = 60`, `MAX_CONVERSATIONS = 100`, `CONVERSATION_WARNING_THRESHOLD = 90` and `SHUTDOWN_NOTICE_DAYS = 14`.
 - `users.terms_version` and `users.terms_accepted_at` record the accepted version. A new account has none.
 - App pages call `requirePageUser`, which redirects to `/welcome?next=<path>` when `terms_version` differs from `LEGAL_VERSION`. `/welcome` accepts only `/chat`, `/chat/<uuid>` or `/onboarding` as `next`, and redirects there once the version matches.
 - `apiRoute` refuses every API call from such an account with `TERMS_REQUIRED` (403), except routes declared with `requireTerms: false`: `POST /api/account/terms`, `GET /api/account/export`, `POST /api/auth/logout` and `DELETE /api/account`. The browser API client redirects to `/welcome` on `TERMS_REQUIRED`, so a version change while the app is open sends the user to accept it.
@@ -321,6 +321,7 @@ Every provider has one key, whatever it is used for. The provider catalog (`lib/
 | Kind | Provider | Validation call |
 |---|---|---|
 | `llm` | `openrouter` | `GET https://openrouter.ai/api/v1/key`, 15-second timeout |
+| `llm` (also serves search) | `deepseek` | `GET https://api.deepseek.com/user/balance`; spends nothing and rejects a key whose balance is not available (`INSUFFICIENT_CREDITS`) |
 | `search` | `brave` | `GET https://api.search.brave.com/res/v1/web/search?q=Beamling%20connectivity%20test&count=1` |
 | `search` | `tavily` | `GET https://api.tavily.com/usage`; spends no credit and rejects a key whose usage has reached its limit |
 | `search` | `exa` | `POST https://api.exa.ai/search` with one highlight result |
@@ -1251,7 +1252,32 @@ Validation and retrieval use `POST https://api.exa.ai/search` with `x-api-key: <
 
 A `429` is retried once with the same short-wait policy as Brave.
 
-### 11.5 Fixtures
+### 11.5 DeepSeek
+
+One key serves both capabilities; it is stored as `llm` and read once when the same answer uses DeepSeek for the model and for search.
+
+Models run through `@ai-sdk/deepseek` 3.0.80. The catalog offers `deepseek:deepseek-flash` ("DeepSeek V4.1 Flash · direct", API model `deepseek-flash`). Every request sends `thinking: { type: "disabled" }`: the prompts expect direct replies, and DeepSeek rejects a forced tool choice (the research loop's first step) in thinking mode. DeepSeek reports tokens but no price, so the adapter estimates each step's cost from the list price (Flash: $0.30 per million cache-miss input tokens, $0.006 cache-hit, $1.20 output at peak; half off-peak). Peak is 01:00–04:00 and 06:00–10:00 UTC on weekdays; Chinese public holidays are off-peak at DeepSeek but are priced as peak, so the estimate can only be high.
+
+Search:
+
+```http
+POST https://api.deepseek.com/v1/tools/search
+Authorization: Bearer <key>
+Content-Type: application/json
+```
+
+```json
+{ "query": "<at most 128 characters>", "count": 8 }
+```
+
+- The query is shortened to fit DeepSeek's 128-character limit. When the question asks for recent information, an `after:YYYY-MM-DD` operator is appended within the limit.
+- Each result's `summary` (600–800 characters, written for models) is the source snippet; the short `snippet` is the fallback. `date` is the publication date.
+- The list-price estimate is `$0.00075` per successful search, recorded in `credential_usage`.
+- Errors: `401`/`403` `CREDENTIAL_INVALID`, `402` `INSUFFICIENT_CREDITS`, `429` `PROVIDER_RATE_LIMITED` after one retry, `408`/`5xx` `PROVIDER_UNAVAILABLE`, other `4xx` `PROVIDER_ERROR`.
+
+The catalog notice says DeepSeek is based in China, that its models and search may process questions there, and that Beamling takes no responsibility for how it handles data. It is shown on the DeepSeek key card, under its onboarding key field and in Defaults when DeepSeek is selected. OpenRouter's notice says some of its hosts, such as DeepSeek's own, are in China and can be excluded in OpenRouter's settings.
+
+### 11.6 Fixtures
 
 `lib/server/providers/fake.ts` mirrors the `chat`, `search` and validation interfaces. It is selected by `isFakeProviders()` and is used by local tests and Playwright. Fixture content is deterministic, with marker-based failure modes for planner repair, plan failure, partial search and no-source behavior.
 
@@ -1269,10 +1295,10 @@ A `429` is retried once with the same short-wait policy as Brave.
 | `/onboarding` | Account setup form: default model (grouped by provider) and that provider's key, search-provider picker and its key (asked once when one provider serves both), plus plan/expiry/budget for providers with key limits; validates and saves, then routes to `/chat` |
 | `/chat` | New-question view; loads workspace state, conversation list and threads. While a shutdown is scheduled, the layout shows an alert banner above the app with the closing date and a "Download my data" button that opens Settings → Account |
 | `/chat/[id]` | Conversation view; loads the newest 60 messages and supports earlier-message pagination |
-| `/privacy` | Privacy notice (Art. 13/14 GDPR): controller with address and optional VAT id, no DPO; data categories with legal basis (account, acceptance record, session, content, credentials, usage, hashed-IP security metadata, logs, optional analytics with opt-out); Google account used to email essential service notices (no newsletters or marketing); Google account required; no solely automated decisions; not for under-18s; provider traffic under the user's own accounts; essential cookies only; retention list (conversations 60 days after their last question, pinned or not, at most 100 per account with the least recently used unpinned ones deleted first; account data until deletion; inactive accounts after 24 months, unaccepted accounts after 7 days, sessions 30 days idle / 90 days max, hashed IPs and counters up to one hour, logs `LEGAL_LOG_RETENTION_DAYS`, backups `LEGAL_BACKUP_RETENTION_DAYS`, analytics until opt-out or deletion; everything on the closing date if the service closes, announced at least 14 days ahead by email and in the interface); recipients and transfers (Frankfurt hosting, EU-US Data Privacy Framework or SCCs); rights under Art. 15–21 with the self-service Settings controls, one-month answer and the Garante complaint route; re-acceptance on material changes |
-| `/terms` | Alpha terms: operator identity, free service, 18+ (or local age of majority), acceptance on first use and on material change, user responsibility for provider keys and costs, data loss and export, storage limits (60-day conversation expiry, 100 conversations per account, warning near the cap), acceptable use (illegal content, harassment, IP and privacy infringement, malware, EU AI Act Art. 5 practices, professional advice, foreign keys, scraping, resale), AI-generated answers, content ownership and MIT-licensed source (name and logo not licensed), as-is availability without affecting consumer rights, liability limits that never exclude wilful misconduct or gross negligence (Art. 1229 Italian Civil Code) or Consumer Code liability, suspension with notice and a chance to export, 24-month inactive deletion, closure of the service with at least 14 days' notice by email and in the interface (no new accounts meanwhile, export still possible, every account deleted on the date), email only for essential service notices, DSA reports and contact point, `LEGAL_GOVERNING_LAW` with consumer forum (Art. 66-bis Consumer Code) |
+| `/privacy` | Privacy notice (Art. 13/14 GDPR): controller with address and optional VAT id, no DPO; data categories with legal basis (account, acceptance record, session, content, credentials, usage, hashed-IP security metadata, logs, optional analytics with opt-out); Google account used to email essential service notices (no newsletters or marketing); Google account required; no solely automated decisions; not for under-18s; provider traffic under the user's own accounts, noting that DeepSeek and some OpenRouter hosts are in China and that the choice is the user's; essential cookies only; retention list (conversations 60 days after their last question, pinned or not, at most 100 per account with the least recently used unpinned ones deleted first; account data until deletion; inactive accounts after 24 months, unaccepted accounts after 7 days, sessions 30 days idle / 90 days max, hashed IPs and counters up to one hour, logs `LEGAL_LOG_RETENTION_DAYS`, backups `LEGAL_BACKUP_RETENTION_DAYS`, analytics until opt-out or deletion; everything on the closing date if the service closes, announced at least 14 days ahead by email and in the interface); recipients and transfers (hosting in Belgium, database in Frankfurt, EU-US Data Privacy Framework or SCCs); rights under Art. 15–21 with the self-service Settings controls, one-month answer and the Garante complaint route; re-acceptance on material changes |
+| `/terms` | Alpha terms: operator identity, free service, 18+ (or local age of majority), acceptance on first use and on material change, user responsibility for provider keys and costs (some providers, such as DeepSeek, process data outside the EU, including in China, and Beamling is not responsible for how a chosen provider handles data), data loss and export, storage limits (60-day conversation expiry, 100 conversations per account, warning near the cap), acceptable use (illegal content, harassment, IP and privacy infringement, malware, EU AI Act Art. 5 practices, professional advice, foreign keys, scraping, resale), AI-generated answers, content ownership and MIT-licensed source (name and logo not licensed), as-is availability without affecting consumer rights, liability limits that never exclude wilful misconduct or gross negligence (Art. 1229 Italian Civil Code) or Consumer Code liability, suspension with notice and a chance to export, 24-month inactive deletion, closure of the service with at least 14 days' notice by email and in the interface (no new accounts meanwhile, export still possible, every account deleted on the date), email only for essential service notices, DSA reports and contact point, `LEGAL_GOVERNING_LAW` with consumer forum (Art. 66-bis Consumer Code) |
 | `/cookies` | Essential-cookie table (session: 30 days without use, at most 90 days after sign-in); no analytics or advertising cookies |
-| `/subprocessors` | "Data processors" page in two tables with purpose, location and privacy-policy link: processors that run Beamling under a DPA (Google Cloud for hosting, logs and KMS, Neon, optional PostHog Cloud, and an email row named by `LEGAL_MAIL_PROVIDER` when set) and providers the user chooses with their own account (Google sign-in, OpenRouter, Brave, Tavily, Exa) |
+| `/subprocessors` | "Data processors" page in two tables with purpose, location and privacy-policy link: processors that run Beamling under a DPA (Google Cloud for hosting, logs and KMS, Neon, optional PostHog Cloud, and an email row named by `LEGAL_MAIL_PROVIDER` when set) and providers the user chooses with their own account (Google sign-in, OpenRouter, whose hosts can include China, DeepSeek in China, Brave, Tavily, Exa) |
 | `/security` | Security controls, session lifetime, audit events, `security.txt` link and a vulnerability-disclosure policy with a good-faith safe harbor |
 | `/contact` | Operator identity, address and optional VAT id; monitored privacy/security/abuse contact; DSA single point of contact (Art. 11–12, English) and how to report illegal content |
 | `/status` | Human-readable readiness for the app, database, schema and KMS; a scheduled shutdown date (or that the service has shut down) above it |
@@ -1553,7 +1579,7 @@ Run:
 ```sh
 pnpm local:up
 # Browse https://localhost (accept the local CA), sign in with
-# test@beamling.local / beamling, then add real OpenRouter and Brave/Tavily/Exa keys.
+# test@beamling.local / beamling, then add real model and search provider keys.
 pnpm local:down
 ```
 
@@ -1703,7 +1729,7 @@ The repository contains four layers.
 |---|---|---|
 | `packages/mascot/test/geometry.test.mjs` | 6 | Eye/beam geometry, expressions, state mapping |
 | `packages/web/tests/unit/crypto.test.ts` | 7 | KMS-backed credential encryption and rotation, workspace-key re-wrap by the rotation script, integrity vs KMS-outage decryption errors, hidden last four for short keys, fail-closed plaintext reads |
-| `packages/web/tests/unit/providers.test.ts` | 18 | Model allowlist, Brave/Tavily/Exa/OpenRouter validation, search and status mapping, 429 retry, network vs abort, unsafe URLs, malformed provider bodies, missing OpenRouter completion markers, Tavily free validation |
+| `packages/web/tests/unit/providers.test.ts` | 22 | Model allowlist, Brave/Tavily/Exa/OpenRouter/DeepSeek validation, search and status mapping, 429 retry, network vs abort, unsafe URLs, malformed provider bodies, streams without a finish reason, Tavily free validation, DeepSeek query limit, cost estimate and thinking switch |
 | `packages/web/tests/unit/answer.test.ts` | 8 | Citations, ranking, freshness, language, prompt injection, history handling, shared stream events |
 | `packages/web/tests/unit/security.test.ts` | 11 | Client IP HMAC, derived keys, test-only sign-in, same-origin anchors, production config, body limits, provider-safe log redaction, credential status, signup allowlists, English shutdown notice |
 | `packages/web/tests/unit/analytics.test.ts` | 13 | Analytics allowlist, identity, delivery, opt-out, deletion and kill-switch deletion, shared client, erasure backoff, PostHog host rules |
@@ -1766,13 +1792,13 @@ The Playwright suite checks:
 |---|---|
 | Accounts | Google-only OIDC, one account per Google subject, versioned terms acceptance with 18+ confirmation |
 | Session management | Opaque token, SHA-256 at rest, 30-day sliding expiry capped at 90 days, previous-session revocation on sign-in, sign-out |
-| Provider credentials | OpenRouter + Brave/Tavily/Exa, validated, KMS-encrypted, replaceable, deletable, revalidatable |
+| Provider credentials | One key per provider (OpenRouter, DeepSeek, Brave, Tavily, Exa), validated, KMS-encrypted, replaceable, deletable, revalidatable |
 | Credential limits | Brave Free/Paid plan, declared expiry and budget, estimated spend and warnings |
 | Key rotation | KMS key rotation with lazy re-wrap of workspace and credential keys; env adapter supports previous-key list + re-wrap script for credential and workspace keys |
 | Quick answers | One search on the selected provider, cited streamed answer |
 | Deep answers | Planner, 3–5 sub-queries, bounded concurrent search, optional gap pass, cited report |
 | Deeper answers | AI SDK `ToolLoopAgent`, selected-provider search tool, adaptive rounds, 60-search/60-source cap, long cited report |
-| Retrieval | Brave, Tavily or Exa snippets selected per answer, freshness filter, Brave per-key spacing, 429 retry |
+| Retrieval | Brave, Tavily, Exa or DeepSeek snippets selected per answer, freshness filter, Brave per-key spacing, 429 retry |
 | Source quality | URL validation, snippet requirement, canonical dedupe, site diversity, stable numbering |
 | Citations | Streamed `[n]` parsing, sanitization, click-to-source, uncited warning |
 | Conversation history | Create, open, title, paginate, delete; 100 per account (oldest unpinned trimmed), deleted 60 days after last activity, sidebar notice and warning from 90 |

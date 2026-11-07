@@ -36,7 +36,7 @@ export function legalDetails(): LegalDetails {
  * Version of the terms and privacy notice an account must accept. Change it (and the date) whenever
  * either document changes materially; every account is asked to accept again on its next visit.
  */
-export const LEGAL_VERSION = "2026-11-07";
+export const LEGAL_VERSION = "2026-11-07.2";
 export const LEGAL_LAST_UPDATED = "7 November 2026";
 
 /** Minimum age to hold an account. */

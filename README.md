@@ -7,7 +7,7 @@ Your models. Your search. Your bill.
 ## Current features
 
 - Google-only accounts; no guest workspaces
-- Bring your own OpenRouter key and a Brave, Tavily or Exa search key
+- Bring your own keys: OpenRouter or DeepSeek for models, Brave, Tavily, Exa or DeepSeek for search (one DeepSeek key covers both)
 - Keys and conversation content encrypted at rest through KMS-backed envelope encryption
 - Choose the search provider per answer; Brave Free/Paid plan plus optional expiry and budget warnings
 - Quick for one search pass, Deep for planned multi-query research, Deeper for an agentic loop with up to 60 searches
@@ -35,7 +35,7 @@ See [TECHNICAL.md](TECHNICAL.md) for the current architecture, API, answer pipel
 pnpm local:up                   # https://localhost
 ```
 
-The parity stack runs the production image behind Caddy with Dex as the local OIDC provider and LocalStack KMS. Sign in with `test@beamling.local` / `beamling`, accept the local CA, then add real OpenRouter and Brave/Tavily/Exa keys. Stop it with `pnpm local:down`.
+The parity stack runs the production image behind Caddy with Dex as the local OIDC provider and LocalStack KMS. Sign in with `test@beamling.local` / `beamling`, accept the local CA, then add real model and search provider keys. Stop it with `pnpm local:down`.
 
 `pnpm web:dev` remains available for a fast dev loop. Set `BEAMLING_FAKE_PROVIDERS=1` to try it without provider keys (any key starting with `test-` works).
 

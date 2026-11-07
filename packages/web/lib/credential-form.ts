@@ -23,14 +23,16 @@ export function shouldValidateKey(provider: CredentialProvider, validateNow: boo
 
 /** One payload policy for onboarding and Settings; limits exist only for providers that have them. */
 export function credentialInput({ provider, key, plan, expiresOn, budgetUsd, budgetPeriod, validateNow }: CredentialInputDraft) {
-  const limits = Boolean(PROVIDERS[provider].keyLimits);
+  const validate = PROVIDERS[provider].freeValidation ? undefined : shouldValidateKey(provider, validateNow);
+  // The server rejects limit fields (even null ones) for providers without key limits.
+  if (!PROVIDERS[provider].keyLimits) return { provider, key: key.trim(), validate };
   return {
     provider,
     key: key.trim(),
-    plan: limits ? plan : undefined,
-    expiresOn: limits && expiresOn ? expiresOn : null,
-    budgetUsd: limits && budgetUsd ? Number(budgetUsd) : null,
-    budgetPeriod: limits ? (budgetPeriod ?? DEFAULT_BUDGET_PERIOD) : null,
-    validate: PROVIDERS[provider].freeValidation ? undefined : shouldValidateKey(provider, validateNow),
+    plan,
+    expiresOn: expiresOn || null,
+    budgetUsd: budgetUsd ? Number(budgetUsd) : null,
+    budgetPeriod: budgetPeriod ?? DEFAULT_BUDGET_PERIOD,
+    validate,
   };
 }

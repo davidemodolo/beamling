@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test, type TestContext } from "node:test";
-import { closePoolAfterTests, configureIntegrationEnv, skip, withEnv, createAccount, ask, eventData, storedAnswer } from "./helpers";
+import { closePoolAfterTests, configureIntegrationEnv, skip, withEnv, createAccount, ask, eventData, storedAnswer, saveKey } from "./helpers";
 
 configureIntegrationEnv();
 closePoolAfterTests();
@@ -289,5 +289,34 @@ test("retrying a failed answer replaces it and reuses the question", { skip }, a
   await assert.rejects(
     ask(userId, { conversationId: conversation.id, retryOf: first.assistantMessage.id, mode: "quick" }),
     (error) => error instanceof ApiError && error.code === "MESSAGE_NOT_FOUND",
+  );
+});
+
+test("one DeepSeek key runs both the model and search, and is read once", { skip }, async (t) => {
+  const { updateSettings } = await import("../../lib/server/repo");
+  const userId = await createAccount(t, { keys: false });
+  await saveKey(userId, "llm", "deepseek", "test-deepseek");
+  await updateSettings(userId, { llmModel: "deepseek:deepseek-flash", defaultSearchProvider: "deepseek" });
+
+  const { prepared } = await ask(userId, { question: "What is alpha?", mode: "quick" });
+  assert.equal(prepared.llm.provider, "deepseek");
+  assert.equal(prepared.llm.apiModel, "deepseek-flash");
+  assert.equal(prepared.searchProvider, "deepseek");
+  assert.equal(prepared.llmKey, "test-deepseek");
+  assert.equal(prepared.searchKey, "test-deepseek");
+  const { answer } = await storedAnswer(userId, prepared.conversationId);
+  assert.equal(answer?.status, "complete");
+  assert.equal(answer?.llmModel, "deepseek:deepseek-flash");
+  assert.equal(answer?.searchProvider, "deepseek");
+});
+
+test("a missing key names the provider of the selected model", { skip }, async (t) => {
+  const { ApiError } = await import("../../lib/server/http");
+  const { updateSettings } = await import("../../lib/server/repo");
+  const userId = await createAccount(t);
+  await updateSettings(userId, { llmModel: "deepseek:deepseek-flash" });
+  await assert.rejects(
+    ask(userId, { question: "Hi", mode: "quick" }),
+    (error) => error instanceof ApiError && error.code === "CREDENTIAL_MISSING" && error.provider === "deepseek",
   );
 });

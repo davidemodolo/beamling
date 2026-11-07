@@ -325,3 +325,99 @@ test("OpenRouter rejects a stream that ends without a completion marker", async 
     isApiError("PROVIDER_UNAVAILABLE", "openrouter"),
   );
 });
+
+test("DeepSeek search sends a query within 128 characters, with recency as an operator", async (t) => {
+  const { searchDeepSeek } = await import("../../lib/server/providers/deepseek");
+  const bodies: { query: string; count: number }[] = [];
+  mockFetch(t, (_url, init) => {
+    bodies.push(JSON.parse(String(init?.body)));
+    return jsonResponse({
+      results: [
+        { title: "Long read", url: "https://example.org/a", snippet: "Short.", summary: "A longer summary for models.", date: "2026-10-01T00:00:00Z" },
+        { title: "No summary", url: "https://example.org/b", snippet: "Only a snippet.", date: null },
+      ],
+    });
+  });
+  const sources = await searchDeepSeek("sk-ds", "word ".repeat(60), { count: 8, freshnessDays: 7 });
+  assert.ok(bodies[0].query.length <= 128);
+  assert.match(bodies[0].query, / after:\d{4}-\d{2}-\d{2}$/);
+  assert.equal(bodies[0].count, 8);
+  assert.deepEqual(
+    sources.map((source) => [source.url, source.snippet]),
+    [
+      ["https://example.org/a", "A longer summary for models."],
+      ["https://example.org/b", "Only a snippet."],
+    ],
+  );
+});
+
+test("DeepSeek keys are checked with the free balance endpoint", async (t) => {
+  const { validateDeepSeekKey, deepSeekError } = await import("../../lib/server/providers/deepseek");
+  const calls = mockFetch(t, () => jsonResponse({ is_available: true, balance_infos: [] }));
+  await validateDeepSeekKey("sk-ds");
+  assert.deepEqual(calls, ["https://api.deepseek.com/user/balance"]);
+
+  mockFetch(t, () => jsonResponse({ is_available: false, balance_infos: [] }));
+  await assert.rejects(() => validateDeepSeekKey("sk-ds"), isApiError("INSUFFICIENT_CREDITS", "deepseek"));
+  mockFetch(t, () => jsonResponse({ error: { message: "Authentication Fails" } }, 401));
+  await assert.rejects(() => validateDeepSeekKey("sk-ds"), isApiError("CREDENTIAL_INVALID", "deepseek"));
+  assert.equal(deepSeekError(429).code, "PROVIDER_RATE_LIMITED");
+  assert.equal(deepSeekError(503).code, "PROVIDER_UNAVAILABLE");
+});
+
+test("DeepSeek cost is estimated from tokens, at half price off-peak", async () => {
+  const { deepSeekCost, isDeepSeekPeak } = await import("../../lib/server/providers/deepseek");
+  const peak = new Date("2026-11-09T07:00:00Z"); // Monday
+  const weekend = new Date("2026-11-08T07:00:00Z"); // Sunday
+  assert.equal(isDeepSeekPeak(peak), true);
+  assert.equal(isDeepSeekPeak(new Date("2026-11-09T05:00:00Z")), false);
+  assert.equal(isDeepSeekPeak(weekend), false);
+  const step = {
+    response: { modelId: "deepseek-flash" },
+    usage: {
+      inputTokens: 1_000_000,
+      inputTokenDetails: { noCacheTokens: 500_000, cacheReadTokens: 500_000, cacheWriteTokens: undefined },
+      outputTokens: 1_000_000,
+      outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+      totalTokens: 2_000_000,
+    },
+  };
+  assert.ok(Math.abs(deepSeekCost(step, peak) - (0.003 + 0.15 + 1.2)) < 1e-9);
+  assert.ok(Math.abs(deepSeekCost(step, weekend) - (0.003 + 0.15 + 1.2) / 2) < 1e-9);
+});
+
+test("DeepSeek models stream through the shared layer with thinking off", async (t) => {
+  const { deepSeekModels } = await import("../../lib/server/providers/deepseek");
+  const requests: Record<string, unknown>[] = [];
+  const base = { id: "c1", object: "chat.completion.chunk", created: 1, model: "deepseek-flash" };
+  const body = [
+    { ...base, choices: [{ index: 0, delta: { role: "assistant", content: "Hello" }, finish_reason: null }] },
+    {
+      ...base,
+      choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+      usage: { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12, prompt_cache_hit_tokens: 0, prompt_cache_miss_tokens: 10 },
+    },
+  ]
+    .map((line) => `data: ${JSON.stringify(line)}\n\n`)
+    .join("");
+  mockFetch(t, (_url, init) => {
+    requests.push(JSON.parse(String(init?.body)));
+    return new Response(`${body}data: [DONE]\n\n`, { headers: { "Content-Type": "text/event-stream" } });
+  });
+  const result = await streamChat({
+    provider: "deepseek",
+    adapter: deepSeekModels,
+    key: "sk-ds",
+    apiModel: "deepseek-flash",
+    messages: [
+      { role: "system", content: "Be brief." },
+      { role: "user", content: "hi" },
+    ],
+    maxTokens: 5,
+  });
+  assert.equal(result.content, "Hello");
+  assert.equal(result.usage.promptTokens, 10);
+  assert.ok(result.usage.costUsd > 0);
+  assert.deepEqual(requests[0].thinking, { type: "disabled" });
+  assert.equal((requests[0].messages as { role: string }[])[0].role, "system");
+});

@@ -33,6 +33,7 @@ export interface ChatResult {
 export interface ModelStep {
   usage: LanguageModelUsage;
   providerMetadata?: ProviderMetadata;
+  response?: { modelId: string };
 }
 
 /** What a model provider contributes; everything else (streaming, errors, usage) is shared. */

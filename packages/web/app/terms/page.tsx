@@ -39,10 +39,12 @@ export default function TermsPage() {
 
       <h2>Your provider keys and costs</h2>
       <p>
-        Your OpenRouter and search keys belong to your own accounts with those providers. You are responsible for keeping
+        Your model and search keys belong to your own accounts with those providers. You are responsible for keeping
         those accounts in good standing, for complying with each provider&apos;s terms of service and acceptable-use policy,
         and for every cost they charge. Beamling only sends requests you start, and never switches providers silently on
-        your behalf. Use only keys you are entitled to use.
+        your behalf. Use only keys you are entitled to use. Some providers, such as DeepSeek, process data outside the
+        European Union, including in China. Beamling does not control any provider and is not responsible for how a
+        provider you choose handles your data.
       </p>
 
       <h2>Alpha availability</h2>

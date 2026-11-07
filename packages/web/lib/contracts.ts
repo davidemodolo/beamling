@@ -7,10 +7,10 @@ export type Mode = (typeof MODES)[number];
  * way. Adding a provider: list it here, describe it in `provider-catalog.ts` and register its
  * adapter in `server/providers/index.ts` (the compiler points at each place).
  */
-export const LLM_PROVIDER_IDS = ["openrouter"] as const;
+export const LLM_PROVIDER_IDS = ["openrouter", "deepseek"] as const;
 export type LlmProvider = (typeof LLM_PROVIDER_IDS)[number];
 
-export const SEARCH_PROVIDER_IDS = ["brave", "tavily", "exa"] as const;
+export const SEARCH_PROVIDER_IDS = ["brave", "tavily", "exa", "deepseek"] as const;
 export type SearchProvider = (typeof SEARCH_PROVIDER_IDS)[number];
 
 export type CredentialProvider = LlmProvider | SearchProvider;

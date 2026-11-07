@@ -39,6 +39,19 @@ export const PROVIDERS: { readonly [P in CredentialProvider]: ProviderInfo & { i
     placeholder: "sk-or-v1-...",
     keyUrl: "https://openrouter.ai/settings/keys",
     freeValidation: true,
+    notice:
+      "OpenRouter sends each request to one of several hosts, and some of them, such as DeepSeek's own, are in China. You can exclude hosts in your OpenRouter settings. Beamling does not control these hosts and takes no responsibility for how they handle your data.",
+  },
+  deepseek: {
+    id: "deepseek",
+    name: "DeepSeek",
+    shortName: "DeepSeek",
+    placeholder: "sk-...",
+    keyUrl: "https://platform.deepseek.com/api_keys",
+    freeValidation: true,
+    searchCostUsd: 0.00075,
+    notice:
+      "DeepSeek is based in China, and its models and search may process your questions there. Check DeepSeek's terms and privacy policy before you use it. Beamling does not control DeepSeek and takes no responsibility for how it handles your data.",
   },
   brave: {
     id: "brave",
@@ -85,6 +98,7 @@ export const MODELS: readonly ModelInfo[] = [
   { id: "anthropic/claude-haiku-4.5", name: "Claude Haiku 4.5", provider: "openrouter", apiModel: "anthropic/claude-haiku-4.5" },
   { id: "openai/gpt-5.2", name: "GPT-5.2", provider: "openrouter", apiModel: "openai/gpt-5.2" },
   { id: "google/gemini-3.8-flash", name: "Gemini 3.8 Flash", provider: "openrouter", apiModel: "google/gemini-3.8-flash" },
+  { id: "deepseek:deepseek-flash", name: "DeepSeek V4.1 Flash · direct", provider: "deepseek", apiModel: "deepseek-flash" },
 ];
 
 export const DEFAULT_LLM_MODEL = MODELS[0].id;

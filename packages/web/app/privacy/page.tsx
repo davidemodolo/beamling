@@ -90,10 +90,12 @@ export default function PrivacyPage() {
       <h2>Your keys and provider traffic</h2>
       <p>
         When you ask a question, Beamling sends it, with the search query, retrieved snippets and your key, to the providers
-        you chose: OpenRouter for the model (which may route the request to an upstream model provider), and Brave, Tavily
-        or Exa for search. These requests run under your own account with those providers, at your instruction, and those
-        providers process the data under their own terms and privacy policies, linked on the{" "}
-        <Link href="/subprocessors">data processors page</Link>. Beamling does not send your IP address, email or account
+        you chose: OpenRouter or DeepSeek for the model (OpenRouter may route the request to an upstream model provider),
+        and Brave, Tavily, Exa or DeepSeek for search. These requests run under your own account with those providers, at
+        your instruction, and those providers process the data under their own terms and privacy policies, linked on the{" "}
+        <Link href="/subprocessors">data processors page</Link>. Some of them process data outside the European Union:
+        DeepSeek, and some hosts OpenRouter can route to, are in China. Choosing such a provider is your decision; check its
+        terms before you use it. Beamling does not send your IP address, email or account
         identifier to them, does not route your traffic through a shared provider account, and does not sell your data or
         use it to train models.
       </p>
