@@ -1638,7 +1638,7 @@ Production runs on Cloud Run in `europe-west1` (Belgium), with Neon Postgres in 
   |---|---|---|
   | `beamling-app` | Cloud Run service | `cloudkms.cryptoKeyEncrypterDecrypter` on the one key; `secretmanager.secretAccessor` on the six app secrets |
   | `beamling-migrate` | Cloud Run job `beamling-migrate` | `secretmanager.secretAccessor` on `DATABASE_URL_DIRECT` only |
-  | `beamling-deploy` | GitHub Actions `deploy` job | `run.developer` on the project and `iam.serviceAccountUser` on the two accounts above; no IAM, secret or KMS rights |
+  | `beamling-deploy` | GitHub Actions `deploy` job | `run.developer` on the project, `iam.serviceAccountUser` on the two accounts above and `artifactregistry.reader` on the `ghcr` proxy (Cloud Run checks the deployer can read the image); no IAM, secret or KMS rights |
 
 - **Keyless deploys:** the `deploy` job exchanges GitHub's OIDC token through the Workload Identity pool `github` / provider `github-actions`. The provider's attribute condition accepts only the immutable repository and owner IDs, `refs/heads/main` and the `production` environment, and `beamling-deploy` can be impersonated only by identities with that repository ID (`principalSet://…/attribute.repository_id/1427513799`). The binding does not use the subject, whose format changes with GitHub's immutable-subject setting.
 - **Key:** the KMS key rotates every 90 days, and destroyed versions are recoverable for 120 days. Rows store the key name, not a version, so decrypt works across rotations. Admin, read and write audit logs are enabled for Cloud KMS.
