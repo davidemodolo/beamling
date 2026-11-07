@@ -2,9 +2,9 @@
 
 ## Requirements
 
-- Node.js 26 and pnpm (the version is pinned in `packageManager` in the root `package.json`)
-- Docker, for the production-parity stack and the test database
-- Python 3, only to preview this documentation site
+- Node.js 26 and pnpm (version in `packageManager`, root `package.json`)
+- Docker, for the parity stack and test database
+- Python 3, only for this docs site
 
 ## Running locally
 
@@ -13,37 +13,35 @@ pnpm install
 pnpm local:up                   # https://localhost
 ```
 
-The parity stack runs the production image behind Caddy, with Dex as the local OIDC provider and LocalStack KMS. Accept the local CA, sign in with `test@beamling.local` / `beamling`, then add real model and search provider keys. Stop it with `pnpm local:down`. Use this stack for auth, KMS, TLS and other production-path changes.
+Production image behind Caddy, with Dex OIDC and LocalStack KMS. Accept the local CA, sign in as `test@beamling.local` / `beamling`, add real keys. `pnpm local:down` stops it. Use it for auth, KMS, TLS and other production-path changes.
 
-`pnpm web:dev` is the fast development loop. Set `BEAMLING_FAKE_PROVIDERS=1` to try it without provider keys (any key starting with `test-` works). Fixture providers and `/api/auth/test-login` are test-only: do not use them to judge production behavior.
-
-Other scripts:
+`pnpm web:dev` is the fast loop; `BEAMLING_FAKE_PROVIDERS=1` switches to fixture providers (any `test-` key). Fixtures and `/api/auth/test-login` are test-only, not a guide to production behavior.
 
 | Command | What it does |
 |---|---|
-| `pnpm local:logs` | Follows the app container's logs in the parity stack |
-| `pnpm mascot:dev` / `mascot:build` | Develops or builds the mascot package (`web:dev` and `web:build` build it first) |
-| `pnpm db:migrate` | Applies the SQL migrations in `packages/web/drizzle` |
-| `pnpm --filter @beamling/web db:generate` | Generates a new migration from `lib/server/schema.ts` with drizzle-kit; always a new file |
-| `pnpm --filter @beamling/web db:studio` | Opens Drizzle Studio on `DATABASE_URL` |
-| `pnpm licenses:generate` | Regenerates the dependency license inventory that `licenses:check` compares against |
+| `pnpm local:logs` | Follows parity-stack app logs |
+| `pnpm mascot:dev` / `mascot:build` | Mascot package (`web:dev` and `web:build` build it first) |
+| `pnpm db:migrate` | Applies migrations in `packages/web/drizzle` |
+| `pnpm --filter @beamling/web db:generate` | New migration file from `lib/server/schema.ts` (drizzle-kit) |
+| `pnpm --filter @beamling/web db:studio` | Drizzle Studio on `DATABASE_URL` |
+| `pnpm licenses:generate` | Regenerates the license inventory for `licenses:check` |
 
 ## Tests and checks
 
 | Command | What it runs |
 |---|---|
-| `pnpm test` | Mascot tests, web unit tests, and the integration tests when `DATABASE_URL` points at a migrated test database |
-| `pnpm --filter @beamling/web test:e2e` | Playwright against a production build with fixture providers |
+| `pnpm test` | Mascot and web unit tests; integration tests if `DATABASE_URL` is a migrated test database |
+| `pnpm --filter @beamling/web test:e2e` | Playwright on a production build with fixtures |
 | `pnpm --filter @beamling/web typecheck` / `lint` | TypeScript and ESLint |
 | `pnpm check:unused` | knip: unused files, exports and dependencies |
 | `pnpm check:dupes` | jscpd: duplicated code |
-| `pnpm licenses:check` | Dependency licenses against the allowlist and the generated inventory |
+| `pnpm licenses:check` | Licenses against the allowlist and inventory |
 
-CI runs all of them, plus `pnpm audit` and a Gitleaks scan, on every pull request. The [tests page](reference/tests.md) lists the suites.
+CI runs these plus `pnpm audit` and Gitleaks on every pull request. Suites: [Tests](reference/tests.md).
 
 ## Releasing
 
-The version lives in the three `package.json` files and must match. `main` is protected, so a release is a pull request:
+The three `package.json` versions must match. Release through a pull request:
 
 ```sh
 git switch -c release/0.5.0
@@ -52,15 +50,15 @@ git commit -am "chore: release 0.5.0"
 gh pr create --fill
 ```
 
-When the merged commit on `main` changes the version, CI tags it, pushes the image to GHCR as that tag and `latest`, creates the GitHub release, runs the migration job and deploys the new revision to Cloud Run, then smoke-tests `/api/health`. A merge without a version bump does not deploy. `/api/health`, the landing footer and the sidebar show the running version and commit. See [Versioning and releases](reference/operations.md#versioning-and-releases).
+Merging a version bump releases and deploys ([Versioning and releases](reference/operations.md#versioning-and-releases)).
 
 ## Documentation
 
-This site is built with [MkDocs](https://www.mkdocs.org/) and [Material for MkDocs](https://squidfunk.github.io/mkdocs-material/) from the `docs/` folder and published to GitHub Pages on every push to `main` that touches it.
+[MkDocs](https://www.mkdocs.org/) with [Material](https://squidfunk.github.io/mkdocs-material/), published to GitHub Pages from `main`.
 
 ```sh
 python3 -m venv .venv-docs && .venv-docs/bin/pip install -r docs/requirements.txt
 .venv-docs/bin/mkdocs serve      # http://127.0.0.1:8000
 ```
 
-Update the [technical reference](reference/index.md) in the same change as the code it describes. Keep planned behavior in the [product specification](spec/index.md) only.
+Update the [reference](reference/index.md) with the code; planned behavior goes in the [specification](spec/index.md).
