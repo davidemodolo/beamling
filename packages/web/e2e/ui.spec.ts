@@ -118,10 +118,10 @@ test("a different search provider can be selected for an answer", async ({ page 
   await ask(page, "Use Tavily for this answer");
   const answer = answers(page).last();
   await expect(answer).toContainText("fixture answer", { timeout: 20_000 });
-  await expect(answer.locator(".badge").filter({ hasText: "Tavily" })).toBeVisible();
-  await expect(answer).toContainText("est. (1 search)");
+  await expect(answer.locator(".answer-footer .meta")).toContainText("Tavily");
+  await expect(answer.locator(".answer-footer .meta [title*='1 search']")).toHaveCount(1);
   await page.reload();
-  await expect(answers(page).last().locator(".badge").filter({ hasText: "Tavily" })).toBeVisible();
+  await expect(answers(page).last().locator(".answer-footer .meta")).toContainText("Tavily");
 });
 
 test("a search provider without a key is marked and asks for a key", async ({ page }) => {
