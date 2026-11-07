@@ -20,7 +20,7 @@ export const FREE_STEPS = [
   },
   {
     title: "Get a Brave Search key",
-    body: "Brave gives $5 of search credit every month, about 1,000 searches. It asks for a card but charges nothing within the credit.",
+    body: "Brave gives $5 of search credit every month, about 1,000 searches. No card needed.",
     cost: "$5 credit / month",
     href: PROVIDERS.brave.keyUrl,
   },

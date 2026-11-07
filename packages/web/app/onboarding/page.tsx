@@ -336,8 +336,8 @@ export default function OnboardingPage() {
               lead={
                 path === "free" ? (
                   <>
-                    Brave gives every account $5 of search credit each month, about 1,000 searches. It asks for a card to
-                    prevent abuse and charges nothing while you stay within the credit. Create a key on the Search plan.
+                    Brave gives every account $5 of search credit each month, about 1,000 searches, with no card needed.
+                    Create a key on the Search plan.
                   </>
                 ) : (
                   "Search finds the sources behind each answer. You can switch provider for any single question."
