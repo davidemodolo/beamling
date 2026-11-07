@@ -104,7 +104,7 @@ function mockProviders(t: TestContext) {
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     calls.push(url);
-    if (url.startsWith("https://api.search.brave.com")) {
+    if (new URL(url).hostname === "api.search.brave.com") {
       return new Response(
         JSON.stringify({
           web: { results: [{ title: "Alpha source", url: "https://example.org/alpha", description: "Alpha evidence." }] },
@@ -165,7 +165,7 @@ test("Deeper's agent loop calls the search tool and sums step cost", { skip }, a
   withEnv(t, { BEAMLING_FAKE_PROVIDERS: "0", BRAVE_MIN_INTERVAL_MS: "0" });
   const { calls } = mockProviders(t);
   const { events, prepared } = await ask(userId, { question: "Prove the agent loop", mode: "deeper" });
-  assert.equal(calls.filter((url) => url.startsWith("https://api.search.brave.com")).length, 1);
+  assert.equal(calls.filter((url) => new URL(url).hostname === "api.search.brave.com").length, 1);
   const search = eventData<{ query: string; status: string }>(events, "search");
   assert.equal(search.query, "alpha evidence");
   assert.equal(eventData<{ upstreamProvider: string }>(events, "usage").upstreamProvider, "MockProvider");
@@ -183,7 +183,7 @@ test("Quick runs the agent for exactly one search, written with the conversation
 
   const first = await ask(userId, { question: "What is alpha?", mode: "quick" });
   assert.equal(toolRequests.length, 1, "Quick stops after the forced search step");
-  assert.equal(calls.filter((url) => url.startsWith("https://api.search.brave.com")).length, 1);
+  assert.equal(calls.filter((url) => new URL(url).hostname === "api.search.brave.com").length, 1);
   assert.equal(eventData<{ query: string }>(first.events, "search").query, "alpha evidence");
   const { answer } = await storedAnswer(userId, first.prepared.conversationId);
   assert.equal(answer?.status, "complete");
