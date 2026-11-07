@@ -49,7 +49,7 @@ export function SiteFooter() {
       <div className="lp-container l-footer-grid">
         <div className="l-footer-brand">
           <Brand />
-          <p>Answers you can check. Free and open source, on your own keys.</p>
+          <p>Answers you can check.</p>
         </div>
         <div>
           <h3>Product</h3>

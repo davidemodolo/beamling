@@ -32,12 +32,12 @@ export default async function WelcomePage({ searchParams }: { searchParams: Prom
           <p className="lead">
             {updated
               ? `The terms and privacy notice were updated on ${LEGAL_LAST_UPDATED}. Review them and accept to keep using Beamling.`
-              : "Beamling is free and open source. It works with your own provider keys, so you stay in control of your accounts and costs."}
+              : "Beamling is free, open source and runs on your own keys."}
           </p>
           <ul className="hint" style={{ display: "grid", gap: 6, paddingLeft: 18 }}>
             <li>Answers are AI-generated and can be wrong. Check the sources.</li>
             <li>You are responsible for your provider keys, their terms and what they charge.</li>
-            <li>Your conversations and keys are encrypted at rest; you can export or delete everything at any time.</li>
+            <li>Your data is encrypted; export or delete it any time.</li>
           </ul>
           <TermsAcceptance version={LEGAL_VERSION} next={next} minimumAge={MINIMUM_AGE} />
           <p className="hint">

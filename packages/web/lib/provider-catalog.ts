@@ -41,7 +41,7 @@ export const PROVIDERS: { readonly [P in CredentialProvider]: ProviderInfo & { i
     freeValidation: true,
     reportsCost: true,
     notice:
-      "OpenRouter sends each request to one of several hosts, and some of them, such as DeepSeek's own, are in China. You can exclude hosts in your OpenRouter settings. Beamling does not control these hosts and takes no responsibility for how they handle your data.",
+      "Some OpenRouter hosts are in China; you can exclude them in OpenRouter's settings. Beamling does not control these hosts or how they handle your data.",
   },
   deepseek: {
     id: "deepseek",
@@ -52,7 +52,7 @@ export const PROVIDERS: { readonly [P in CredentialProvider]: ProviderInfo & { i
     freeValidation: true,
     searchCostUsd: 0.00075,
     notice:
-      "DeepSeek is based in China, and its models and search may process your questions there. Check DeepSeek's terms and privacy policy before you use it. Beamling does not control DeepSeek and takes no responsibility for how it handles your data.",
+      "DeepSeek is based in China and may process your questions there. Beamling does not control DeepSeek or how it handles your data.",
   },
   brave: {
     id: "brave",

@@ -5,7 +5,7 @@ import { getCurrentUser } from "@/lib/server/session";
 export const metadata: Metadata = {
   title: { absolute: "Beamling — answers you can check" },
   description:
-    "A free, open-source answer engine that runs on your own model and search keys. Every claim links to its source.",
+    "A free, open-source answer engine on your own keys. Every claim links to its source.",
   alternates: { canonical: "/" },
   openGraph: { url: "/" },
 };

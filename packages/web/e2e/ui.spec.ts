@@ -52,7 +52,7 @@ test("custom setup with DeepSeek asks for one key that serves the model and sear
   await page.locator("#llm-key").fill("test-deepseek-key");
   await page.getByRole("button", { name: "Continue" }).click();
   await page.locator("#search-provider").selectOption("deepseek");
-  await expect(page.getByText("Uses your DeepSeek key from the model step.")).toBeVisible();
+  await expect(page.getByText("Uses your DeepSeek key.")).toBeVisible();
   await expect(page.locator("#search-key")).toHaveCount(0);
   await page.getByRole("button", { name: "Start asking" }).click();
   await expect(page).toHaveURL(/\/chat$/);

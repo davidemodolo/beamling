@@ -72,8 +72,8 @@ export function ValidateNowField({ id, checked, onChange }: { id: string; checke
       </label>
       <p className="hint">
         {checked
-          ? "Checking runs one search request on your key."
-          : "The key is saved as unverified. Use Validate in Settings to check it later; a wrong key fails at the first answer."}
+          ? "Uses one search request."
+          : "Saved unverified. You can validate it later in Settings."}
       </p>
     </div>
   );
