@@ -120,6 +120,9 @@ for sa in "$APP_SA" "$MIGRATE_SA"; do
   g iam service-accounts add-iam-policy-binding "$sa" --member "serviceAccount:$DEPLOY_SA" \
     --role roles/iam.serviceAccountUser >/dev/null
 done
+# Cloud Run checks that the deployer can read the image it deploys; reader on the proxy only.
+g artifacts repositories add-iam-policy-binding ghcr --location "$REGION" \
+  --member "serviceAccount:$DEPLOY_SA" --role roles/artifactregistry.reader >/dev/null
 
 step "Keyless GitHub OIDC (production environment on main only)"
 exists g iam workload-identity-pools describe github --location global ||
