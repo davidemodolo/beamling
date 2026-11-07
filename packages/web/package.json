@@ -13,7 +13,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node scripts/migrate.mjs",
     "db:studio": "drizzle-kit studio",
-    "test": "tsx --test tests/*.test.ts",
+    "test": "tsx --test 'tests/unit/*.test.ts' && tsx --test --test-concurrency=1 'tests/integration/*.test.ts'",
     "test:e2e": "playwright test"
   },
   "dependencies": {

@@ -10,7 +10,7 @@
     "packages/web": {
       "entry": [
         "scripts/*.mjs",
-        "tests/*.test.ts",
+        "tests/**/*.test.ts",
         "e2e/*.spec.ts"
       ],
       "ignore": [
