@@ -7,50 +7,53 @@ import {
   connectKeys,
   createConversation,
   KILL_SWITCH_SECRET,
+  removeKeys,
   sidebarItem,
   signIn,
   watchConsole,
   workingAnswer,
 } from "./helpers";
 
-test("onboarding connects keys and keeps the saved model and mode", async ({ page }) => {
+test("the free setup connects OpenRouter and Brave, then setup is skipped", async ({ page }) => {
   const problems = watchConsole(page);
   await signIn(page.request);
-  await page.goto("/onboarding");
+  await page.goto("/chat");
+  await expect(page).toHaveURL(/\/onboarding$/);
+  await page.getByRole("button", { name: /Start free/ }).click();
+  await expect(page.getByRole("heading", { name: "Connect a free model" })).toBeVisible();
   await page.locator("#llm-key").fill("test-openrouter-key");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByRole("heading", { name: "Connect Brave Search" })).toBeVisible();
   await page.locator("#search-key").fill("test-brave-key");
-  await page.getByRole("button", { name: "Start asking" }).click();
-  await expect(page).toHaveURL(/\/chat$/);
-
-  // A returning user with saved preferences revisits onboarding.
-  const saved = await page.request.patch("/api/settings", {
-    data: { llmModel: "anthropic/claude-haiku-4.5", defaultMode: "deep" },
-  });
-  expect(saved.ok()).toBe(true);
-  await page.goto("/onboarding");
-  await expect(page.locator("#llm-model")).toHaveValue("anthropic/claude-haiku-4.5");
   await page.getByRole("button", { name: "Start asking" }).click();
   await expect(page).toHaveURL(/\/chat$/);
   const state = await (await page.request.get("/api/state")).json();
   expect(state.settings).toEqual({
-    llmModel: "anthropic/claude-haiku-4.5",
+    llmModel: "google/gemma-4-31b-it:free",
     defaultSearchProvider: "brave",
-    defaultMode: "deep",
+    defaultMode: "quick",
     analyticsOptOut: false,
   });
+  expect(state.credentials.find((credential: { provider: string }) => credential.provider === "brave").plan).toBe("free");
+
+  // With both keys saved, setup is never shown again.
+  await page.goto("/onboarding");
+  await expect(page).toHaveURL(/\/chat$/);
   expect(problems).toEqual([]);
 });
 
-test("onboarding with DeepSeek asks for one key that serves the model and search", async ({ page }) => {
+test("custom setup with DeepSeek asks for one key that serves the model and search", async ({ page }) => {
   const problems = watchConsole(page);
   await signIn(page.request);
   await page.goto("/onboarding");
+  await page.getByRole("button", { name: /Use my own providers/ }).click();
   await page.locator("#llm-model").selectOption("deepseek:deepseek-flash");
-  await page.locator("#search-provider").selectOption("deepseek");
-  await expect(page.getByText("Uses your DeepSeek key from above.")).toBeVisible();
-  await expect(page.locator("#search-key")).toHaveCount(0);
   await expect(page.getByText(/DeepSeek is based in China/)).toBeVisible();
   await page.locator("#llm-key").fill("test-deepseek-key");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.locator("#search-provider").selectOption("deepseek");
+  await expect(page.getByText("Uses your DeepSeek key from the model step.")).toBeVisible();
+  await expect(page.locator("#search-key")).toHaveCount(0);
   await page.getByRole("button", { name: "Start asking" }).click();
   await expect(page).toHaveURL(/\/chat$/);
   const state = await (await page.request.get("/api/state")).json();
@@ -62,16 +65,47 @@ test("onboarding with DeepSeek asks for one key that serves the model and search
   expect(problems).toEqual([]);
 });
 
-test("onboarding saves a key for a search provider without key limits", async ({ page }) => {
+test("a saved model key skips to the search step", async ({ page }) => {
   await signIn(page.request);
-  await page.goto("/onboarding");
+  const saved = await page.request.post("/api/credentials", { data: { provider: "openrouter", key: "test-openrouter-key" } });
+  expect(saved.status()).toBe(201);
+  await page.goto("/chat");
+  await expect(page).toHaveURL(/\/onboarding$/);
+  await expect(page.getByRole("heading", { name: "Choose your search provider" })).toBeVisible();
+  await expect(page.locator("#llm-key")).toHaveCount(0);
   await page.locator("#search-provider").selectOption("tavily");
-  await page.locator("#llm-key").fill("test-openrouter-key");
   await page.locator("#search-key").fill("test-tavily-key");
   await page.getByRole("button", { name: "Start asking" }).click();
   await expect(page).toHaveURL(/\/chat$/);
   const state = await (await page.request.get("/api/state")).json();
   expect(state.credentials.map((credential: { provider: string }) => credential.provider).sort()).toEqual(["openrouter", "tavily"]);
+  expect(state.settings.defaultSearchProvider).toBe("tavily");
+});
+
+test("keys saved for other providers are used without asking for Brave", async ({ page }) => {
+  await signIn(page.request);
+  for (const provider of ["openrouter", "tavily"]) {
+    const saved = await page.request.post("/api/credentials", { data: { provider, key: `test-${provider}-key` } });
+    expect(saved.status()).toBe(201);
+    // The defaults follow the first key saved for each kind.
+    if (provider === "tavily") expect((await saved.json()).settings.defaultSearchProvider).toBe("tavily");
+  }
+  await page.goto("/chat");
+  await expect(page).toHaveURL(/\/chat$/);
+  await expect(page.getByLabel("Search provider")).toHaveValue("tavily");
+});
+
+test("the landing page offers a free start, or the app once signed in", async ({ page }) => {
+  await page.goto("/");
+  const nav = page.getByRole("navigation", { name: "Main" });
+  await expect(nav.getByRole("link", { name: /Start free/ })).toHaveAttribute("href", "/chat");
+  await expect(nav.getByRole("link", { name: "Sign in" })).toBeVisible();
+  await connectKeys(page.request);
+  await page.goto("/");
+  await expect(nav.getByRole("link", { name: /Open the app/ })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Sign in" })).toHaveCount(0);
+  await nav.getByRole("link", { name: /Open the app/ }).click();
+  await expect(page).toHaveURL(/\/chat$/);
 });
 
 test("a Quick answer streams with citations, cost breakdown and sources", async ({ page }) => {
@@ -265,8 +299,9 @@ test("a reload mid-answer shows the stored outcome, not a blank answer", async (
 });
 
 test("a failure before anything is stored can be retried as a new question", async ({ page }) => {
-  await signIn(page.request);
+  await connectKeys(page.request);
   await page.goto("/chat");
+  await removeKeys(page.request);
   await ask(page, "No keys yet");
   const failed = answers(page).last();
   await expect(failed).toContainText("Key needed");
@@ -278,8 +313,9 @@ test("a failure before anything is stored can be retried as a new question", asy
 });
 
 test("a new question clears an earlier failure that never reached the server", async ({ page }) => {
-  await signIn(page.request);
+  await connectKeys(page.request);
   await page.goto("/chat");
+  await removeKeys(page.request);
   await ask(page, "Before keys");
   await expect(answers(page).last()).toContainText("Key needed");
   await connectKeys(page.request);
@@ -345,9 +381,10 @@ test("a new account accepts the terms before reaching the app", async ({ page })
   await expect(accept).toBeDisabled();
   await page.getByLabel(/I accept the Terms/).check();
   await accept.click();
-  await expect(page).toHaveURL(/\/chat$/);
+  // No keys yet: the app sends the new account on to setup.
+  await expect(page).toHaveURL(/\/onboarding$/);
   await page.goto("/welcome");
-  await expect(page).toHaveURL(/\/chat$/);
+  await expect(page).toHaveURL(/\/onboarding$/);
 });
 
 test("/welcome has no CSP violations or serious accessibility issues", async ({ page }) => {
@@ -364,7 +401,8 @@ test("/welcome has no CSP violations or serious accessibility issues", async ({ 
 for (const path of ["/", "/chat", "/onboarding", "/privacy", "/terms", "/licenses", "/cookies", "/subprocessors", "/security", "/status", "/contact"]) {
   test(`${path} has no CSP violations or serious accessibility issues`, async ({ page }) => {
     const problems = watchConsole(page);
-    if (path === "/chat" || path === "/onboarding") await signIn(page.request);
+    if (path === "/chat") await connectKeys(page.request);
+    if (path === "/onboarding") await signIn(page.request);
     await page.goto(path);
     await page.waitForLoadState("networkidle");
     expect(problems).toEqual([]);

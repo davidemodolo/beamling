@@ -6,7 +6,7 @@ The repository contains four layers.
 |---|---|---|
 | `packages/mascot/test/geometry.test.mjs` | 6 | Eye/beam geometry, expressions, state mapping |
 | `packages/web/tests/unit/crypto.test.ts` | 7 | KMS-backed credential encryption and rotation, workspace-key re-wrap by the rotation script, integrity vs KMS-outage decryption errors, hidden last four for short keys, fail-closed plaintext reads |
-| `packages/web/tests/unit/providers.test.ts` | 22 | Model allowlist, Brave/Tavily/Exa/OpenRouter/DeepSeek validation, search and status mapping, 429 retry, network vs abort, unsafe URLs, malformed provider bodies, streams without a finish reason, Tavily free validation, DeepSeek query limit, cost estimate and thinking switch |
+| `packages/web/tests/unit/providers.test.ts` | 25 | Model allowlist and the free model, setup state and defaults that follow saved keys, Brave/Tavily/Exa/OpenRouter/DeepSeek validation, search and status mapping, 429 retry, network vs abort, unsafe URLs, malformed provider bodies, streams without a finish reason, Tavily free validation, DeepSeek query limit, cost estimate and thinking switch |
 | `packages/web/tests/unit/answer.test.ts` | 8 | Citations, ranking, freshness, language, prompt injection, history handling, shared stream events |
 | `packages/web/tests/unit/security.test.ts` | 11 | Client IP HMAC, derived keys, test-only sign-in, same-origin anchors, production config, body limits, provider-safe log redaction, credential status, signup allowlists, English shutdown notice |
 | `packages/web/tests/unit/analytics.test.ts` | 13 | Analytics allowlist, identity, delivery, opt-out, deletion and kill-switch deletion, shared client, erasure backoff, PostHog host rules |
@@ -14,7 +14,7 @@ The repository contains four layers.
 | `packages/web/tests/integration/streams.test.ts` | 10 | One stream per conversation, global and per-account concurrency, lock timeout, stop flag, mid-answer delete, stale repair, empty-conversation cleanup, interrupted-terminal race, the new-stream flag |
 | `packages/web/tests/integration/conversations.test.ts` | 4 | Pinned ordering, pagination, the 100-conversation cap, 60-day expiry |
 | `packages/web/tests/integration/accounts.test.ts` | 12 | Session revocation and cleanup, inactive/unaccepted account cleanup, data export, analytics opt-out and erasure queue, sign-up cap, rate limits, Brave spacing, key replacement, unverified keys, scheduled shutdown |
-| `packages/web/e2e/*.spec.ts` | 46 | 15 API checks, 20 UI flows and 11 public-route variants for CSP and axe; the terms gate refuses the API until acceptance and a new account accepts on `/welcome`, data export and analytics opt-out work, `security.txt` is served, only Brave and Exa keys skip validation; Quick checks search details, reasoning and tables, provider selection checks Tavily and marks a provider without a key, an Exa key is saved unvalidated and checked later, the killswitch rejects new streams and metrics stay secret-protected, the license page and its footer links resolve, Deeper checks the third mode, sidebar checks pinning and title search, and a scheduled shutdown is announced in the app, at sign-in and on the status page |
+| `packages/web/e2e/*.spec.ts` | 48 | 15 API checks, 22 UI flows and 11 public-route variants for CSP and axe; the terms gate refuses the API until acceptance and a new account accepts on `/welcome`, data export and analytics opt-out work, `security.txt` is served, only Brave and Exa keys skip validation; Quick checks search details, reasoning and tables, provider selection checks Tavily and marks a provider without a key, an Exa key is saved unvalidated and checked later, the killswitch rejects new streams and metrics stay secret-protected, the license page and its footer links resolve, Deeper checks the third mode, sidebar checks pinning and title search, and a scheduled shutdown is announced in the app, at sign-in and on the status page |
 
 Commands:
 
@@ -48,7 +48,7 @@ The Playwright suite checks:
 - `validate: false` is refused for an OpenRouter key.
 - The killswitch rejects new streams with `SERVICE_BUSY`/`Retry-After`, requires the kill secret, and keeps metrics behind their separate secret.
 - The generated license page lists production packages, and its footer links resolve.
-- Onboarding preserves saved model and mode; settings accepts a launch provider and rejects an unknown one.
+- The free setup saves OpenRouter and Brave keys and the free model, and setup is skipped afterwards; custom setup with DeepSeek asks for one key; a saved model key starts at the search step; keys for other providers move the defaults instead of asking for Brave; the landing CTAs follow the session.
 - Quick answers stream citations, costs and sources.
 - A Tavily answer can be selected per question and keeps its provider badge after reload.
 - Answers stay isolated per conversation when switching.

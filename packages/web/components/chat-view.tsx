@@ -16,7 +16,7 @@ import { api, errorMessage } from "@/lib/api";
 import { useIsMobile } from "@/lib/hooks/use-is-mobile";
 import { useToast } from "@/lib/hooks/use-toast";
 import { isSearchProvider } from "@/lib/contracts";
-import { llmModelName, searchProviderName } from "@/lib/provider-catalog";
+import { llmModelName, searchProviderName, setupState, usableProviders } from "@/lib/provider-catalog";
 import { useAccount, useConversations, type ThreadMessage } from "@/lib/store";
 import { MODE_LABELS } from "@/lib/modes";
 import type { Mode, SearchProvider } from "@/lib/types";
@@ -204,6 +204,8 @@ function ChatPane({ conversationId }: ChatViewProps) {
   const notFound = !!conversationId && !loadFailed && thread?.status === "missing";
   const threadError = !!conversationId && thread?.status === "error";
   const retryId = live ? undefined : retryableId(messages);
+  // Keys deleted in Settings during this visit; opening /chat again goes back to setup.
+  const setupMissing = ready && !!user && !setupState(usableProviders(credentials)).complete;
 
   return (
     <main className="main-pane" id="main">
@@ -240,7 +242,7 @@ function ChatPane({ conversationId }: ChatViewProps) {
                 onRetry={() => activeId && void loadThread(activeId).catch(() => {})}
               />
             ) : messages.length === 0 && !live ? (
-              <EmptyState />
+              <EmptyState onFinishSetup={setupMissing ? () => openSettings("keys") : undefined} />
             ) : (
               <>
                 {thread?.hasMore ? (

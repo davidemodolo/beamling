@@ -22,7 +22,7 @@ Everything else is shared. `streamChat` (planner, gap review and the final answe
 | `400` with context-length wording | `CONTEXT_TOO_LARGE` |
 | `401`, `403` | `CREDENTIAL_INVALID` (HTTP 400 to the browser) |
 | `402` | `INSUFFICIENT_CREDITS` |
-| `404` | `MODEL_NOT_FOUND` |
+| `404` | `MODEL_NOT_FOUND`, or `MODEL_PRIVACY_SETTING` when the message names the data policy |
 | `429` | `PROVIDER_RATE_LIMITED` |
 | `408`, `5xx` | `PROVIDER_UNAVAILABLE` |
 | Other `4xx` | `PROVIDER_ERROR` |

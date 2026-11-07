@@ -25,7 +25,7 @@ Error envelope:
 | Method | Path | Auth | Body / query | Success |
 |---|---|---|---|---|
 | `GET` | `/api/auth/login` | None | `?next=` | 307 to the OIDC provider |
-| `GET` | `/api/auth/callback/google` | OIDC transaction cookie | `code`, `state` | 307 to `/onboarding` or `/chat` |
+| `GET` | `/api/auth/callback/google` | OIDC transaction cookie | `code`, `state` | 307 to the stored return path (default `/chat`) |
 | `POST` | `/api/auth/logout` | Optional, terms not required | `?scope=all` signs out every session | `{ ok: true }` and cleared cookie |
 | `GET` | `/api/state` | Required | — | `{ user, conversations, nextCursor, conversationCount, credentials, settings }` |
 | `POST` | `/api/chat` | Required | `{ conversationId?, question?, retryOf?, mode, searchProvider? }` | SSE stream |
@@ -114,6 +114,7 @@ The response is a server-sent event stream ([Streaming](streaming.md)). A direct
 - `anthropic/claude-haiku-4.5`
 - `openai/gpt-5.2`
 - `google/gemini-3.8-flash`
+- `google/gemma-4-31b-it:free` (free on OpenRouter, within its daily request limit)
 - `deepseek:deepseek-flash` (DeepSeek direct, with a DeepSeek key)
 
 An unknown model returns `MODEL_NOT_ALLOWED`; an unknown search provider returns `INVALID_INPUT`. `defaultMode` is `quick`, `deep` or `deeper`.

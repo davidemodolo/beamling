@@ -162,7 +162,8 @@ export function LoadErrorState({ message, onRetry }: { message: string; onRetry:
   );
 }
 
-export function EmptyState() {
+/** The new-question screen. `onFinishSetup` is set when a model or search key is missing. */
+export function EmptyState({ onFinishSetup }: { onFinishSetup?: () => void }) {
   return (
     <div className="thread-empty">
       <div className="empty-hero">
@@ -173,6 +174,17 @@ export function EmptyState() {
           Ask anything. <em>See the sources.</em>
         </h1>
         <p>Beamling searches with your keys, reads what it finds, and shows you where every answer comes from.</p>
+        {onFinishSetup ? (
+          <div className="notice notice-warn" role="status">
+            <Icon name="key" size={16} />
+            <div>
+              <strong>A key is missing.</strong> Answers need a model key and a search key.{" "}
+              <button type="button" className="btn btn-secondary btn-sm" onClick={onFinishSetup}>
+                Add a key
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

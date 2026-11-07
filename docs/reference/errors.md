@@ -23,6 +23,8 @@ Errors are stable strings; the UI maps them to copy and actions.
 | `CREDENTIAL_UNREADABLE` | Stored key cannot be decrypted | 400 |
 | `INSUFFICIENT_CREDITS` | Model or search provider `402`; a DeepSeek key without balance at validation | 402 |
 | `MODEL_NOT_FOUND` | Model provider `404` | 400 |
+| `MODEL_PRIVACY_SETTING` | OpenRouter `404` naming the account's data policy (free models blocked) | 400 |
+| `FREE_LIMIT_REACHED` | OpenRouter `429` `free-models-per-day` | 429 |
 | `BRAVE_PLAN_MISSING_SEARCH` | Brave key has no Search plan | 400 |
 | `SEARCH_PLAN_MISSING` | Tavily key has no Search access (`432`) | 400 |
 | `QUOTA_EXCEEDED` | Tavily plan limit reached (`433`) | 402 |
@@ -49,6 +51,6 @@ Errors are stable strings; the UI maps them to copy and actions.
 | `GENERATION_TIMEOUT` | Stored when the time limit is reached | — |
 | `CLIENT_DISCONNECT` | Stored on an answer stopped because the browser disconnected | — |
 
-The UI maps `CREDENTIAL_MISSING`, `CREDENTIAL_INVALID`, `CREDENTIAL_UNREADABLE`, `BRAVE_PLAN_MISSING_SEARCH`, `SEARCH_PLAN_MISSING` and `MODEL_NOT_FOUND` to Settings; `UNAUTHENTICATED` to a page reload (which leads to sign-in); `TERMS_REQUIRED` to `/welcome`; most provider failures to retry. `GENERATION_TIMEOUT` and `INTERRUPTED` appear on the stopped/error answer card.
+The UI maps `CREDENTIAL_MISSING`, `CREDENTIAL_INVALID`, `CREDENTIAL_UNREADABLE`, `BRAVE_PLAN_MISSING_SEARCH`, `SEARCH_PLAN_MISSING`, `MODEL_NOT_FOUND`, `MODEL_PRIVACY_SETTING` and `FREE_LIMIT_REACHED` to Settings; `UNAUTHENTICATED` to a page reload (which leads to sign-in); `TERMS_REQUIRED` to `/welcome`; most provider failures to retry. `GENERATION_TIMEOUT` and `INTERRUPTED` appear on the stopped/error answer card.
 
 `@/lib/api.ts` also synthesizes client-side codes: `NETWORK`, `TIMEOUT`, `STREAM_ENDED`, `REQUEST_FAILED` and `INVALID_RESPONSE`.

@@ -9,7 +9,7 @@ Alpha 1 is the first end-to-end, BYOK product slice. It is deliberately narrow: 
 | Area | Feature | Priority | State |
 |---|---|---|---|
 | Auth | Google-only OIDC sign-in, database-backed session cookie, no guest workspaces. | P0 | Implemented |
-| Onboarding | Add OpenRouter key, choose a search provider and add its key, declare Brave plan and optional key limits, validate both on one screen | P0 | Implemented: provider picker plus Brave key metadata |
+| Onboarding | Free path (free OpenRouter model + Brave) or own providers; model key, then search key; Brave plan and optional key limits | P0 | Implemented |
 | Models | Five curated OpenRouter models; DeepSeek V4.1 Flash is the default | P0 | Implemented |
 | Chat | Ask a question, stream the answer, render inline citations | P0 | Implemented |
 | Retrieval | Brave, Tavily or Exa; titles, URLs and snippets; one selected provider per answer | P0 | Implemented |
@@ -42,6 +42,7 @@ Alpha 1 is the first end-to-end, BYOK product slice. It is deliberately narrow: 
   - `anthropic/claude-haiku-4.5`
   - `openai/gpt-5.2`
   - `google/gemini-3.8-flash`
+  - `google/gemma-4-31b-it:free` (the free setup path; added 2026-11-07)
 - Do not expose OpenRouter's auto-router in Alpha 1; it would hide model selection and break "no silent model switch."
 - Model IDs come from the allowlist, not free-text input. Refresh the list from `GET /api/v1/models` at implementation time and remove deprecated IDs.
 - The resolved OpenRouter model ID is stored per answer.
@@ -142,11 +143,11 @@ The current flow is one model provider (OpenRouter or DeepSeek) plus one selecte
 3. `GET /api/auth/login` creates a short-lived, signed OIDC transaction cookie containing `state`, `nonce`, PKCE verifier and the post-login return path, then redirects to Google's authorization endpoint with scopes `openid email profile`.
 4. Google redirects to `GET /api/auth/callback/google`. The server verifies the transaction cookie, `state`, `nonce`, PKCE, the ID-token signature, issuer, audience, expiry and `email_verified`. An unverified email is rejected with `AUTH_EMAIL_UNVERIFIED`.
 5. The server upserts one account by Google subject (`sub`), stores the verified email, display name and avatar URL, creates an opaque session, hashes its token at rest and sets the session cookie. A returning Google subject resumes the same account.
-6. The user is redirected to `/onboarding` (or `/chat` when keys are already connected).
-7. Onboarding step 1: the user adds an OpenRouter key. The client sends it once to the server over HTTPS.
+6. The user returns to `/chat`, which redirects to `/onboarding` until a model key and a search key are saved.
+7. The user picks **Start free** (a free OpenRouter model and Brave) or **Use my own providers**. Step 1: the user adds a model key. The client sends it once to the server over HTTPS.
 8. The server validates it with `GET https://openrouter.ai/api/v1/key`, then stores it encrypted. The client receives only the masked last four characters, status and validation time; provider limit/label details are not returned today.
-9. On the same screen, the user chooses Brave, Tavily or Exa and adds its key. For Brave, the user also selects **Free (1 request/second)** or **Paid / provider plan** and may declare an optional key expiry date and budget. Tavily is checked through its free usage endpoint. Brave and Exa require one search request to validate, so the user may save the key unverified and validate it later.
-10. The user confirms the OpenRouter model (DeepSeek V4.1 Flash by default) and clicks "Start asking".
+9. Step 2: the user chooses a search provider (Brave on the free path) and adds its key. For Brave, the user also selects **Free (1 request/second)** or **Paid / provider plan** and may declare an optional key expiry date and budget. Tavily is checked through its free usage endpoint. Brave and Exa require one search request to validate, so the user may save the key unverified and validate it later.
+10. The user clicks "Start asking"; the chosen model and search provider become the defaults.
 11. The chat opens empty, ready for the first question. Onboarding is complete.
 
 There is no guest workspace, anonymous session or account-less path. `/login` is the only entry point to `/chat` and `/onboarding`; the landing page remains public.

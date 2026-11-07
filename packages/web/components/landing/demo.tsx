@@ -18,8 +18,8 @@ const LABELS: Record<string, string> = {
   queued: "Understanding the question",
   searching: "Searching with Brave",
   reading: "Reading 3 sources",
-  writing: "Writing with DeepSeek V4.1 Flash",
-  done: "Done · 2.1 s · $0.018",
+  writing: "Writing with Gemma 4 31B",
+  done: "Done · 2.4 s · free tier",
 };
 
 export function LandingDemo({ host }: { host: string }) {
@@ -108,7 +108,7 @@ export function LandingDemo({ host }: { host: string }) {
               </span>
               {LABELS[stage]}
             </span>
-            <button type="button" className="ld-replay" onClick={play} aria-label="Replay the demo">
+            <button type="button" className="ld-replay" onClick={play}>
               <Icon name="refresh" size={12} />
               {stage === "done" ? "Replay" : "Run"}
             </button>

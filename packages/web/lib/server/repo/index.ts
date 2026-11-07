@@ -25,6 +25,7 @@ export {
   deleteCredential,
   getCredentialById,
   getCredentialRow,
+  keyedProviders,
   readCredentialKey,
   recordCredentialUsage,
   saveCredential,
@@ -41,7 +42,7 @@ export {
   requestStop,
   type AssistantOutcome,
 } from "./messages";
-export { ensureSettings, updateSettings } from "./settings";
+export { alignDefaults, ensureSettings, updateSettings } from "./settings";
 export {
   claimAnalyticsErasures,
   recordAnalyticsErasure,

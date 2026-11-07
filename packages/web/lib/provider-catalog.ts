@@ -91,10 +91,13 @@ export interface ModelInfo {
   provider: LlmProvider;
   /** The model name sent to the provider's API. */
   apiModel: string;
+  /** Costs nothing on the provider's free tier, within its daily request limit. */
+  free?: true;
 }
 
 export const MODELS: readonly ModelInfo[] = [
   { id: "deepseek/deepseek-v4.1-flash", name: "DeepSeek V4.1 Flash", provider: "openrouter", apiModel: "deepseek/deepseek-v4.1-flash" },
+  { id: "google/gemma-4-31b-it:free", name: "Gemma 4 31B · free", provider: "openrouter", apiModel: "google/gemma-4-31b-it:free", free: true },
   { id: "anthropic/claude-sonnet-4.5", name: "Claude Sonnet 4.5", provider: "openrouter", apiModel: "anthropic/claude-sonnet-4.5" },
   { id: "anthropic/claude-haiku-4.5", name: "Claude Haiku 4.5", provider: "openrouter", apiModel: "anthropic/claude-haiku-4.5" },
   { id: "openai/gpt-5.2", name: "GPT-5.2", provider: "openrouter", apiModel: "openai/gpt-5.2" },
@@ -103,6 +106,8 @@ export const MODELS: readonly ModelInfo[] = [
 ];
 
 export const DEFAULT_LLM_MODEL = MODELS[0].id;
+/** The model of the free setup path: an OpenRouter account and key cost nothing. */
+export const FREE_LLM_MODEL = MODELS.find((model) => model.free)!.id;
 export const DEFAULT_SEARCH_PROVIDER: SearchProvider = "brave";
 
 export const providerInfo = <P extends CredentialProvider>(id: P): (typeof PROVIDERS)[P] => PROVIDERS[id];
@@ -129,6 +134,34 @@ export function providerUses(id: CredentialProvider): string {
   if (models && search) return "Language models and web search";
   if (models) return "Language models";
   return "Web search";
+}
+
+/** Providers whose saved key can be used; a key the provider rejected does not count. */
+export const usableProviders = (credentials: readonly { provider: string; status: string }[]): Set<string> =>
+  new Set(credentials.filter((credential) => credential.status !== "invalid").map((credential) => credential.provider));
+
+/** Whether the account has a key for a model and one for search; a DeepSeek key counts for both. */
+export function setupState(keyed: ReadonlySet<string>) {
+  const hasModelKey = LLM_PROVIDER_IDS.some((id) => keyed.has(id));
+  const hasSearchKey = SEARCH_PROVIDER_IDS.some((id) => keyed.has(id));
+  return { hasModelKey, hasSearchKey, complete: hasModelKey && hasSearchKey };
+}
+
+/**
+ * The answer defaults moved onto providers that have a key: a default without a key is replaced by
+ * the first keyed option, so a key saved for another provider is used instead of a "Key needed" error.
+ */
+export function usableDefaults(
+  defaults: { llmModel: string; defaultSearchProvider: SearchProvider },
+  keyed: ReadonlySet<string>,
+): { llmModel: string; defaultSearchProvider: SearchProvider } {
+  const llmModel = keyed.has(modelProvider(defaults.llmModel))
+    ? defaults.llmModel
+    : (MODELS.find((model) => keyed.has(model.provider))?.id ?? defaults.llmModel);
+  const defaultSearchProvider = keyed.has(defaults.defaultSearchProvider)
+    ? defaults.defaultSearchProvider
+    : (SEARCH_PROVIDER_IDS.find((id) => keyed.has(id)) ?? defaults.defaultSearchProvider);
+  return { llmModel, defaultSearchProvider };
 }
 
 /** Models grouped under their provider, in display order, for model pickers. */

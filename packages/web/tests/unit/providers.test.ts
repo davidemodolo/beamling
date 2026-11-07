@@ -4,7 +4,7 @@ import { ApiError } from "../../lib/server/http";
 import { searchBrave, validateBraveKey } from "../../lib/server/providers/brave";
 import { exaError, searchExa, validateExaKey } from "../../lib/server/providers/exa";
 import { searchTavily, tavilyError, validateTavilyKey } from "../../lib/server/providers/tavily";
-import { DEFAULT_LLM_MODEL, MODELS, isAllowedModel } from "../../lib/provider-catalog";
+import { DEFAULT_LLM_MODEL, FREE_LLM_MODEL, MODELS, isAllowedModel, setupState, usableDefaults } from "../../lib/provider-catalog";
 import { modelHttpError, streamChat } from "../../lib/server/providers/llm";
 import { openRouterModels } from "../../lib/server/providers/openrouter";
 import { jsonResponse, mockFetch } from "../helpers";
@@ -27,7 +27,36 @@ test("DeepSeek V4.1 Flash is the default and is allowlisted", () => {
   assert.equal(DEFAULT_LLM_MODEL, "deepseek/deepseek-v4.1-flash");
   assert.equal(isAllowedModel(DEFAULT_LLM_MODEL), true);
   assert.equal(isAllowedModel("openrouter/auto"), false);
-  assert.equal(MODELS.filter((model) => model.provider === "openrouter").length, 5);
+  assert.equal(MODELS.filter((model) => model.provider === "openrouter").length, 6);
+});
+
+test("one free model is allowlisted and is not the default", () => {
+  assert.equal(isAllowedModel(FREE_LLM_MODEL), true);
+  assert.notEqual(FREE_LLM_MODEL, DEFAULT_LLM_MODEL);
+  assert.equal(MODELS.filter((model) => model.free).length, 1);
+});
+
+test("setup needs a model key and a search key; one DeepSeek key is both", () => {
+  assert.deepEqual(setupState(new Set()), { hasModelKey: false, hasSearchKey: false, complete: false });
+  assert.equal(setupState(new Set(["openrouter"])).complete, false);
+  assert.equal(setupState(new Set(["tavily"])).complete, false);
+  assert.equal(setupState(new Set(["openrouter", "tavily"])).complete, true);
+  assert.equal(setupState(new Set(["deepseek"])).complete, true);
+});
+
+test("defaults move onto keyed providers and keep keyed choices", () => {
+  const defaults = { llmModel: DEFAULT_LLM_MODEL, defaultSearchProvider: "brave" as const };
+  assert.deepEqual(usableDefaults(defaults, new Set(["openrouter", "brave"])), defaults);
+  assert.deepEqual(usableDefaults(defaults, new Set(["openrouter", "tavily"])), {
+    llmModel: DEFAULT_LLM_MODEL,
+    defaultSearchProvider: "tavily",
+  });
+  assert.deepEqual(usableDefaults(defaults, new Set(["deepseek"])), {
+    llmModel: "deepseek:deepseek-flash",
+    defaultSearchProvider: "deepseek",
+  });
+  // Nothing keyed: nothing to move to.
+  assert.deepEqual(usableDefaults(defaults, new Set()), defaults);
 });
 
 test("Brave validates and searches only the base Web Search endpoint", async (t) => {
@@ -249,6 +278,8 @@ test("model providers map statuses and mid-stream errors to stable codes", async
   assert.equal(openRouterError(402).code, "INSUFFICIENT_CREDITS");
   assert.equal(openRouterError(404).code, "MODEL_NOT_FOUND");
   assert.equal(openRouterError(429).code, "PROVIDER_RATE_LIMITED");
+  assert.equal(openRouterError(429, "Rate limit exceeded: free-models-per-day.").code, "FREE_LIMIT_REACHED");
+  assert.equal(openRouterError(404, "No endpoints found matching your data policy (Free model training)").code, "MODEL_PRIVACY_SETTING");
   assert.equal(openRouterError(502).code, "PROVIDER_UNAVAILABLE");
   assert.equal(openRouterError(503).code, "PROVIDER_UNAVAILABLE");
   assert.equal(openRouterError(400, "This model's maximum context length is 8192 tokens").code, "CONTEXT_TOO_LARGE");
