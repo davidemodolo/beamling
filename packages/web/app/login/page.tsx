@@ -13,7 +13,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const user = await getCurrentUser();
   if (user) redirect("/");
   const params = await searchParams;
-  const next = params.next && /^\/(chat|onboarding)?/.test(params.next) ? params.next : "/";
+  const next = params.next && /^\/(onboarding|chat\/[0-9a-f-]{36})?$/i.test(params.next) ? params.next : "/";
   const shutdown = await getShutdown().catch(() => null);
   const closed = isClosed(shutdown);
   return (

@@ -8,7 +8,6 @@
 | `/login` | Google-only sign-in; returns to the requested page (default `/`). Start failures redirect back with `auth_unavailable` or `login_rate_limited` instead of JSON. Says terms are accepted after sign-in and Beamling is 18+. During a scheduled shutdown it shows the closing date and that new accounts are closed; after it, that Beamling has shut down, with no sign-in button. `service_closing` and `service_closed` have their own copy |
 | `/welcome` | Terms acceptance ([Terms acceptance](accounts.md#terms-acceptance)), not indexed. Signed out → `/login`; already current → `next`. Badge "Before you start" (new) or "Updated terms" (version change), three points (AI answers can be wrong, user owns provider keys and costs, data encrypted and exportable), checkboxes "I am at least 18 years old." and "I accept the Terms and have read the Privacy notice", Accept and Sign out, and a note that unaccepted accounts are deleted after seven days |
 | `/onboarding` | Two steps (model key, search key) after picking a path; redirects to `/` once setup is complete |
-| `/chat` | Redirects to `/` |
 | `/chat/:id` | A conversation; signed-out visitors go to `/login`. The app loads workspace state, conversation list and threads. During a scheduled shutdown a banner shows the closing date and a "Download my data" button (Settings → Account) |
 | `/chat/[id]` | Conversation; newest 60 messages, then earlier pages |
 | `/privacy` | GDPR Art. 13/14 notice: controller, data and legal bases, retention (below), providers on the user's accounts (some in China), transfers (hosting in Belgium, database in Frankfurt), Art. 15–21 rights, Garante complaints |
@@ -22,7 +21,7 @@
 | `/.well-known/security.txt` | RFC 9116 contact ([Endpoints](api.md#endpoints)) |
 | `/api/health` | Cached readiness: database, schema, KMS |
 | `/api/live` | DB-free liveness probe |
-| `/robots.txt` | Allows `/`; disallows `/chat`, `/onboarding`, `/api/` |
+| `/robots.txt` | Allows `/`; disallows `/chat/`, `/onboarding`, `/api/` |
 
 Privacy-page retention: conversations 60 days after the last question, max 100 per account (least recently used unpinned go first); inactive accounts 24 months; unaccepted accounts 7 days; sessions 30 days idle / 90 max; hashed IPs and counters one hour; logs `LEGAL_LOG_RETENTION_DAYS`; backups `LEGAL_BACKUP_RETENTION_DAYS`; analytics until opt-out; everything on a closing date.
 
