@@ -2,9 +2,9 @@
 
 ## Schema
 
-Auth in Alpha 1 is Google-only OIDC. Store the Google subject, verified email, display name and avatar URL, plus an opaque session token hash. There is no password, guest flag or alternative identity provider.
+Alpha 1 auth is Google-only OIDC: store the Google subject, verified email, name, avatar URL and a hashed opaque session token. No passwords, guests or other identity providers.
 
-The DDL below is the **target logical schema**. It is not the current migration and not a migration source. The current schema is the single starting migration `packages/web/drizzle/0000_init.sql`; content-bearing columns store `enc:v1:` envelope payloads as specified in [Workspace data encryption (public-launch target)](keys.md#workspace-data-encryption-public-launch-target). In particular: `conversations.title`; `messages.content`, `messages.error_message`, `messages.searches` and `messages.reasoning`; and `sources.url`, `sources.title`, `sources.domain` and `sources.snippet`. The other columns are the minimal operational metadata listed in [Workspace data encryption (public-launch target)](keys.md#workspace-data-encryption-public-launch-target).
+The DDL below is the **target logical schema**, not a migration. The current schema is `packages/web/drizzle/0000_init.sql`. Content columns store `enc:v1:` envelopes ([Workspace data encryption (public-launch target)](keys.md#workspace-data-encryption-public-launch-target)): `conversations.title`; `messages.content`, `error_message`, `searches`, `reasoning`; `sources.url`, `title`, `domain`, `snippet`. Other columns are minimal operational metadata.
 
 ```sql
 create table users (
@@ -64,14 +64,6 @@ create table credentials (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (user_id, kind, provider)
-);
-
-create table credential_usage (
-  credential_id uuid not null references credentials(id) on delete cascade,
-  day date not null,
-  requests integer not null default 0,
-  estimated_cost_usd numeric(12,6) not null default 0,
-  primary key (credential_id, day)
 );
 
 create table credential_usage (
@@ -160,7 +152,6 @@ create index conversations_user_updated_idx on conversations (user_id, updated_a
 create index messages_conversation_created_idx on messages (conversation_id, created_at);
 create index credentials_user_idx on credentials (user_id);
 create index credential_usage_day_idx on credential_usage (day);
-create index credential_usage_day_idx on credential_usage (day);
 create index auth_sessions_user_idx on auth_sessions (user_id);
 create index auth_sessions_expires_idx on auth_sessions (expires_at);
 create unique index sources_message_position_idx on sources (message_id, position);
@@ -176,16 +167,14 @@ create table provider_slots (
 
 | Data | Default retention | On account deletion |
 |---|---|---|
-| Users | Until deleted; automatically deleted after 24 months without sign-in or session renewal, or 7 days after creation without terms acceptance | Hard delete in the same request; workspace key deletion included |
-| Auth sessions | 30-day sliding expiry, 90-day absolute lifetime; revoked sessions deleted immediately | Hard delete in the same request |
-| Rate-limit counters | Until the window expires | Hashed identifiers; counters cleaned on expiry |
-| Credentials and declared limits | Until deleted or replaced | Hard delete in the same request |
-| Conversations, messages, sources | 60 days after the conversation's last activity, pinned or not; at most 100 conversations per account (least recently active unpinned deleted first) | Hard delete in the same request |
-| Workspace data keys | Until the account is deleted | Wrapped key destroyed; backup ciphertext is useless without the master key ([Workspace data encryption (public-launch target)](keys.md#workspace-data-encryption-public-launch-target)) |
-| Message and search-usage fields | Until the conversation or credential is deleted | Hard delete in the same request |
-| Application logs | `LEGAL_LOG_RETENTION_DAYS` (default 30), secrets redacted; retention is configured at the host and stated in the privacy notice | Not user-linked beyond the log window |
-| Backups | `LEGAL_BACKUP_RETENTION_DAYS` (default 7), configured at the database provider and stated in the privacy notice | Expire within the backup window |
+| Users | Until deleted; auto-deleted after 24 months inactive, or 7 days without terms acceptance | Hard delete, including workspace key |
+| Auth sessions | 30-day sliding, 90-day absolute; revoked deleted immediately | Hard delete |
+| Rate-limit counters | Until the window expires | Hashed identifiers; cleaned on expiry |
+| Credentials and declared limits | Until deleted or replaced | Hard delete |
+| Conversations, messages, sources | 60 days after last activity, pinned or not; max 100 per account (oldest unpinned deleted first) | Hard delete |
+| Workspace data keys | Until account deletion | Wrapped key destroyed ([encryption](keys.md#workspace-data-encryption-public-launch-target)) |
+| Message and search-usage fields | Until the conversation or credential is deleted | Hard delete |
+| Application logs | `LEGAL_LOG_RETENTION_DAYS` (default 30), secrets redacted, set at the host | Not user-linked beyond the window |
+| Backups | `LEGAL_BACKUP_RETENTION_DAYS` (default 7), set at the database provider | Expire within the window |
 
-If the service closes, every account is deleted on the announced date (FR-75), and destroying the KMS key afterwards makes every backup unreadable.
-
-Deleting an account removes its wrapped data key, so content retained in backups cannot be decrypted through the application. Backups still contain ciphertext and remain protected by the KMS master key until they expire.
+Log and backup retention are stated in the privacy notice. Account deletion destroys the wrapped data key, so backed-up content can't be decrypted through the app; the ciphertext stays KMS-protected until backups expire. On service closure all accounts are deleted on the announced date (FR-75); destroying the KMS key then makes every backup unreadable.
