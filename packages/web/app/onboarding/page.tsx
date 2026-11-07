@@ -11,12 +11,12 @@ import { WorkspaceError } from "@/components/workspace-error";
 import { errorMessage } from "@/lib/api";
 import { credentialInput } from "@/lib/credential-form";
 import { OPENROUTER_MODELS, SEARCH_PROVIDERS, searchProviderInfo } from "@/lib/provider-catalog";
-import { useStore } from "@/lib/store";
+import { useAccount } from "@/lib/store";
 import type { SearchProvider } from "@/lib/types";
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const { addCredential, credentials, ready, settings, updateSettings, error, user } = useStore();
+  const { addCredential, credentials, ready, settings, updateSettings, error, user } = useAccount();
   // Null until the user changes it: the control shows the saved values and nothing else is changed.
   const [pickedModel, setPickedModel] = useState<string | null>(null);
   const [pickedProvider, setPickedProvider] = useState<SearchProvider | null>(null);

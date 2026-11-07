@@ -1,13 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { useStore } from "@/lib/store";
+import { useAccount } from "@/lib/store";
 import { Mascot } from "./mascot";
 import { Icon } from "./ui/icon";
 
 /** Shown when the account state could not be loaded; Retry re-fetches it. */
 export function WorkspaceError({ message }: { message: string }) {
-  const { refresh } = useStore();
+  const { refresh } = useAccount();
   const [pending, setPending] = useState(false);
 
   const retry = async () => {

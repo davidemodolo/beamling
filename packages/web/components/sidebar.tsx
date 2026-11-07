@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useDeferredValue, useMemo, useState, type Ref } from "react";
 import { CONVERSATION_RETENTION_DAYS, CONVERSATION_WARNING_THRESHOLD, MAX_CONVERSATIONS } from "@/lib/legal";
-import { useStore } from "@/lib/store";
+import { useAccount, useConversations } from "@/lib/store";
 import type { ConversationSummary } from "@/lib/types";
 import { dayGroup } from "@/lib/utils";
 import { versionLabel } from "@/lib/version";
@@ -19,19 +19,8 @@ interface SidebarProps {
 }
 
 function SidebarContent({ mobile, onNavigate }: SidebarProps) {
-  const {
-    conversations,
-    conversationCount,
-    hasMoreConversations,
-    loadMoreConversations,
-    deleteConversation,
-    setConversationPinned,
-    user,
-    signOut,
-    ready,
-    error,
-    refresh,
-  } = useStore();
+  const { user, signOut, ready, error, refresh } = useAccount();
+  const { conversations, conversationCount, hasMoreConversations, loadMoreConversations, deleteConversation, setConversationPinned } = useConversations();
   const { openSettings } = useSidebar();
   const pathname = usePathname();
   const router = useRouter();

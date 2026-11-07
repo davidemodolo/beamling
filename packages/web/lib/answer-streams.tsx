@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { streamAnswer, type StreamError, type StreamHandle } from "./api";
-import { useStore, withoutKey, type ThreadMessage } from "./store";
+import { useAccount, useConversations, withoutKey, type ThreadMessage } from "./store";
 import type { ChatStage, DoneEvent, Mode, SearchProvider, SearchTrace, Source } from "./types";
 import { createId } from "./utils";
 
@@ -71,17 +71,8 @@ function doneMessage(result: DoneEvent): string {
  * the user switches conversations, and each view shows only its own conversation's answer.
  */
 export function AnswerStreamsProvider({ children }: { children: ReactNode }) {
-  const {
-    addMessages,
-    updateMessage,
-    removeMessages,
-    loadThread,
-    titleFromFirstQuestion,
-    dropFailedMessages,
-    forgetConversations,
-    threads,
-    settings,
-  } = useStore();
+  const { settings } = useAccount();
+  const { addMessages, updateMessage, removeMessages, loadThread, titleFromFirstQuestion, dropFailedMessages, forgetConversations, threads } = useConversations();
   const [live, setLive] = useState<Record<string, LiveAnswer>>({});
   const [announcements, setAnnouncements] = useState<Record<string, string>>({});
   const handles = useRef(new Map<string, StreamHandle>());

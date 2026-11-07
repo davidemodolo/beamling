@@ -5,13 +5,14 @@ import { useState } from "react";
 import { Icon } from "@/components/ui/icon";
 import { errorMessage } from "@/lib/api";
 import { useToast } from "@/lib/hooks/use-toast";
-import { useStore } from "@/lib/store";
+import { useAccount, useConversations } from "@/lib/store";
 import { UserAvatar } from "@/components/user-avatar";
 import { shortDate } from "@/lib/utils";
 
 export function AccountPanel() {
   const router = useRouter();
-  const { user, conversationCount, credentials, deleteAccount, settings, signOut, updateSettings } = useStore();
+  const { user, credentials, deleteAccount, settings, signOut, updateSettings } = useAccount();
+  const { conversationCount } = useConversations();
   const [confirm, setConfirm] = useState("");
   const [pending, setPending] = useState(false);
   const [toast, showToast] = useToast();

@@ -13,7 +13,7 @@ import { api, errorMessage } from "@/lib/api";
 import { useIsMobile } from "@/lib/hooks/use-is-mobile";
 import { useToast } from "@/lib/hooks/use-toast";
 import { isSearchProvider, llmModelName, searchProviderName } from "@/lib/provider-catalog";
-import { useStore, type ThreadMessage } from "@/lib/store";
+import { useAccount, useConversations, type ThreadMessage } from "@/lib/store";
 import { MODE_LABELS } from "@/lib/modes";
 import type { Mode, SearchProvider, Source } from "@/lib/types";
 import { collapseWhitespace } from "@/lib/utils";
@@ -59,20 +59,8 @@ function retryableId(messages: ThreadMessage[]): string | undefined {
 
 function ChatPane({ conversationId }: ChatViewProps) {
   const { openSidebar, openSettings } = useSidebar();
-  const {
-    ready,
-    error,
-    user,
-    conversations,
-    threads,
-    settings,
-    credentials,
-    loadThread,
-    loadEarlierMessages,
-    createConversation,
-    setConversationMode,
-    removeMessages,
-  } = useStore();
+  const { ready, error, user, settings, credentials } = useAccount();
+  const { conversations, threads, loadThread, loadEarlierMessages, createConversation, setConversationMode, removeMessages } = useConversations();
   const streams = useAnswerStreams();
   const isMobile = useIsMobile();
 

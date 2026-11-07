@@ -1297,7 +1297,13 @@ Legal pages read the operator details from `legalDetails()` and the dates from `
 
 ### 12.2 Client state
 
-`StoreProvider` owns the account:
+`StoreProvider` (`lib/store/`) owns the workspace and exposes it through two contexts, so a component re-renders only for the half it reads:
+
+- `useAccount()` (`lib/store/account.tsx`): user, settings, credentials, load status, refresh, settings and credential actions, sign-out and account deletion. Settings panels, onboarding and the shell read only this, so streamed answer text does not re-render them.
+- `useConversations()` (`lib/store/conversations.tsx`): conversation summaries and count, per-conversation threads, pagination and message updates.
+- `lib/store/threads.ts` holds the pure thread-merge helpers.
+
+Behaviour:
 
 - Loads `/api/state` on mount; a 401 redirects to `/login`. Any API response with `TERMS_REQUIRED` replaces the page with `/welcome?next=<current path>`.
 - Keeps user, conversation summaries, conversation count, settings, credentials and per-conversation thread state.
