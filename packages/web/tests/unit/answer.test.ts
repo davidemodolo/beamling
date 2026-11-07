@@ -18,7 +18,7 @@ test("citation sanitization removes invalid markers and preserves code", () => {
 });
 
 test("search freshness applies only to questions about recent events", async () => {
-  const { freshnessDays } = await import("../../lib/server/answer-pipeline");
+  const { freshnessDays } = await import("../../lib/server/answer/retrieval");
   assert.equal(freshnessDays("How does photosynthesis work?"), undefined);
   assert.equal(freshnessDays("Who won the 1998 World Cup?"), undefined);
   assert.equal(freshnessDays("What happened in the markets today?"), 1);
@@ -133,4 +133,8 @@ test("shared stream events reject malformed payloads and ignore unknown names", 
   assert.equal(parseStreamEvent("stage", { stage: "not-a-stage" }), null);
   assert.equal(parseStreamEvent("delta", { text: 1 }), null);
   assert.equal(parseStreamEvent("future-event", { anything: true }), null);
+  // `sources` is the one array payload; an object-only check used to drop it.
+  const sources = [{ id: "s1", position: 1, title: "T", url: "https://example.org", domain: "example.org", snippet: "S" }];
+  assert.deepEqual(parseStreamEvent("sources", sources), { event: "sources", data: sources });
+  assert.equal(parseStreamEvent("sources", { not: "an array" }), null);
 });

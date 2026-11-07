@@ -1,8 +1,7 @@
-export type { BravePlan, BudgetPeriod, CredentialKind, CredentialProvider, CredentialStatus, Mode, SearchProvider } from "./contracts";
-import type { BravePlan, BudgetPeriod, CredentialKind, CredentialStatus, Mode, SearchProvider } from "./contracts";
+export type { BravePlan, CredentialKind, CredentialProvider, CredentialStatus, Mode, SearchProvider } from "./contracts";
+import type { BravePlan, CredentialKind, CredentialStatus, MessageStatus, Mode, SearchProvider } from "./contracts";
 
 type Role = "user" | "assistant";
-type MessageStatus = "pending" | "streaming" | "complete" | "stopped" | "error";
 
 export type ChatStage =
   | "empty"
@@ -35,15 +34,15 @@ export interface Source {
 export interface Usage {
   tokensIn: number;
   tokensOut: number;
-  /** Generation cost reported by OpenRouter. */
+  /** Generation cost: reported by the provider when it can, otherwise estimated from token prices. */
   costUsd: number;
-  /** Search cost estimated from Brave's list price. */
+  /** Search cost estimated from the selected provider's list price. */
   searchCostUsd?: number;
   latencyMs?: number;
   searchRequests?: number;
   /** The search provider selected for this answer. */
   searchProvider?: SearchProvider;
-  /** The model and upstream provider OpenRouter actually used, when it reports them. */
+  /** The model and upstream host the provider actually used, when it reports them. */
   resolvedModel?: string;
   upstreamProvider?: string;
 }
@@ -98,8 +97,8 @@ export interface Credential {
   status: CredentialStatus;
   plan?: BravePlan;
   expiresOn?: string;
+  /** Monthly budget, counted from the start of the month or from when it was set. */
   budgetUsd?: number;
-  budgetPeriod?: BudgetPeriod;
   budgetStartedAt?: string;
   spentUsd?: number;
   requests?: number;

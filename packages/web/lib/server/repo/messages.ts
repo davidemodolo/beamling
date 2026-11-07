@@ -3,9 +3,9 @@ import { and, count, desc, eq, gt, inArray, lt, lte, sql } from "drizzle-orm";
 import { DEFAULT_CONVERSATION_TITLE, titleFromQuestion } from "../../data";
 import { DEFAULT_SEARCH_PROVIDER } from "../../provider-catalog";
 import type { Message, Mode, SearchProvider, SearchTrace, Source, Usage } from "../../types";
+import { plural } from "../../utils";
 import { db } from "../db";
 import { maxConcurrentChats, maxConcurrentChatsPerUser } from "../env";
-
 import { ApiError, pgErrorCode, storableText } from "../http";
 import { conversations, messages, sources } from "../schema";
 import { decryptText, encryptText } from "../workspace-key";
@@ -159,7 +159,7 @@ export async function createExchange(input: {
       if (userInFlight >= perUserLimit) {
         throw new ApiError(
           "SERVER_BUSY",
-          `You already have ${perUserLimit} ${perUserLimit === 1 ? "answer" : "answers"} running. Wait for one to finish or stop it.`,
+          `You already have ${plural(perUserLimit, "answer")} running. Wait for one to finish or stop it.`,
           503,
         );
       }

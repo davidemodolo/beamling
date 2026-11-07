@@ -1,0 +1,85 @@
+site_name: Beamling
+site_description: Bring-your-own-key answer engine with cited web answers.
+site_url: https://davidemodolo.github.io/beamling/
+repo_url: https://github.com/davidemodolo/beamling
+repo_name: davidemodolo/beamling
+edit_uri: edit/main/docs/
+copyright: Beamling is open source under the MIT License.
+strict: true
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn
+
+theme:
+  name: material
+  logo: icon.svg
+  favicon: icon.svg
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: amber
+      toggle:
+        icon: material/weather-night
+        name: Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: amber
+      toggle:
+        icon: material/weather-sunny
+        name: Light mode
+  features:
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.footer
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+
+nav:
+  - Home: index.md
+  - Development: development.md
+  - Technical reference:
+      - reference/index.md
+      - reference/repository.md
+      - reference/configuration.md
+      - reference/accounts.md
+      - reference/credentials.md
+      - reference/conversations.md
+      - reference/answer-pipeline.md
+      - reference/streaming.md
+      - reference/api.md
+      - reference/errors.md
+      - reference/providers.md
+      - reference/browser.md
+      - reference/security.md
+      - reference/operations.md
+      - reference/tests.md
+  - Product specification:
+      - spec/index.md
+      - spec/product.md
+      - spec/scope.md
+      - spec/requirements.md
+      - spec/pipeline.md
+      - spec/architecture.md
+      - spec/keys.md
+      - spec/data-model.md
+      - spec/api.md
+      - spec/ux.md
+      - spec/security.md
+      - spec/business.md
+      - spec/quality-ops.md
+      - spec/roadmap.md

@@ -15,4 +15,7 @@ tmp
 **/playwright-report
 **/coverage
 .github
-PRODUCTION_REVIEW.md
+docs
+site
+.venv-docs
+mkdocs.yml

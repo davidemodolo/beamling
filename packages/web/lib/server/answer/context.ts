@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { CredentialProvider } from "../../contracts";
+import type { BravePlan, CredentialProvider } from "../../contracts";
 import { providerName, PROVIDERS, type ModelInfo } from "../../provider-catalog";
 import type { Message, Mode, SearchProvider, SearchTrace, Source, Usage } from "../../types";
 import { ApiError } from "../http";
@@ -30,14 +30,12 @@ export interface PreparedChat {
   userMessageId: string;
   question: string;
   mode: Mode;
-  /** The model id stored with the answer. */
-  model: string;
   llm: ModelInfo;
   llmKey: string;
   searchProvider: SearchProvider;
   searchKey: string;
   searchCredentialId: string;
-  searchPlan: "free" | "paid";
+  searchPlan: BravePlan;
   history: Message[];
   startedAt: number;
   /** Conversations deleted to keep the account within MAX_CONVERSATIONS. */

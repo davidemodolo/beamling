@@ -73,7 +73,7 @@ export class RunRecorder {
     analytics.capture(prepared.userId, "answer_completed", {
       mode: prepared.mode,
       search_provider: prepared.searchProvider,
-      llm_model: prepared.model,
+      llm_model: prepared.llm.id,
       resolved_model: usage.resolvedModel,
       upstream_provider: usage.upstreamProvider,
       tokens_in: usage.tokensIn,
@@ -94,7 +94,7 @@ export class RunRecorder {
     analytics.capture(prepared.userId, "answer_failed", {
       mode: prepared.mode,
       search_provider: prepared.searchProvider,
-      llm_model: prepared.model,
+      llm_model: prepared.llm.id,
       error_code: errorCode,
       latency_ms: this.latency(usage),
       search_failures: state.searchFailures,

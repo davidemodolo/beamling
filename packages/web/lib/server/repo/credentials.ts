@@ -1,17 +1,20 @@
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
-import type { Credential, CredentialKind, CredentialProvider, CredentialStatus } from "../../types";
+import { and, asc, eq, gte, inArray, sql } from "drizzle-orm";
+import type { BravePlan, Credential, CredentialKind, CredentialProvider, CredentialStatus } from "../../types";
 import { decryptCredential, encryptCredential, providerSlotKey, type EncryptedSecret } from "../crypto";
 import { currentKmsKeyId } from "../kms";
 import { db } from "../db";
 import { credentialUsage, credentials, providerSlots } from "../schema";
 import { mapCredential, type CredentialRow, type CredentialUsageSummary } from "./shared";
 
-async function usageFor(rows: { id: string; budgetPeriod: string | null; budgetStartedAt: Date | null; createdAt: Date }[]) {
-  if (!rows.length) return new Map<string, CredentialUsageSummary>();
+/** This month's usage per credential, counted from the budget start when it was set this month. */
+async function usageFor(rows: { id: string; budgetStartedAt: Date | null }[]) {
+  const out = new Map<string, CredentialUsageSummary>();
+  if (!rows.length) return out;
   const monthStart = new Date();
   monthStart.setUTCDate(1);
   monthStart.setUTCHours(0, 0, 0, 0);
-  // One aggregate query for every credential; no per-credential N+1.
+  const monthStartDay = monthStart.toISOString().slice(0, 10);
+  // One query for every credential; no per-credential N+1.
   const usageRows = await db
     .select({
       credentialId: credentialUsage.credentialId,
@@ -20,36 +23,16 @@ async function usageFor(rows: { id: string; budgetPeriod: string | null; budgetS
       estimatedCostUsd: credentialUsage.estimatedCostUsd,
     })
     .from(credentialUsage)
-    .where(inArray(credentialUsage.credentialId, rows.map((row) => row.id)));
-  const byId = new Map<string, { requests: number; spentUsd: number; monthlyRequests: number; monthlySpentUsd: number }>();
-  for (const usage of usageRows) {
-    let total = byId.get(usage.credentialId);
-    if (!total) {
-      total = { requests: 0, spentUsd: 0, monthlyRequests: 0, monthlySpentUsd: 0 };
-      byId.set(usage.credentialId, total);
-    }
-    total.requests += usage.requests;
-    total.spentUsd += Number(usage.estimatedCostUsd);
-  }
-  const out = new Map<string, CredentialUsageSummary>();
+    .where(and(inArray(credentialUsage.credentialId, rows.map((row) => row.id)), gte(credentialUsage.day, monthStartDay)));
   for (const row of rows) {
-    const usage = byId.get(row.id);
-    if (!usage) {
-      out.set(row.id, { requests: 0, spentUsd: 0 });
-      continue;
+    const startDay = row.budgetStartedAt && row.budgetStartedAt > monthStart ? row.budgetStartedAt.toISOString().slice(0, 10) : monthStartDay;
+    const summary = { requests: 0, spentUsd: 0 };
+    for (const entry of usageRows) {
+      if (entry.credentialId !== row.id || entry.day < startDay) continue;
+      summary.requests += entry.requests;
+      summary.spentUsd += Number(entry.estimatedCostUsd);
     }
-    if (row.budgetPeriod === "month" || !row.budgetPeriod) {
-      const start = row.budgetStartedAt && row.budgetStartedAt > monthStart ? row.budgetStartedAt : monthStart;
-      const startDay = start.toISOString().slice(0, 10);
-      for (const entry of usageRows) {
-        if (entry.credentialId !== row.id || entry.day < startDay) continue;
-        usage.monthlyRequests += entry.requests;
-        usage.monthlySpentUsd += Number(entry.estimatedCostUsd);
-      }
-      out.set(row.id, { requests: usage.monthlyRequests, spentUsd: usage.monthlySpentUsd });
-    } else {
-      out.set(row.id, { requests: usage.requests, spentUsd: usage.spentUsd });
-    }
+    out.set(row.id, summary);
   }
   return out;
 }
@@ -115,10 +98,9 @@ export async function saveCredential(input: {
   provider: CredentialProvider;
   encrypted: EncryptedSecret;
   status: CredentialStatus;
-  plan?: "free" | "paid" | null;
+  plan?: BravePlan | null;
   expiresOn?: string | null;
   budgetUsd?: number | null;
-  budgetPeriod?: "month" | "total" | null;
   preserveUsage?: boolean;
 }): Promise<Credential> {
   const now = new Date();
@@ -130,7 +112,7 @@ export async function saveCredential(input: {
     plan: input.plan ?? null,
     expiresOn: input.expiresOn ?? null,
     budgetUsd: input.budgetUsd == null ? null : input.budgetUsd.toFixed(2),
-    budgetPeriod: input.budgetPeriod ?? (input.budgetUsd == null ? null : "month"),
+    budgetPeriod: input.budgetUsd == null ? null : ("month" as const),
     budgetStartedAt: input.budgetUsd == null ? null : existing?.budgetStartedAt ?? now,
     lastValidatedAt: input.status === "unverified" ? null : now,
     updatedAt: now,
@@ -175,10 +157,9 @@ export async function updateCredentialLimits(
   userId: string,
   id: string,
   input: {
-    plan?: "free" | "paid" | null;
+    plan?: BravePlan | null;
     expiresOn?: string | null;
     budgetUsd?: number | null;
-    budgetPeriod?: "month" | "total" | null;
   },
 ): Promise<Credential | null> {
   const now = new Date();
@@ -191,7 +172,7 @@ export async function updateCredentialLimits(
       plan: input.plan,
       expiresOn: input.expiresOn,
       budgetUsd: input.budgetUsd == null ? null : input.budgetUsd.toFixed(2),
-      budgetPeriod: input.budgetPeriod ?? null,
+      budgetPeriod: input.budgetUsd == null ? null : "month",
       budgetStartedAt: input.budgetUsd == null ? null : budgetChanged ? now : existing.budgetStartedAt,
       updatedAt: now,
     })
@@ -240,7 +221,7 @@ export async function deleteCredential(userId: string, id: string): Promise<bool
     .limit(1);
   if (!row) return false;
   // The Brave slot key is derived from the plaintext key, so release it before the ciphertext goes.
-  if (row.kind === "search" && row.provider === "brave") {
+  if (row.provider === "brave") {
     try {
       const plaintext = await decryptCredential(userId, row);
       await db.delete(providerSlots).where(eq(providerSlots.key, providerSlotKey("brave", plaintext)));

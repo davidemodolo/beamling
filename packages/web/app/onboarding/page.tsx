@@ -4,13 +4,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { SecretKeyInput } from "@/components/secret-key-input";
-import { ValidateNowField } from "@/components/settings/keys-panel";
+import { KeyLimitFields, ValidateNowField } from "@/components/settings/key-fields";
 import { Icon } from "@/components/ui/icon";
 import { Wordmark } from "@/components/wordmark";
 import { WorkspaceError } from "@/components/workspace-error";
 import { errorMessage } from "@/lib/api";
 import { isSearchProvider } from "@/lib/contracts";
-import { credentialInput } from "@/lib/credential-form";
+import { credentialInput, EMPTY_LIMITS, type CredentialLimitDraft } from "@/lib/credential-form";
 import { MODEL_GROUPS, SEARCH_PROVIDERS, modelProvider, providerInfo, type ProviderInfo } from "@/lib/provider-catalog";
 import { useAccount } from "@/lib/store";
 import type { SearchProvider } from "@/lib/types";
@@ -78,9 +78,7 @@ export default function OnboardingPage() {
   const [llmKey, setLlmKey] = useState("");
   const [searchKey, setSearchKey] = useState("");
   const [validateSearch, setValidateSearch] = useState(true);
-  const [bravePlan, setBravePlan] = useState<"free" | "paid">("free");
-  const [expiresOn, setExpiresOn] = useState("");
-  const [budgetUsd, setBudgetUsd] = useState("");
+  const [limits, setLimits] = useState<CredentialLimitDraft>(EMPTY_LIMITS);
   const [llmError, setLlmError] = useState("");
   const [searchError, setSearchError] = useState("");
   const [formError, setFormError] = useState("");
@@ -111,9 +109,7 @@ export default function OnboardingPage() {
     // Saved keys are cleared from the form, so a retry after a later failure doesn't re-submit them.
     if (nextLlm) {
       try {
-        await addCredential(
-          credentialInput({ provider: llmProvider.id, key: nextLlm, plan: "free", expiresOn: "", budgetUsd: "", validateNow: true }),
-        );
+        await addCredential(credentialInput(llmProvider.id, nextLlm));
         setLlmKey("");
       } catch (cause) {
         setLlmError(errorMessage(cause, `${llmProvider.name} rejected this key.`));
@@ -123,16 +119,7 @@ export default function OnboardingPage() {
     }
     if (nextSearch) {
       try {
-        await addCredential(
-          credentialInput({
-            provider: searchProvider,
-            key: nextSearch,
-            plan: bravePlan,
-            expiresOn,
-            budgetUsd,
-            validateNow: validateSearch,
-          }),
-        );
+        await addCredential(credentialInput(searchProvider, nextSearch, { limits, validateNow: validateSearch }));
         setSearchKey("");
       } catch (cause) {
         setSearchError(errorMessage(cause, `${searchInfo.name} rejected this key.`));
@@ -280,48 +267,7 @@ export default function OnboardingPage() {
                 </>
               )}
               {!sharedKey && searchInfo.keyLimits ? (
-                <>
-                  <div className="field">
-                    <label className="label" htmlFor="brave-plan">{searchInfo.shortName} plan</label>
-                    <select
-                      id="brave-plan"
-                      className="select"
-                      value={bravePlan}
-                      onChange={(event) => setBravePlan(event.target.value === "paid" ? "paid" : "free")}
-                    >
-                      <option value="free">Free · 1 request/second</option>
-                      <option value="paid">Paid / provider plan</option>
-                    </select>
-                    <p className="hint">We ask because {searchInfo.shortName}&apos;s API does not expose the key plan.</p>
-                  </div>
-                  <div className="field">
-                    <label className="label" htmlFor="brave-expiry">Key expiry (optional)</label>
-                    <input
-                      id="brave-expiry"
-                      className="input"
-                      type="date"
-                      value={expiresOn}
-                      onChange={(event) => setExpiresOn(event.target.value)}
-                    />
-                    <p className="hint">Set on the {searchInfo.shortName} dashboard. Used only for warnings.</p>
-                  </div>
-                  <div className="field">
-                    <label className="label" htmlFor="brave-budget">Monthly budget in USD (optional)</label>
-                    <input
-                      id="brave-budget"
-                      className="input"
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      value={budgetUsd}
-                      onChange={(event) => setBudgetUsd(event.target.value)}
-                      placeholder="5.00"
-                    />
-                    <p className="hint">
-                      Also set on the {searchInfo.shortName} dashboard. Beamling estimates spend from request counts.
-                    </p>
-                  </div>
-                </>
+                <KeyLimitFields id="search-key" provider={searchInfo} value={limits} onChange={setLimits} />
               ) : null}
             </div>
           </section>

@@ -1,7 +1,7 @@
 import type { Activity } from "./engine.js";
 import type { Expression } from "./expressions.js";
 
-/** Answer states from the product spec (§16.4). */
+/** Answer states from the product spec (docs/spec/ux.md, "Answer states"). */
 export type AnswerState = "empty" | "queued" | "searching" | "reading" | "writing" | "done" | "stopped" | "no-sources" | "error";
 
 /** How Beamling reacts to each answer state. */

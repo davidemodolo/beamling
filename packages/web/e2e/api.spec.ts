@@ -109,19 +109,17 @@ test("deleting the account clears the session", async ({ request }) => {
 test("Brave plan, expiry and budget are stored as user-declared limits", async ({ request }) => {
   await signIn(request);
   const missingPlan = await request.post("/api/credentials", {
-    data: { kind: "search", provider: "brave", key: "test-brave-limits" },
+    data: { provider: "brave", key: "test-brave-limits" },
   });
   expect(missingPlan.status()).toBe(400);
 
   const created = await request.post("/api/credentials", {
     data: {
-      kind: "search",
       provider: "brave",
       key: "test-brave-limits",
       plan: "free",
       expiresOn: "2030-01-31",
       budgetUsd: 5,
-      budgetPeriod: "month",
     },
   });
   expect(created.status()).toBe(201);
@@ -143,7 +141,7 @@ test("an Exa key can be saved without validation and checked later", async ({ re
   await signIn(request);
   // Fixture providers reject keys without the test- prefix, so a 201 proves no check ran.
   const saved = await request.post("/api/credentials", {
-    data: { kind: "search", provider: "exa", key: "exa-not-checked-yet", validate: false },
+    data: { provider: "exa", key: "exa-not-checked-yet", validate: false },
   });
   expect(saved.status()).toBe(201);
   const credential = (await saved.json()).credential;
@@ -263,7 +261,7 @@ test("security.txt names a contact, a policy and a future expiry", async ({ requ
 test("only Brave and Exa keys can skip validation", async ({ request }) => {
   await signIn(request);
   const response = await request.post("/api/credentials", {
-    data: { kind: "llm", provider: "openrouter", key: "test-openrouter-key", validate: false },
+    data: { provider: "openrouter", key: "test-openrouter-key", validate: false },
   });
   expect(response.status()).toBe(400);
   expect((await response.json()).error.code).toBe("INVALID_INPUT");

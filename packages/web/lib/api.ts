@@ -29,6 +29,7 @@ const GENERIC_COPY: Record<string, string> = {
   UNAUTHENTICATED: SESSION_EXPIRED,
   RATE_LIMITED: "Too many requests. Wait a minute and try again.",
   SERVER_BUSY: "Beamling is busy right now. Try again in a moment.",
+  SERVICE_BUSY: "Beamling is busy right now. Try again in a moment.",
   NETWORK: "The connection was interrupted. Check your network and try again.",
   TIMEOUT: "The server took too long to respond. Try again.",
 };
@@ -84,7 +85,9 @@ export function describeAnswerError(code: string | undefined, message?: string):
       return retry("Too long for this model", "The question and sources are too long for this model. Try a shorter question.");
     case "RATE_LIMITED":
       return { title: "Slow down", message: GENERIC_COPY.RATE_LIMITED, action: "retry" };
+    // SERVICE_BUSY is the operator kill switch or a restart; the user sees the same thing.
     case "SERVER_BUSY":
+    case "SERVICE_BUSY":
       return { title: "Busy", message: GENERIC_COPY.SERVER_BUSY, action: "retry" };
     case "GENERATION_IN_PROGRESS":
       return {

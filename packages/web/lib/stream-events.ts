@@ -61,6 +61,8 @@ function count(value: unknown): number | null {
 
 /** Validates one SSE event. Unknown names and malformed payloads are ignored by the client. */
 export function parseStreamEvent(name: string, input: unknown): StreamEvent | null {
+  // The only event whose payload is an array, not an object.
+  if (name === "sources") return Array.isArray(input) ? { event: "sources", data: input as Source[] } : null;
   const data = record(input);
   if (!data) return null;
   switch (name) {
@@ -94,8 +96,6 @@ export function parseStreamEvent(name: string, input: unknown): StreamEvent | nu
       const total = count(data.total);
       return completed !== null && total !== null ? { event: "progress", data: { completed, total } } : null;
     }
-    case "sources":
-      return Array.isArray(data) ? { event: "sources", data: data as Source[] } : null;
     case "delta": {
       const value = text(data.text);
       return value !== null ? { event: "delta", data: { text: value } } : null;

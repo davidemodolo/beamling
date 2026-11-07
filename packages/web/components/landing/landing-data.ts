@@ -1,5 +1,8 @@
-export const LLM_NAMES = ["OpenRouter"] as const;
-export const SEARCH_NAMES = ["Brave", "Tavily", "Exa"] as const;
+import { ALL_PROVIDERS, MODEL_GROUPS, SEARCH_PROVIDERS } from "@/lib/provider-catalog";
+import { orList } from "@/lib/utils";
+
+export const LLM_NAMES = MODEL_GROUPS.map((group) => group.provider.shortName);
+export const SEARCH_NAMES = SEARCH_PROVIDERS.map((provider) => provider.shortName);
 
 export const FEATURES = [
   {
@@ -10,13 +13,13 @@ export const FEATURES = [
   },
   {
     title: "Your keys, your models",
-    body: "Alpha 1 uses OpenRouter for generation and Brave, Tavily or Exa for retrieval. Your credentials do the work, with no shared provider account and no markup.",
+    body: `Generation runs on ${orList(LLM_NAMES)} and retrieval on ${orList(SEARCH_NAMES)}. Your credentials do the work, with no shared provider account and no markup.`,
     icon: "key" as const,
     label: "02",
   },
   {
     title: "Nothing hidden",
-    body: "Model, search provider, token counts, latency and estimated cost on every answer. If a provider fails, Beamling says so instead of switching silently.",
+    body: "Model, search provider, cost and latency on every answer, with token counts one hover away. If a provider fails, Beamling says so instead of switching silently.",
     icon: "chart" as const,
     label: "03",
   },
@@ -41,5 +44,5 @@ export const STATS = [
   { value: "3 s", label: "target p95 to first token" },
   { value: "8", label: "up to 8 sources per quick answer" },
   { value: "0%", label: "markup on your keys" },
-  { value: "1 + 3", label: "providers in Alpha" },
+  { value: String(ALL_PROVIDERS.length), label: "providers to choose from" },
 ];

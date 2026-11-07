@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { test } from "node:test";
 import { decryptCredential, encryptCredential, isDecryptIntegrityError } from "../../lib/server/crypto";
-import { configureUnitEnv, withEnv } from "./helpers";
+import { withEnv } from "../helpers";
+import { configureUnitEnv } from "./helpers";
 
 configureUnitEnv();
 

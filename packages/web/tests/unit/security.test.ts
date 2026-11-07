@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { test } from "node:test";
 import { ApiError } from "../../lib/server/http";
-import { configureUnitEnv, withEnv, captureConsoleError, isApiError } from "./helpers";
+import { withEnv } from "../helpers";
+import { configureUnitEnv, captureConsoleError, isApiError } from "./helpers";
 
 configureUnitEnv();
 

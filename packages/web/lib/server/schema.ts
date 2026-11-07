@@ -14,7 +14,6 @@ import {
 } from "drizzle-orm/pg-core";
 import type {
   BravePlan,
-  BudgetPeriod,
   CredentialKind,
   CredentialProvider,
   CredentialStatus,
@@ -91,7 +90,8 @@ export const credentials = pgTable(
     plan: text("plan").$type<BravePlan>(),
     expiresOn: date("expires_on", { mode: "string" }),
     budgetUsd: numeric("budget_usd", { precision: 12, scale: 2 }),
-    budgetPeriod: text("budget_period").$type<BudgetPeriod>(),
+    // Budgets are monthly: "month" when a budget is set, null otherwise.
+    budgetPeriod: text("budget_period").$type<"month">(),
     budgetStartedAt: timestamp("budget_started_at", { withTimezone: true }),
     lastValidatedAt: timestamp("last_validated_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -195,7 +195,7 @@ export const messages = pgTable(
     searchFailures: integer("search_failures").notNull().default(0),
     tokensIn: integer("tokens_in"),
     tokensOut: integer("tokens_out"),
-    // Generation cost reported by OpenRouter (actual).
+    // Generation cost: reported by the provider, or estimated from token prices (DeepSeek).
     costUsd: numeric("cost_usd", { precision: 12, scale: 6 }),
     // Search cost estimated from the selected provider's list price.
     searchCostUsd: numeric("search_cost_usd", { precision: 12, scale: 6 }),

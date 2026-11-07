@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { BUDGET_PERIODS, BRAVE_PLANS, CREDENTIAL_KINDS, CREDENTIAL_PROVIDER_IDS, credentialKind } from "@/lib/contracts";
+import { BRAVE_PLANS, CREDENTIAL_PROVIDER_IDS, credentialKind } from "@/lib/contracts";
 import { PROVIDERS } from "@/lib/provider-catalog";
 import { analytics } from "@/lib/server/analytics";
 import { audit } from "@/lib/server/audit";
@@ -15,33 +15,21 @@ export const dynamic = "force-dynamic";
 
 const schema = z
   .object({
-    // Derived from the provider; still accepted from older clients, and must then agree.
-    kind: z.enum(CREDENTIAL_KINDS).optional(),
     provider: z.enum(CREDENTIAL_PROVIDER_IDS),
     key: z.string().trim().min(8).max(600),
     plan: z.enum(BRAVE_PLANS).optional(),
     expiresOn: z.string().date().optional().nullable(),
     budgetUsd: z.number().positive().max(1_000_000).optional().nullable(),
-    budgetPeriod: z.enum(BUDGET_PERIODS).optional().nullable(),
     // false saves the key as unverified without calling the provider, for providers whose only
     // check is a billable request. The key is checked later with the validate endpoint.
     validate: z.boolean().optional(),
   })
   .superRefine((value, ctx) => {
     const info = PROVIDERS[value.provider];
-    if (value.kind && value.kind !== credentialKind(value.provider)) {
-      ctx.addIssue({ code: "custom", path: ["kind"], message: "Provider does not match credential kind." });
-    }
     if (info.keyLimits && !value.plan) {
       ctx.addIssue({ code: "custom", path: ["plan"], message: `Choose the ${info.name} plan for this key.` });
     }
-    if (
-      !info.keyLimits &&
-      (value.plan !== undefined ||
-        value.expiresOn !== undefined ||
-        value.budgetUsd !== undefined ||
-        value.budgetPeriod !== undefined)
-    ) {
+    if (!info.keyLimits && (value.plan !== undefined || value.expiresOn !== undefined || value.budgetUsd !== undefined)) {
       ctx.addIssue({ code: "custom", path: ["provider"], message: `Plan and limits do not apply to ${info.name} keys.` });
     }
     if (value.validate === false && info.freeValidation) {
@@ -60,11 +48,10 @@ export const POST = apiRoute(async ({ request, user }) => {
   await consumeRateLimit(`credentials:${user.id}`, 20, 3600);
   if (input.validate !== false) await consumeValidation(user.id, request.headers);
   const kind = credentialKind(input.provider);
-  const limits = Boolean(PROVIDERS[input.provider].keyLimits);
 
   const validate = input.validate !== false;
   try {
-    if (validate) await validateProviderKey(input.provider, input.key, input.plan ?? "free");
+    if (validate) await validateProviderKey(input.provider, input.key, input.plan);
   } catch (error) {
     const status = credentialStatusFor(error);
     if (status && error instanceof ApiError) {
@@ -87,10 +74,10 @@ export const POST = apiRoute(async ({ request, user }) => {
     provider: input.provider,
     encrypted,
     status: validate ? "active" : "unverified",
-    plan: limits ? (input.plan ?? "free") : null,
+    // The schema requires a plan for providers with key limits and rejects it for the rest.
+    plan: input.plan ?? null,
     expiresOn: input.expiresOn ?? null,
     budgetUsd: input.budgetUsd ?? null,
-    budgetPeriod: input.budgetPeriod ?? (input.budgetUsd == null ? null : "month"),
     preserveUsage: Boolean(existing),
   });
   audit("credential_saved", {

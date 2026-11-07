@@ -214,7 +214,6 @@ STRUCTURE
   return { system, user };
 }
 
-/** Instructions for the Deeper research agent. It researches only; a separate call writes the answer. */
 /** Quick: the agent's single step writes one search query for the latest question. */
 export function quickSearchPrompt(): string {
   const { date, timezone } = today();
@@ -231,6 +230,7 @@ export function researchRequest(question: string, history: Message[]): string {
   return `${conversation ? `CONVERSATION SO FAR\n${conversation}\n\n` : ""}QUESTION\n${question}`;
 }
 
+/** Instructions for the Deeper research agent. It researches only; a separate call writes the answer. */
 export function researchAgentPrompt(): string {
   const { date, timezone } = today();
   return `You are Beamling's research agent. Today is ${date} (${timezone}).

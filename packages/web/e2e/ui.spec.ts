@@ -83,8 +83,9 @@ test("a Quick answer streams with citations, cost breakdown and sources", async 
   await expect(page).toHaveURL(/\/chat\/[0-9a-f-]{36}$/);
   const answer = answers(page).last();
   await expect(answer).toContainText("fixture answer", { timeout: 20_000 });
-  await expect(answer).toContainText("actual");
-  await expect(answer).toContainText("est. (1 search)");
+  const meta = answer.locator(".answer-footer .meta");
+  await expect(meta).toContainText("DeepSeek V4.1 Flash");
+  await expect(meta.locator("[title*='1 search']")).toHaveCount(1);
   await expect(answer.locator("summary").filter({ hasText: "Searches" })).toBeVisible();
   await answer.locator("summary").filter({ hasText: "Searches" }).click();
   await expect(answer.locator(".trace-query")).toContainText("What is Beamling?");
@@ -108,7 +109,7 @@ test("a Quick answer streams with citations, cost breakdown and sources", async 
 test("a different search provider can be selected for an answer", async ({ page }) => {
   await connectKeys(page.request);
   const tavily = await page.request.post("/api/credentials", {
-    data: { kind: "search", provider: "tavily", key: "test-tavily-key" },
+    data: { provider: "tavily", key: "test-tavily-key" },
   });
   expect(tavily.status()).toBe(201);
 
@@ -117,10 +118,10 @@ test("a different search provider can be selected for an answer", async ({ page 
   await ask(page, "Use Tavily for this answer");
   const answer = answers(page).last();
   await expect(answer).toContainText("fixture answer", { timeout: 20_000 });
-  await expect(answer.locator(".badge").filter({ hasText: "Tavily" })).toBeVisible();
-  await expect(answer).toContainText("est. (1 search)");
+  await expect(answer.locator(".answer-footer .meta")).toContainText("Tavily");
+  await expect(answer.locator(".answer-footer .meta [title*='1 search']")).toHaveCount(1);
   await page.reload();
-  await expect(answers(page).last().locator(".badge").filter({ hasText: "Tavily" })).toBeVisible();
+  await expect(answers(page).last().locator(".answer-footer .meta")).toContainText("Tavily");
 });
 
 test("a search provider without a key is marked and asks for a key", async ({ page }) => {
@@ -206,7 +207,7 @@ test("switching conversations mid-answer keeps each answer in its own conversati
   await page.goto(first);
   const answer = answers(page).last();
   await expect(answer).toBeVisible();
-  await expect(answer.locator(".badge").filter({ hasText: "Stopped" }).or(answer.getByText("fixture answer"))).toBeVisible({
+  await expect(answer.getByText("Generation stopped").or(answer.getByText("fixture answer"))).toBeVisible({
     timeout: 15_000,
   });
 });
@@ -228,7 +229,7 @@ test("client-side navigation keeps the other answer streaming", async ({ page })
   await sidebarItem(page, "Keep streaming").getByRole("link").click();
   await expect(page).toHaveURL(new RegExp(`${first}$`));
   await expect(answers(page).last()).toContainText("fixture answer", { timeout: 20_000 });
-  await expect(answers(page).last().locator(".badge").filter({ hasText: "Stopped" })).toHaveCount(0);
+  await expect(answers(page).last().getByText("Generation stopped")).toHaveCount(0);
 });
 
 test("stop keeps the partial answer, and Ask again replaces it without repeating the question", async ({ page }) => {
@@ -259,7 +260,7 @@ test("a reload mid-answer shows the stored outcome, not a blank answer", async (
   await expect(page.locator(".message-assistant .assistant-body").last()).toContainText("This is a fixture answer", { timeout: 15_000 });
   await page.reload();
   const answer = answers(page).last();
-  await expect(answer.locator(".badge").filter({ hasText: "Stopped" })).toBeVisible({ timeout: 15_000 });
+  await expect(answer.getByText("Generation stopped")).toBeVisible({ timeout: 15_000 });
   await expect(answer).toContainText("fixture");
 });
 

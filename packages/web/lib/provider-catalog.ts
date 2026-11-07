@@ -12,8 +12,6 @@ import {
   type SearchProvider,
 } from "./contracts";
 
-export { isSearchProvider };
-
 export interface ProviderInfo {
   id: CredentialProvider;
   name: string;
@@ -27,6 +25,8 @@ export interface ProviderInfo {
   keyLimits?: boolean;
   /** List price per search request, used for the visible cost estimate. */
   searchCostUsd?: number;
+  /** The provider reports what each generation cost; otherwise Beamling estimates it from token prices. */
+  reportsCost?: boolean;
   /** Shown next to the key form and wherever the provider is picked. */
   notice?: string;
 }
@@ -39,6 +39,7 @@ export const PROVIDERS: { readonly [P in CredentialProvider]: ProviderInfo & { i
     placeholder: "sk-or-v1-...",
     keyUrl: "https://openrouter.ai/settings/keys",
     freeValidation: true,
+    reportsCost: true,
     notice:
       "OpenRouter sends each request to one of several hosts, and some of them, such as DeepSeek's own, are in China. You can exclude hosts in your OpenRouter settings. Beamling does not control these hosts and takes no responsibility for how they handle your data.",
   },

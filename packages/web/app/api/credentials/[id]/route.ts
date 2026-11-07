@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { BUDGET_PERIODS, BRAVE_PLANS, isCredentialProvider } from "@/lib/contracts";
+import { BRAVE_PLANS, isCredentialProvider } from "@/lib/contracts";
 import { PROVIDERS } from "@/lib/provider-catalog";
 import { ApiError, idParam, json, notFound, parseBody } from "@/lib/server/http";
 import { deleteCredential, getCredentialById, updateCredentialLimits } from "@/lib/server/repo";
@@ -13,7 +13,6 @@ const schema = z.object({
   plan: z.enum(BRAVE_PLANS).optional(),
   expiresOn: z.string().date().optional().nullable(),
   budgetUsd: z.number().positive().max(1_000_000).optional().nullable(),
-  budgetPeriod: z.enum(BUDGET_PERIODS).optional().nullable(),
 });
 
 export const PATCH = apiRoute<{ params: Promise<{ id: string }> }>(async ({ request, context, user }) => {
@@ -23,10 +22,7 @@ export const PATCH = apiRoute<{ params: Promise<{ id: string }> }>(async ({ requ
   const input = await parseBody(request, schema);
   if (
     !(isCredentialProvider(existing.provider) && PROVIDERS[existing.provider].keyLimits) &&
-    (input.plan !== undefined ||
-      input.expiresOn !== undefined ||
-      input.budgetUsd !== undefined ||
-      input.budgetPeriod !== undefined)
+    (input.plan !== undefined || input.expiresOn !== undefined || input.budgetUsd !== undefined)
   ) {
     throw new ApiError("INVALID_PROVIDER", "Plan and limits do not apply to this key.", 400);
   }
@@ -37,10 +33,9 @@ export const PATCH = apiRoute<{ params: Promise<{ id: string }> }>(async ({ requ
     }
   }
   const credential = await updateCredentialLimits(user.id, id, {
-    plan: input.plan ?? (existing.plan as "free" | "paid" | null) ?? null,
+    plan: input.plan ?? existing.plan,
     expiresOn: input.expiresOn !== undefined ? input.expiresOn : existing.expiresOn,
     budgetUsd: input.budgetUsd !== undefined ? input.budgetUsd : existing.budgetUsd == null ? null : Number(existing.budgetUsd),
-    budgetPeriod: input.budgetPeriod !== undefined ? input.budgetPeriod : (existing.budgetPeriod as "month" | "total" | null),
   });
   if (!credential) throw notFound("Credential not found.");
   return json({ credential });

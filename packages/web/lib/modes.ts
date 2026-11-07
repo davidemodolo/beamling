@@ -1,6 +1,6 @@
-import { MODES as CONTRACT_MODES, type Mode } from "./contracts";
+import type { Mode } from "./contracts";
 
-export const MODES = CONTRACT_MODES;
+export { MODES } from "./contracts";
 
 export const MODE_LABELS: Record<Mode, string> = {
   quick: "Quick",

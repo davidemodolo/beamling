@@ -1,9 +1,16 @@
 import { createDeepSeek } from "@ai-sdk/deepseek";
-import { ApiError } from "../http";
-import { log } from "../log";
-import { providerFetch, unavailable } from "./errors";
+import type { ApiError } from "../http";
+import { providerError, providerFetch, readJsonObject, readProviderError, textField } from "./errors";
 import type { LlmAdapter, ModelStep } from "./llm";
-import { clampQuery, normalizedSources, requestSignal, retryOnceOn429, type RetrievedSource, type SearchOptions } from "./shared";
+import {
+  clampQuery,
+  freshnessStart,
+  normalizedSources,
+  requestSignal,
+  retryOnceOn429,
+  type RetrievedSource,
+  type SearchOptions,
+} from "./shared";
 
 const API = "https://api.deepseek.com";
 /** DeepSeek Search rejects queries longer than 128 characters. */
@@ -48,30 +55,11 @@ export const deepSeekModels: LlmAdapter = {
   stepUsage: (step) => ({ costUsd: deepSeekCost(step) }),
 };
 
-interface DeepSeekErrorBody {
-  error?: { message?: unknown };
-}
-
 export function deepSeekError(status: number, value: unknown = {}): ApiError {
-  const body = value !== null && typeof value === "object" ? (value as DeepSeekErrorBody) : {};
-  const detail = typeof body.error?.message === "string" ? body.error.message.slice(0, 500) : "";
-  const error = (code: string, message: string, httpStatus: number) => new ApiError(code, message, httpStatus, "deepseek");
-  if (status === 401 || status === 403) return error("CREDENTIAL_INVALID", "DeepSeek rejected this key.", 400);
-  if (status === 402) return error("INSUFFICIENT_CREDITS", "DeepSeek has no remaining balance for this key.", 402);
-  if (status === 429) return error("PROVIDER_RATE_LIMITED", "DeepSeek is rate-limiting this key.", 429);
-  if (status === 408 || status >= 500) return unavailable("deepseek");
-  return error("PROVIDER_ERROR", detail || `DeepSeek returned HTTP ${status}.`, 502);
+  return providerError("deepseek", status, textField((value as { error?: { message?: unknown } } | null)?.error?.message));
 }
 
-async function readError(response: Response): Promise<ApiError> {
-  let body: unknown;
-  try {
-    body = await response.json();
-  } catch {}
-  // Provider text can echo the query; keep only the stable status in logs.
-  log.warn("DeepSeek request failed", { status: response.status });
-  return deepSeekError(response.status, body);
-}
+const readError = (response: Response) => readProviderError("deepseek", response, deepSeekError);
 
 interface BalanceResponse {
   is_available?: boolean;
@@ -91,10 +79,8 @@ export async function validateDeepSeekKey(key: string): Promise<void> {
 
 /** Recency is a query operator; the base query is shortened so the whole query fits the limit. */
 function searchQuery(query: string, freshnessDays?: number): string {
-  const after =
-    freshnessDays && freshnessDays > 0 && freshnessDays <= 365
-      ? ` after:${new Date(Date.now() - freshnessDays * 86_400_000).toISOString().slice(0, 10)}`
-      : "";
+  const since = freshnessStart(freshnessDays);
+  const after = since ? ` after:${since.toISOString().slice(0, 10)}` : "";
   return `${clampQuery(query, 50, MAX_QUERY_CHARS - after.length).trim()}${after}`;
 }
 
@@ -127,15 +113,7 @@ export async function searchDeepSeek(key: string, query: string, options: Search
     );
   const response = await retryOnceOn429(await send(), send, options.signal);
   if (!response.ok) throw await readError(response);
-  let body: SearchResponse;
-  try {
-    const parsed = (await response.json()) as unknown;
-    if (parsed === null || typeof parsed !== "object") throw new Error("DeepSeek returned a non-object body.");
-    body = parsed as SearchResponse;
-  } catch (error) {
-    if (options.signal?.aborted) throw error;
-    throw unavailable("deepseek", "DeepSeek returned an unreadable response.");
-  }
+  const body = await readJsonObject<SearchResponse>("deepseek", response, options.signal);
   return normalizedSources(
     (Array.isArray(body.results) ? body.results : []).map((item) => ({
       url: item.url,

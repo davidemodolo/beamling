@@ -4,10 +4,10 @@ import { memo, useCallback, type ReactNode } from "react";
 import { describeAnswerError } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
 import { useToast } from "@/lib/hooks/use-toast";
-import { llmModelName, searchProviderName } from "@/lib/provider-catalog";
+import { llmModelName, modelInfo, providerInfo, searchProviderName } from "@/lib/provider-catalog";
 import type { ThreadMessage } from "@/lib/store";
 import type { SearchProvider, SearchTrace, Source, Usage } from "@/lib/types";
-import { formatCost, formatNumber } from "@/lib/utils";
+import { formatCost, formatNumber, plural } from "@/lib/utils";
 import { useSidebar } from "./sidebar-context";
 import { Markdown } from "./markdown";
 import { Mascot } from "./mascot";
@@ -21,51 +21,47 @@ interface AnswerCardProps {
   onRetry?: (messageId: string) => void;
 }
 
-/** Selected model, plus what OpenRouter actually routed it to when that differs. */
-function ModelBadges({ selected, searchProvider, usage }: { selected?: string; searchProvider?: SearchProvider; usage?: Usage }) {
-  const resolved = usage?.resolvedModel;
-  const rerouted = resolved && selected && resolved !== selected;
+/**
+ * One quiet line under the answer: model, search provider, total cost and time. Details (the model
+ * and host the provider actually used, tokens, the cost split) are in the tooltips.
+ */
+function AnswerMeta({ selected, searchProvider, usage }: { selected?: string; searchProvider?: SearchProvider; usage?: Usage }) {
+  const model = selected ? modelInfo(selected) : undefined;
+  const provider = model ? providerInfo(model.provider) : undefined;
+  const modelTitle = [
+    usage?.resolvedModel ? `Ran as ${usage.resolvedModel}` : null,
+    usage?.upstreamProvider ? `hosted by ${usage.upstreamProvider}` : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
+  const generation = provider?.reportsCost ? "reported" : "estimated";
+  const costTitle = usage
+    ? [
+        `${formatNumber(usage.tokensIn)} tokens in, ${formatNumber(usage.tokensOut)} out`,
+        `generation ${formatCost(usage.costUsd)} (${generation})`,
+        usage.searchCostUsd != null
+          ? `search ${formatCost(usage.searchCostUsd)} (estimated, ${plural(usage.searchRequests ?? 0, "search", "searches")})`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
   return (
     <>
-      <span className="badge" title="Generated automatically by an AI model. Check the sources.">
-        AI-generated
-      </span>
-      {selected ? (
-        <span className="badge badge-mono" title={`Selected model: ${selected}`}>
-          {llmModelName(selected)}
-        </span>
+      {selected ? <span title={modelTitle || undefined}>{llmModelName(selected)}</span> : null}
+      {searchProvider ? (
+        <>
+          <span className="dot" />
+          <span>{searchProviderName(searchProvider)}</span>
+        </>
       ) : null}
-      {rerouted ? (
-        <span className="badge badge-mono" title="The model OpenRouter used for this answer">
-          → {resolved}
-        </span>
+      {usage ? (
+        <>
+          <span className="dot" />
+          <span title={costTitle}>{formatCost(usage.costUsd + (usage.searchCostUsd ?? 0))}</span>
+        </>
       ) : null}
-      {usage?.upstreamProvider ? (
-        <span className="badge badge-mono" title="Upstream provider chosen by OpenRouter">
-          via {usage.upstreamProvider}
-        </span>
-      ) : null}
-      {searchProvider ? <span className="badge badge-mono">{searchProviderName(searchProvider)}</span> : null}
-    </>
-  );
-}
-
-function UsageLine({ usage }: { usage: Usage }) {
-  const searches = usage.searchRequests ?? 0;
-  return (
-    <>
-      <span className="dot" />
-      <span>{formatNumber(usage.tokensIn)} in</span>
-      <span>/</span>
-      <span>{formatNumber(usage.tokensOut)} out</span>
-      <span className="dot" />
-      <span title="Generation cost reported by OpenRouter">{formatCost(usage.costUsd)} actual</span>
-      {usage.searchCostUsd != null ? (
-        <span title={`${searchProviderName(usage.searchProvider ?? "brave")} cost at the list price`}>
-          + {formatCost(usage.searchCostUsd)} est. ({searches} {searches === 1 ? "search" : "searches"})
-        </span>
-      ) : null}
-      {usage.latencyMs ? (
+      {usage?.latencyMs ? (
         <>
           <span className="dot" />
           <span>{(usage.latencyMs / 1000).toFixed(1)} s</span>
@@ -108,7 +104,7 @@ export function SearchTraceDetails({ traces }: { traces?: SearchTrace[] }) {
                 ? "searching…"
                 : trace.status === "failed"
                   ? "failed"
-                  : `${trace.results ?? 0} ${trace.results === 1 ? "result" : "results"}`}
+                  : plural(trace.results ?? 0, "result")}
             </span>
           </li>
         ))}
@@ -178,8 +174,6 @@ export const AnswerCard = memo(function AnswerCard({ message, onCitation, onOpen
         </span>
         <span>Beamling</span>
         <span className="dash" aria-hidden="true" />
-        {message.status === "stopped" ? <span className="badge">Stopped</span> : null}
-        {message.noSources ? <span className="badge badge-error">No sources</span> : null}
         {message.uncited && !message.noSources ? <span className="badge badge-error">Uncited</span> : null}
       </div>
 
@@ -192,12 +186,6 @@ export const AnswerCard = memo(function AnswerCard({ message, onCitation, onOpen
               This answer is being written in another tab or was started before a reload. It updates when it finishes.
             </div>
           </div>
-        ) : null}
-
-        {message.noSources ? (
-          <Notice icon="alert" title="Insufficient sources" tone="warn">
-            The search returned nothing reliable, so this answer is deliberately cautious.
-          </Notice>
         ) : null}
 
         {message.degraded ? (
@@ -273,8 +261,7 @@ export const AnswerCard = memo(function AnswerCard({ message, onCitation, onOpen
         {!error && !writing ? (
           <div className="answer-footer">
             <div className="meta">
-              <ModelBadges selected={message.llmModel} searchProvider={message.searchProvider ?? message.usage?.searchProvider} usage={message.usage} />
-              {message.usage ? <UsageLine usage={message.usage} /> : null}
+              <AnswerMeta selected={message.llmModel} searchProvider={message.searchProvider ?? message.usage?.searchProvider} usage={message.usage} />
             </div>
             <div className="actions">
               <button type="button" className="btn btn-ghost btn-icon btn-sm" onClick={copy} aria-label="Copy answer">

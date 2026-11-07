@@ -23,6 +23,7 @@ export const POST = apiRoute<{ params: Promise<{ id: string }> }>(async ({ reque
   await consumeValidation(user.id, request.headers);
   const row = await getCredentialById(user.id, id);
   if (!row) throw notFound("Credential not found.");
+  // The column may still hold a provider that was removed from the catalog.
   if (!isCredentialProvider(row.provider)) {
     throw new ApiError("INVALID_PROVIDER", "This provider is no longer supported. Delete the key.", 400);
   }
@@ -44,12 +45,12 @@ export const POST = apiRoute<{ params: Promise<{ id: string }> }>(async ({ reque
   }
 
   try {
-    await validateProviderKey(provider, key, row.plan === "paid" ? "paid" : "free");
+    await validateProviderKey(provider, key, row.plan ?? undefined);
   } catch (error) {
     const status = credentialStatusFor(error);
     if (status && error instanceof ApiError) {
       analytics.capture(user.id, "credential_validation_failed", {
-        kind: row.kind === "llm" ? "llm" : "search",
+        kind: row.kind,
         provider,
         error_code: error.code,
       });

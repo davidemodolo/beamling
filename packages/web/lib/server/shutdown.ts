@@ -1,4 +1,6 @@
 import { legalDetails } from "../legal";
+import { ALL_PROVIDERS } from "../provider-catalog";
+import { orList } from "../utils";
 import { analytics } from "./analytics";
 import { audit } from "./audit";
 import { appUrl, mailConfigured } from "./env";
@@ -44,7 +46,7 @@ export function shutdownNotice(shutdown: Shutdown): { subject: string; text: str
     "",
     `Beamling (${url}) will shut down on ${date}. Thank you for using it.`,
     "",
-    "On that date every account is permanently deleted with all its data: conversations, sources, saved provider keys and settings. Your OpenRouter, Brave, Tavily or Exa accounts are not affected; you may want to revoke the keys you saved in Beamling from their dashboards.",
+    `On that date every account is permanently deleted with all its data: conversations, sources, saved provider keys and settings. Your ${orList(ALL_PROVIDERS.map((provider) => provider.shortName))} accounts are not affected; you may want to revoke the keys you saved in Beamling from their dashboards.`,
     "",
     "To keep your conversations, download them before then: sign in, open Settings → Account and choose \"Download my data\".",
     ...(shutdown.reason ? ["", shutdown.reason] : []),

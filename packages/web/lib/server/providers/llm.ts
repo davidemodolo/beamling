@@ -20,7 +20,6 @@ interface ChatUsage {
 
 export interface ChatResult {
   content: string;
-  reasoning?: string;
   /** The model that actually answered, as the provider reports it. */
   model: string;
   /** The upstream host, for routers that report one. */
@@ -85,7 +84,6 @@ export interface StreamChatOptions {
   apiModel: string;
   messages: ChatMessage[];
   maxTokens: number;
-  temperature?: number;
   signal?: AbortSignal;
   onDelta?: (text: string) => void;
   onReasoning?: (text: string) => void;
@@ -101,14 +99,13 @@ export async function streamChat(options: StreamChatOptions): Promise<ChatResult
     instructions: instructions.length ? instructions.join("\n\n") : undefined,
     messages: options.messages.filter((message) => message.role !== "system") as { role: "user" | "assistant"; content: string }[],
     maxOutputTokens: options.maxTokens,
-    temperature: options.temperature ?? 0.2,
+    temperature: 0.2,
     abortSignal: signal,
     maxRetries: 0,
     providerOptions: adapter.providerOptions as Parameters<typeof streamText>[0]["providerOptions"],
   });
 
   let content = "";
-  let reasoning = "";
   let model = options.apiModel;
   let upstream: string | undefined;
   let finishReason: string | undefined;
@@ -122,7 +119,6 @@ export async function streamChat(options: StreamChatOptions): Promise<ChatResult
           options.onDelta?.(part.text);
           break;
         case "reasoning-delta":
-          reasoning += part.text;
           options.onReasoning?.(part.text);
           break;
         case "finish-step": {
@@ -149,5 +145,5 @@ export async function streamChat(options: StreamChatOptions): Promise<ChatResult
     throw modelError(provider, error, signal);
   }
   if (!finished) throw unavailable(provider, `${providerName(provider)} ended the stream before it finished.`);
-  return { content, reasoning: reasoning || undefined, model, provider: upstream, finishReason, usage };
+  return { content, model, provider: upstream, finishReason, usage };
 }

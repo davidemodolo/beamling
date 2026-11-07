@@ -20,22 +20,17 @@ import {
   type RunContext,
   type RunState,
 } from "./context";
-import { retrieveSources } from "./retrieval";
+import { plural } from "../../utils";
+import { retrieveSources, type RetrievalLimits } from "./retrieval";
 
 /** How far one research run may go. Quick and Deeper are the same loop with different budgets. */
-export interface ResearchBudget {
+export interface ResearchBudget extends RetrievalLimits {
   /** Searches in the whole run. */
   searches: number;
   queriesPerCall: number;
   /** Model steps; the first one always calls the search tool. */
   steps: number;
-  sources: number;
-  resultsPerQuery: number;
-  /** Most sources kept from one site. */
-  perSite: number;
   maxOutputTokens: number;
-  /** Report each round in the stage line (Deeper) instead of a plain "Searching the web" (Quick). */
-  detailed: boolean;
 }
 
 export const QUICK_BUDGET: ResearchBudget = {
@@ -59,8 +54,6 @@ export const DEEPER_BUDGET: ResearchBudget = {
   maxOutputTokens: 4000,
   detailed: true,
 };
-
-const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
 /** State shared by every search-tool call in one run. */
 interface Research {
@@ -190,7 +183,7 @@ export async function runResearch(ctx: RunContext, state: RunState, budget: Rese
       budget.steps === 1
         ? [prepared.question]
         : ["fixture deeper overview", "fixture deeper developments", "fixture deeper limitations"];
-    await retrieveSources(ctx, state, fixtureQueries);
+    await retrieveSources(ctx, state, fixtureQueries, budget);
     return;
   }
   const research: Research = { ctx, state, budget, asked: new Set() };

@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ANALYTICS_EVENT_PROPERTIES, analyticsDistinctId, buildAnalyticsPayload, createAnalytics } from "../../lib/server/analytics";
 import { APP_VERSION } from "../../lib/version";
-import { configureUnitEnv, withEnv } from "./helpers";
+import { withEnv } from "../helpers";
+import { configureUnitEnv } from "./helpers";
 
 configureUnitEnv();
 

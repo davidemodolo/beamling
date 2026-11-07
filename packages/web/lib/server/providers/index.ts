@@ -3,7 +3,7 @@
  * factory; a search provider supplies a search function; both supply a key check. The mapped type
  * makes the compiler require the right capabilities for every id in `contracts.ts`.
  */
-import type { CredentialProvider, LlmProvider, SearchProvider } from "../../contracts";
+import type { BravePlan, CredentialProvider, LlmProvider, SearchProvider } from "../../contracts";
 import type { ModelInfo } from "../../provider-catalog";
 import { isFakeProviders } from "../env";
 import { searchBrave, validateBraveKey } from "./brave";
@@ -16,7 +16,7 @@ import type { RetrievedSource, SearchOptions } from "./shared";
 import { searchTavily, validateTavilyKey } from "./tavily";
 
 type SearchFn = (key: string, query: string, options: SearchOptions) => Promise<RetrievedSource[]>;
-type KeyCheck = (key: string, options: { plan: "free" | "paid" }) => Promise<void>;
+type KeyCheck = (key: string, options: { plan: BravePlan }) => Promise<void>;
 
 type Adapter<P extends CredentialProvider> = { validateKey: KeyCheck } & (P extends LlmProvider ? { llm: LlmAdapter } : unknown) &
   (P extends SearchProvider ? { search: SearchFn } : unknown);
@@ -31,13 +31,14 @@ const ADAPTERS: { [P in CredentialProvider]: Adapter<P> } = {
 
 export const llmAdapter = (provider: LlmProvider): LlmAdapter => ADAPTERS[provider].llm;
 
-export async function validateProviderKey(provider: CredentialProvider, key: string, plan: "free" | "paid" = "free"): Promise<void> {
+/** `plan` matters only for Brave, whose key check is a search request paced by the plan. */
+export async function validateProviderKey(provider: CredentialProvider, key: string, plan: BravePlan = "free"): Promise<void> {
   if (isFakeProviders()) return fakeValidateKey(key, provider);
   return ADAPTERS[provider].validateKey(key, { plan });
 }
 
 export async function search(provider: SearchProvider, key: string, query: string, options: SearchOptions): Promise<RetrievedSource[]> {
-  if (isFakeProviders()) return fakeSearch(query, options.count, options.signal, provider);
+  if (isFakeProviders()) return fakeSearch(provider, query, options.count, options.signal);
   return ADAPTERS[provider].search(key, query, options);
 }
 
