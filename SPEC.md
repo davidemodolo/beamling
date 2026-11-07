@@ -32,7 +32,7 @@ This file is the **target contract** for Alpha 1 and public launch. It is not an
 
 | Area | Current checkout | Alpha 1 / public-launch target |
 |---|---|---|
-| Runtime | Next.js 16.4.2, React 19.3.1, TypeScript 6.0.3, Node 24, one web app plus the mascot workspace package | Same, deployed on Fly.io |
+| Runtime | Next.js 16.4.5, React 19.3.1, TypeScript 6.0.3, Node 26 LTS, one web app plus the mascot workspace package | Same, deployed on Fly.io |
 | Auth | Google-only OIDC accounts, opaque session cookie, 30-day sliding expiry capped at 90 days, previous session revoked on sign-in, hashed token at rest; versioned terms acceptance with 18+ confirmation at `/welcome` before the app or API can be used | Same; no guest workspaces |
 | LLM | OpenRouter only; five allowlisted models; DeepSeek V4.1 Flash default | Same |
 | Search | Brave, Tavily and Exa selected per answer; Brave free/paid spacing and key metadata; Tavily and Exa use their basic search contracts | Same, plus provider-specific plan metadata and cost ceilings |
@@ -771,7 +771,7 @@ Alpha 1 is Docker-first and PostgreSQL-only. The same container image runs local
 |---|---|---|
 | Application | Next.js 16.4, React 19.3, TypeScript 6 | Current repository; UI and API in one deployable unit |
 | Styling | Tailwind CSS 4.3 plus the existing custom CSS | No UI-kit requirement; keep the current accessible components |
-| Runtime | Node.js 24 LTS | Long-lived SSE, AES-256-GCM and standard Node APIs |
+| Runtime | Node.js 26 LTS | Long-lived SSE, AES-256-GCM and standard Node APIs |
 | Database | PostgreSQL 18 | Neon Postgres (EU region); local Postgres 18 in Docker Compose |
 | ORM | Drizzle ORM | Typed schema, versioned migrations |
 | Cache and limits | Database-backed limits at launch | No Redis |
@@ -811,7 +811,7 @@ The local parity stack is **not** a simplified dev server. It runs the same stan
 ### 12.5 Streaming and limits
 
 - SSE heartbeat every 15 seconds to keep proxies open.
-- The chat route runs on Node.js 24 and uses web-standard streams for SSE.
+- The chat route runs on Node.js 26 and uses web-standard streams for SSE.
 - Quick mode maximum duration: 60 seconds. Deep mode: 90 seconds. Deeper mode: 360 seconds.
 - One active generation per conversation; the current code rejects a second request with `GENERATION_IN_PROGRESS` (409) rather than cancelling the first.
 - Global concurrency cap protects provider quota and server memory. With more than one instance, use a database-backed atomic counter or the host's native limiter; do not rely on process memory alone.

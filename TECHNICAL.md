@@ -92,9 +92,9 @@ Toolchain:
 
 | Item | Version / choice |
 |---|---|
-| Package manager | pnpm 10.33.0 |
-| Web framework | Next.js 16.4.2, App Router |
-| UI | React 19.3.1, TypeScript 6.0.3 |
+| Package manager | pnpm 12.18.0; dependency build scripts are denied in `pnpm-workspace.yaml` |
+| Web framework | Next.js 16.4.5, App Router |
+| UI | React 19.3.1, TypeScript 6.0.3 in the web app (typescript-eslint does not support TypeScript 7 yet), TypeScript 7.0.2 in the mascot package |
 | Styling | Tailwind CSS 4.3.3 plus hand-written CSS files under `app/styles` |
 | Database | PostgreSQL 18 |
 | ORM | Drizzle ORM 0.45.4, `pg` 8.23.1 |
@@ -102,8 +102,8 @@ Toolchain:
 | Email | Nodemailer 10.2.0 (shutdown notice only) |
 | Agent loop | AI SDK 7.0.148 `ToolLoopAgent` with `@openrouter/ai-sdk-provider` 3.1.0 (Deeper only) |
 | SSE parsing | `eventsource-parser` 4.1.2 |
-| Test runner | Node test runner through `tsx`; Playwright 1.64.1 |
-| Runtime target | Node.js 24 in Docker |
+| Test runner | Node test runner through `tsx`; Playwright 1.65.0 |
+| Runtime target | Node.js 26 LTS in Docker and CI |
 
 Useful commands:
 
@@ -1479,7 +1479,7 @@ frame-ancestors 'none'
 - GitHub Actions are pinned to full commit SHAs, the CI PostgreSQL service image is pinned to a digest, and the runtime base image is pinned to a multi-arch digest. `actions/checkout` runs with `persist-credentials: false` in the test and deploy jobs, so the token is not left in `.git/config` while tests, the build and Playwright run third-party code. Dependency install uses `--ignore-scripts`; the mascot package build is explicit.
 - The release job records the pushed GHCR digest; deploy uses that digest and verifies `/api/health` afterward.
 - Dependabot checks npm, GitHub Actions and Docker weekly.
-- The built image is scanned separately; the current image has no HIGH, CRITICAL or MEDIUM findings after removing the npm/corepack trees and applying Alpine security updates.
+- The built image is scanned separately; the current image has no HIGH, CRITICAL or MEDIUM findings after removing the npm tree and applying Alpine security updates.
 - `pnpm audit` still reports two development-only tooling advisories (`braces` via ESLint, `esbuild` via drizzle-kit). Neither is in the runtime image.
 
 ### 13.7 Data deletion
@@ -1524,7 +1524,7 @@ Analytics is disabled unless `ANALYTICS_ENABLED=true` and the full PostHog confi
 |---|---|
 | `certs` | Generates a local CA plus PostgreSQL server certificate, owned by the Postgres uid |
 | `db` | `postgres:18-alpine` with TLS required, loopback port `127.0.0.1:5433` for host-run tests, named volume, `pg_isready` health check |
-| `localstack` | LocalStack with KMS and a pre-created `alias/beamling-local` key |
+| `localstack` | LocalStack 4.14.0 with KMS and a pre-created `alias/beamling-local` key. Pinned: later LocalStack images require an account auth token. |
 | `dex` | Dex OIDC issuer at `http://auth.localhost:5556`, seeded `test@beamling.local` / `beamling` |
 | `migrate` | One-shot production image invocation of `node scripts/migrate.mjs`; waits for the database |
 | `app` | Production standalone image, `NODE_ENV=production`, secure `__Host-` cookie, KMS-backed crypto |
@@ -1550,9 +1550,9 @@ PostgreSQL is exposed only on loopback `5433` for integration tests:
 
 The Dockerfile is multi-stage:
 
-1. `deps`: Node 24 Alpine, corepack, pnpm 10.33, install workspace dependencies with `--ignore-scripts`.
+1. `deps`: Node 26 Alpine, pnpm 12.18 installed with npm (Node 26 no longer bundles corepack), install workspace dependencies with `--ignore-scripts`.
 2. `build`: copy sources, build the mascot, run `next build` with standalone output.
-3. `runner`: Node 24 Alpine with npm/corepack removed, non-root `beamling` user, standalone server, static assets, public assets, Drizzle migrations and both scripts.
+3. `runner`: Node 26 Alpine with npm removed, non-root `beamling` user, standalone server, static assets, public assets, Drizzle migrations and both scripts.
 
 Runtime environment includes:
 
@@ -1565,7 +1565,7 @@ NEXT_MANUAL_SIG_HANDLE=true
 NODE_PATH=/app/node_modules/.pnpm/node_modules
 ```
 
-The image applies Alpine security updates, removes npm/corepack from the runtime, exposes a `HEALTHCHECK` against `/api/health`, and runs as a non-root user.
+The image applies Alpine security updates, removes npm from the runtime, exposes a `HEALTHCHECK` against `/api/health`, and runs as a non-root user.
 
 ### 14.3 Migrations
 
@@ -1606,7 +1606,7 @@ Migrations are a release step, not an app-start side effect. The local compose `
 
 `fly.toml` describes the production topology: one shared-CPU 1 GB machine in `fra`, scale-to-zero, a 20-second shutdown window, HTTP health checks on `/api/health`, and the migration release command.
 
-- Production deploys are gated by the repository variable `FLY_DEPLOY_ENABLED=true`. When a new version tag is created, the `deploy` job in `ci.yml` installs pinned flyctl `0.4.120` and deploys the GHCR digest produced by the release job.
+- Production deploys are gated by the repository variable `FLY_DEPLOY_ENABLED=true`. When a new version tag is created, the `deploy` job in `ci.yml` installs pinned flyctl `0.5.5` and deploys the GHCR digest produced by the release job.
 - Required Fly secrets: `DATABASE_URL`, `AUTH_SECRET`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `KMS_KEY_NAME`, `GCP_KMS_CREDENTIALS`, `KILL_SWITCH_SECRET`, `METRICS_SECRET`, `LEGAL_ENTITY`, `LEGAL_ADDRESS`, `LEGAL_CONTACT_EMAIL` and, when analytics is enabled, the PostHog values. Optional: `LEGAL_VAT_ID`, and `LEGAL_LOG_RETENTION_DAYS`/`LEGAL_BACKUP_RETENTION_DAYS` when the Fly log or Neon backup retention differs from the 30/7-day defaults; `SMTP_URL`, `MAIL_FROM` and `LEGAL_MAIL_PROVIDER` to email a shutdown notice.
 - `SIGNUP_MODE=allowlist` is the Fly default. Set `SIGNUP_MODE=open` explicitly to open public registration, or add `SIGNUP_ALLOWED_EMAILS`/`SIGNUP_ALLOWED_EMAIL_DOMAINS`.
 - The public smoke URL comes from the repository variable `PUBLIC_APP_URL` (falling back to `https://beamling.app`).

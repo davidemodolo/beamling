@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
 
-FROM node:24-alpine@sha256:6a1c190e17215d844926b0677f4bf87273ff7d5e54db06d3b5b5863ab0b09a3d AS base
-RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
+FROM node:26-alpine@sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a881ead0b064ce216 AS base
+# Node 25+ no longer bundles corepack; keep this version in sync with packageManager.
+RUN npm install -g pnpm@12.18.0
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 
@@ -20,7 +21,7 @@ ENV APP_VERSION=$APP_VERSION GIT_COMMIT=$GIT_COMMIT BUILD_TIME=$BUILD_TIME
 COPY . .
 RUN pnpm mascot:build && pnpm --filter @beamling/web build
 
-FROM node:24-alpine@sha256:6a1c190e17215d844926b0677f4bf87273ff7d5e54db06d3b5b5863ab0b09a3d AS runner
+FROM node:26-alpine@sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a881ead0b064ce216 AS runner
 ARG APP_VERSION=0.0.0
 ARG GIT_COMMIT=local
 ARG BUILD_TIME
