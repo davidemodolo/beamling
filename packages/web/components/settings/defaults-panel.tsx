@@ -4,11 +4,11 @@ import { Icon } from "@/components/ui/icon";
 import { errorMessage } from "@/lib/api";
 import { useToast } from "@/lib/hooks/use-toast";
 import { OPENROUTER_MODELS, SEARCH_PROVIDERS } from "@/lib/provider-catalog";
-import { useStore } from "@/lib/store";
+import { useAccount } from "@/lib/store";
 import { MODE_HINTS, MODE_ICONS, MODE_LABELS, MODES } from "@/lib/modes";
 
 export function DefaultsPanel() {
-  const { settings, updateSettings } = useStore();
+  const { settings, updateSettings } = useAccount();
   const [toast, showToast] = useToast();
 
   const save = (patch: Parameters<typeof updateSettings>[0], message: string) => {

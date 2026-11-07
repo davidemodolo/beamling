@@ -3,14 +3,14 @@
 import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnswerStreamsProvider } from "@/lib/answer-streams";
 import { useFocusTrap } from "@/lib/hooks/use-focus-trap";
-import { StoreProvider, useStore } from "@/lib/store";
+import { StoreProvider, useAccount } from "@/lib/store";
 import { SettingsModal, type SettingsTab } from "./settings-modal";
 import { Sidebar } from "./sidebar";
 import { SidebarContext, type SidebarContextValue } from "./sidebar-context";
 import { WorkspaceError } from "./workspace-error";
 
 function Frame({ children, notice }: { children: ReactNode; notice?: string }) {
-  const { user, error } = useStore();
+  const { user, error } = useAccount();
   const [open, setOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("keys");

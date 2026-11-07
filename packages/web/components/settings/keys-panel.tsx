@@ -6,7 +6,7 @@ import { Icon } from "@/components/ui/icon";
 import { errorMessage } from "@/lib/api";
 import { useToast } from "@/lib/hooks/use-toast";
 import { SEARCH_PROVIDERS } from "@/lib/provider-catalog";
-import { useStore } from "@/lib/store";
+import { useAccount } from "@/lib/store";
 import { credentialInput, DEFAULT_BUDGET_PERIOD } from "@/lib/credential-form";
 import type { Credential, CredentialKind, CredentialProvider } from "@/lib/types";
 import { CredentialRow } from "./credential-row";
@@ -83,7 +83,7 @@ function LimitsForm({
 }
 
 export function KeysPanel() {
-  const { credentials, addCredential, removeCredential, validateCredential, updateCredentialLimits } = useStore();
+  const { credentials, addCredential, removeCredential, validateCredential, updateCredentialLimits } = useAccount();
   const [editing, setEditing] = useState<string | null>(null);
   const [key, setKey] = useState("");
   const [validateNow, setValidateNow] = useState(true);
