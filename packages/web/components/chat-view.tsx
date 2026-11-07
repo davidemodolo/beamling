@@ -2,7 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSidebar } from "./chat-shell";
+import { useSidebar } from "./sidebar-context";
 import { EmptyState, LoadErrorState, NotFoundState, Thread, ThreadSkeleton, UserBubble, WorkingAnswer } from "./chat-thread";
 import { Composer } from "./composer";
 import { SourcesPanel, SourcesSheet } from "./sources";

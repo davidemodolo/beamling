@@ -1,23 +1,13 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnswerStreamsProvider } from "@/lib/answer-streams";
 import { useFocusTrap } from "@/lib/hooks/use-focus-trap";
 import { StoreProvider, useStore } from "@/lib/store";
 import { SettingsModal, type SettingsTab } from "./settings-modal";
 import { Sidebar } from "./sidebar";
+import { SidebarContext, type SidebarContextValue } from "./sidebar-context";
 import { WorkspaceError } from "./workspace-error";
-
-interface SidebarContextValue {
-  openSidebar: () => void;
-  openSettings: (tab?: SettingsTab) => void;
-}
-
-const SidebarContext = createContext<SidebarContextValue>({ openSidebar: () => {}, openSettings: () => {} });
-
-export function useSidebar() {
-  return useContext(SidebarContext);
-}
 
 function Frame({ children, notice }: { children: ReactNode; notice?: string }) {
   const { user, error } = useStore();
