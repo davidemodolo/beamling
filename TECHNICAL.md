@@ -131,7 +131,7 @@ Configuration is read from environment variables at request/startup time. There 
 
 | Variable | Behavior |
 |---|---|
-| `DATABASE_URL` | PostgreSQL connection string. Required when `NODE_ENV=production`. Falls back to `postgres://beamling:beamling@127.0.0.1:5432/beamling` outside production. |
+| `DATABASE_URL` | PostgreSQL connection string used by the application pool. Required when `NODE_ENV=production`. Falls back to `postgres://beamling:beamling@127.0.0.1:5432/beamling` outside production. May point at a transaction-mode pooler (Neon `-pooler`, PgBouncer). |
 | `APP_URL` | Public origin. Required in production and must be an origin only (no credentials, path, query or fragment); `https://` outside localhost. Development falls back to `OPENROUTER_APP_URL`, then `NEXT_PUBLIC_APP_URL`, then `http://localhost:3000`. Also sent to OpenRouter as `HTTP-Referer`. |
 | `AUTH_SECRET` | Exactly 32 bytes, base64 encoded. Root secret for purpose-separated HKDF-SHA256 subkeys: OIDC transaction encryption, IP hashes, credential fingerprints and provider-slot keys. |
 | `OIDC_CLIENT_ID` | Google OAuth client id. |
@@ -147,6 +147,7 @@ Configuration is read from environment variables at request/startup time. There 
 Production startup refuses to boot when any of these checks fails:
 
 - `DATABASE_URL` is missing.
+- `DATABASE_URL` points at a Neon pooler host (`-pooler`) and `DATABASE_URL_DIRECT` is missing, or `DATABASE_URL_DIRECT` itself is a pooler host. `scripts/migrate.mjs` also refuses to run over a pooler host.
 - `APP_URL` is missing, malformed, includes a path/query/credentials, or is not HTTPS outside localhost.
 - `COOKIE_SECURE=false` outside localhost.
 - `TRUSTED_PROXY_HOPS` is missing outside localhost.
@@ -174,6 +175,7 @@ Production startup refuses to boot when any of these checks fails:
 | `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `KMS_ENDPOINT` | AWS KMS adapter; LocalStack uses test credentials and an internal endpoint. |
 | `CREDENTIAL_MASTER_KEY_ID` | `k1`; env-KMS adapter only. |
 | `CREDENTIAL_PREVIOUS_MASTER_KEYS` | Env-KMS adapter rotation list. |
+| `DATABASE_URL_DIRECT` | Direct (non-pooled) connection string for work that holds a session-level advisory lock: migrations and the scheduled-shutdown worker. Falls back to `DATABASE_URL`. Set it whenever `DATABASE_URL` points at a transaction-mode pooler. |
 | `DATABASE_SSL` | `false` unless exactly `true`. |
 | `DATABASE_SSL_CA` | PEM CA; literal `\n` sequences are converted to newlines. |
 | `DATABASE_SSL_CA_FILE` | Path to a PEM CA file, used by the parity stack and scripts. |
@@ -1572,13 +1574,14 @@ The image applies Alpine security updates, removes npm from the runtime, exposes
 `scripts/migrate.mjs`:
 
 - `0000_init.sql` contains the complete pre-launch schema. There is no deployed database yet, so schema changes regenerate it instead of adding migrations.
-- Requires `DATABASE_URL`.
-- Takes a PostgreSQL advisory lock (`7314002917`) so concurrent deploys serialize.
+- Connects to `DATABASE_URL_DIRECT`, falling back to `DATABASE_URL`. It must not go through a transaction-mode pooler, because the advisory lock is session-scoped.
+- Clears its own session timeouts, then takes a PostgreSQL advisory lock (`7314002917`) so concurrent deploys serialize.
 - Creates `beamling_migrations` if absent.
 - Reads `.sql` files from `drizzle/`, sorted by name.
 - Applies each unapplied file in a transaction, splitting on `--> statement-breakpoint`.
 - Records the filename only after a successful commit.
 - Rolls back the failing file on error.
+- Sets the application timeouts as defaults on the connecting role (`ALTER ROLE CURRENT_USER SET`): `statement_timeout` 15 s, `lock_timeout` 5 s, `idle_in_transaction_session_timeout` 30 s. This runs on every migration, so the values are restored if changed. The application and migrations must use the same database role.
 - Releases the advisory lock and closes the client.
 
 Migrations are a release step, not an app-start side effect. The local compose `migrate` service runs them before the app starts.
@@ -1607,12 +1610,12 @@ Migrations are a release step, not an app-start side effect. The local compose `
 `fly.toml` describes the production topology: one shared-CPU 1 GB machine in `fra`, scale-to-zero, a 20-second shutdown window, HTTP health checks on `/api/health`, and the migration release command.
 
 - Production deploys are gated by the repository variable `FLY_DEPLOY_ENABLED=true`. When a new version tag is created, the `deploy` job in `ci.yml` installs pinned flyctl `0.5.5` and deploys the GHCR digest produced by the release job.
-- Required Fly secrets: `DATABASE_URL`, `AUTH_SECRET`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `KMS_KEY_NAME`, `GCP_KMS_CREDENTIALS`, `KILL_SWITCH_SECRET`, `METRICS_SECRET`, `LEGAL_ENTITY`, `LEGAL_ADDRESS`, `LEGAL_CONTACT_EMAIL` and, when analytics is enabled, the PostHog values. Optional: `LEGAL_VAT_ID`, and `LEGAL_LOG_RETENTION_DAYS`/`LEGAL_BACKUP_RETENTION_DAYS` when the Fly log or Neon backup retention differs from the 30/7-day defaults; `SMTP_URL`, `MAIL_FROM` and `LEGAL_MAIL_PROVIDER` to email a shutdown notice.
+- Required Fly secrets: `DATABASE_URL`, `DATABASE_URL_DIRECT`, `AUTH_SECRET`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `KMS_KEY_NAME`, `GCP_KMS_CREDENTIALS`, `KILL_SWITCH_SECRET`, `METRICS_SECRET`, `LEGAL_ENTITY`, `LEGAL_ADDRESS`, `LEGAL_CONTACT_EMAIL` and, when analytics is enabled, the PostHog values. Optional: `LEGAL_VAT_ID`, and `LEGAL_LOG_RETENTION_DAYS`/`LEGAL_BACKUP_RETENTION_DAYS` when the Fly log or Neon backup retention differs from the 30/7-day defaults; `SMTP_URL`, `MAIL_FROM` and `LEGAL_MAIL_PROVIDER` to email a shutdown notice.
 - `SIGNUP_MODE=allowlist` is the Fly default. Set `SIGNUP_MODE=open` explicitly to open public registration, or add `SIGNUP_ALLOWED_EMAILS`/`SIGNUP_ALLOWED_EMAIL_DOMAINS`.
 - The public smoke URL comes from the repository variable `PUBLIC_APP_URL` (falling back to `https://beamling.app`).
 - `GCP_KMS_CREDENTIALS` is the service-account JSON. It lets the GCP client run on a host with no credentials file; Application Default Credentials remain the fallback.
 - `release_command = "node scripts/migrate.mjs"` applies the schema before the new machine receives traffic. Applied migrations store a SHA-256 checksum; editing an applied file fails the run instead of silently drifting.
-- Neon must use its pooled connection string with TLS; `DATABASE_SSL=true` is set in `fly.toml`.
+- Neon: `DATABASE_URL` is the pooled connection string (host contains `-pooler`) and `DATABASE_URL_DIRECT` the direct one, both with TLS; `DATABASE_SSL=true` is set in `fly.toml`. The release command runs migrations over the direct connection.
 - `APP_URL` defaults to `https://beamling.app`. Override it as a Fly secret for staging or a different domain, and register the matching Google OAuth callback.
 - The Fly app and certificate are not created by the repository. Create the app, set the secrets, enable the workflow variable and attach the custom domain before the first deploy.
 
@@ -1621,9 +1624,8 @@ Migrations are a release step, not an app-start side effect. The local compose `
 - One pool per process, reused across route handlers and instrumentation through `globalThis`.
 - Default max 10 connections.
 - Connection timeout 10 seconds.
-- Statement timeout 15 seconds.
-- Lock timeout 5 seconds.
-- Idle-in-transaction timeout 30 seconds.
+- Statement timeout 15 seconds, lock timeout 5 seconds and idle-in-transaction timeout 30 seconds, applied as role defaults by `scripts/migrate.mjs` (§14.3). They are not connection startup parameters, because a transaction-mode pooler rejects them (`unsupported startup parameter: statement_timeout`).
+- Works through a transaction-mode pooler: the pool holds no session state, and the global stream cap uses a transaction-scoped advisory lock. The scheduled-shutdown worker opens its own connection to `DATABASE_URL_DIRECT` for its session-scoped lock.
 - TLS is enabled only when `DATABASE_SSL=true`; CA and certificate verification are configurable. `DATABASE_SSL_CA_FILE` lets the parity stack and scripts read a mounted CA.
 
 ### 14.8 Operational killswitch

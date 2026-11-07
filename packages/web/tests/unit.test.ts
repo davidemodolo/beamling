@@ -697,6 +697,21 @@ test("production refuses unsafe configuration", async (t) => {
       }
     }
   };
+  assert.match(
+    errorsWith({ DATABASE_URL: "postgres://u:p@ep-x-pooler.eu-central-1.aws.neon.tech/db", DATABASE_URL_DIRECT: undefined }),
+    /DATABASE_URL_DIRECT is required/,
+  );
+  assert.equal(
+    errorsWith({
+      DATABASE_URL: "postgres://u:p@ep-x-pooler.eu-central-1.aws.neon.tech/db",
+      DATABASE_URL_DIRECT: "postgres://u:p@ep-x.eu-central-1.aws.neon.tech/db",
+    }),
+    "",
+  );
+  assert.match(
+    errorsWith({ DATABASE_URL_DIRECT: "postgres://u:p@ep-x-pooler.eu-central-1.aws.neon.tech/db" }),
+    /must be a direct connection/,
+  );
   assert.match(errorsWith({ APP_URL: undefined }), /APP_URL is required/);
   assert.match(
     errorsWith({ APP_URL: undefined, OPENROUTER_APP_URL: "https://alias.example" }),

@@ -9,9 +9,15 @@ const pg = require("pg");
 
 const here = dirname(fileURLToPath(import.meta.url));
 const folder = resolve(here, "../drizzle");
-const connectionString = process.env.DATABASE_URL;
+// Migrations hold a session-level advisory lock, so they need a direct connection: a
+// transaction-mode pooler (Neon "-pooler", PgBouncer) would hand the session to other clients.
+const connectionString = process.env.DATABASE_URL_DIRECT || process.env.DATABASE_URL;
 if (!connectionString) {
-  console.error("DATABASE_URL is required.");
+  console.error("DATABASE_URL (or DATABASE_URL_DIRECT) is required.");
+  process.exit(1);
+}
+if (new URL(connectionString).hostname.includes("-pooler")) {
+  console.error("Migrations need a direct connection. Set DATABASE_URL_DIRECT to the non-pooled connection string.");
   process.exit(1);
 }
 
@@ -26,7 +32,17 @@ const client = new pg.Client({ connectionString, ssl });
 // Serializes concurrent migration runs, e.g. several replicas deploying at once.
 const LOCK_ID = 7_314_002_917;
 
+// Request timeouts for the application, applied as role defaults so they also take effect
+// through a pooler, which does not forward connection startup parameters. New sessions pick
+// them up; this migration session runs without them.
+const ROLE_DEFAULTS = {
+  statement_timeout: "15s",
+  lock_timeout: "5s",
+  idle_in_transaction_session_timeout: "30s",
+};
+
 await client.connect();
+await client.query("set statement_timeout = 0; set lock_timeout = 0; set idle_in_transaction_session_timeout = 0");
 await client.query("select pg_advisory_lock($1)", [LOCK_ID]);
 try {
   await client.query(`create table if not exists beamling_migrations (
@@ -73,6 +89,9 @@ try {
       await client.query("rollback");
       throw error;
     }
+  }
+  for (const [name, value] of Object.entries(ROLE_DEFAULTS)) {
+    await client.query(`alter role current_user set ${name} = '${value}'`);
   }
   console.log("Migrations up to date.");
 } finally {

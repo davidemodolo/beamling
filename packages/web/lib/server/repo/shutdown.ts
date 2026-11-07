@@ -1,5 +1,7 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { db, pool } from "../db";
+import { Client } from "pg";
+import { db } from "../db";
+import { databaseDirectUrl, databaseSsl } from "../env";
 import { systemFlags, users } from "../schema";
 
 export const SHUTDOWN = "shutdown";
@@ -42,10 +44,12 @@ export async function scheduleShutdown(scheduledAt: Date, reason: string | null,
 
 /**
  * Runs `work` only if no other instance is running shutdown work; returns false when skipped.
- * The lock lives on a dedicated connection and is released if the process dies.
+ * The lock lives on a dedicated direct connection (a transaction-mode pooler would hand the
+ * session to other clients) and is released if the process dies.
  */
 export async function withShutdownLock(work: () => Promise<void>): Promise<boolean> {
-  const client = await pool.connect();
+  const client = new Client({ connectionString: databaseDirectUrl(), ssl: databaseSsl(), connectionTimeoutMillis: 10_000 });
+  await client.connect();
   try {
     const { rows } = await client.query<{ locked: boolean }>("select pg_try_advisory_lock($1) as locked", [SHUTDOWN_LOCK_ID]);
     if (!rows[0]?.locked) return false;
@@ -56,7 +60,7 @@ export async function withShutdownLock(work: () => Promise<void>): Promise<boole
     }
     return true;
   } finally {
-    client.release();
+    await client.end().catch(() => {});
   }
 }
 

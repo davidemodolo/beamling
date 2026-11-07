@@ -13,10 +13,9 @@ function createPool(): Pool {
     connectionString: databaseUrl(),
     max: Number(process.env.DATABASE_POOL_MAX ?? 10),
     connectionTimeoutMillis: 10_000,
-    // A hung query or lock must fail the request instead of holding a stream and a connection open.
-    statement_timeout: 15_000,
-    lock_timeout: 5_000,
-    idle_in_transaction_session_timeout: 30_000,
+    // statement_timeout, lock_timeout and idle_in_transaction_session_timeout are role defaults
+    // set by the migrations, not startup parameters, so they also apply through a
+    // transaction-mode pooler that would reject or drop startup parameters.
     ssl: databaseSsl(),
   });
 }
