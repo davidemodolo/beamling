@@ -73,6 +73,10 @@ export function describeAnswerError(code: string | undefined, message?: string):
       return retry("Search limit reached", "The selected search provider has reached its plan limit.");
     case "MODEL_NOT_FOUND":
       return settings("Model unavailable", "The provider does not offer this model right now. Pick another in Settings.");
+    case "MODEL_PRIVACY_SETTING":
+      return settings("Free models blocked", "Your provider's privacy settings block this model. Allow free models there, or pick a paid model.");
+    case "FREE_LIMIT_REACHED":
+      return settings("Free limit reached", "Today's free requests are used up. They reset at midnight UTC, or pick a paid model in Settings.");
     case "INSUFFICIENT_CREDITS":
       return retry("Out of credits", "A provider account has run out of credits. Top it up, then retry.");
     case "PROVIDER_RATE_LIMITED":

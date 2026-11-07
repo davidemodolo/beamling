@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Mascot } from "@/components/mascot";
 import { Icon } from "@/components/ui/icon";
+import { SOURCE_URL } from "@/lib/legal";
 import { versionLabel } from "@/lib/version";
 import { LLM_NAMES, SEARCH_NAMES } from "./landing-data";
 
@@ -48,14 +49,14 @@ export function SiteFooter() {
       <div className="lp-container l-footer-grid">
         <div className="l-footer-brand">
           <Brand />
-          <p>A little light on every answer. Free at launch, with your own keys.</p>
+          <p>Answers you can check. Free and open source, on your own keys.</p>
         </div>
         <div>
           <h3>Product</h3>
+          <a href="#free">Free setup</a>
           <a href="#how">How it works</a>
-          <a href="#features">Why Beamling</a>
-          <a href="#providers">Providers</a>
-          <Link href="/chat">Open the app</Link>
+          <a href="#faq">FAQ</a>
+          <a href={SOURCE_URL}>Source code</a>
         </div>
         <div>
           <h3>Trust</h3>
@@ -67,14 +68,6 @@ export function SiteFooter() {
           <Link href="/status">Status</Link>
           <Link href="/contact">Contact</Link>
           <Link href="/licenses">Licenses</Link>
-          <span>Keys encrypted at rest</span>
-          <span>No training by Beamling</span>
-        </div>
-        <div>
-          <h3>Get started</h3>
-          <Link href="/chat">Open app</Link>
-          <Link href="/onboarding">Connect a key</Link>
-          <span>Made for the open web</span>
         </div>
       </div>
       <div className="lp-container l-footer-base">

@@ -88,7 +88,7 @@ export function useAccountSlice({ resync }: { resync: () => void }) {
   );
 
   const addCredential = useCallback(async (input: CredentialInput) => {
-    const { credential } = await api<{ credential: Credential }>("/api/credentials", {
+    const { credential, settings: aligned } = await api<{ credential: Credential; settings: Settings }>("/api/credentials", {
       method: "POST",
       body: JSON.stringify(input),
       // Validation calls the provider, which can take a while.
@@ -98,6 +98,8 @@ export function useAccountSlice({ resync }: { resync: () => void }) {
       ...current.filter((item) => item.provider !== credential.provider),
       credential,
     ]);
+    // The server moves the defaults onto a newly keyed provider when the old default had no key.
+    setSettings(aligned);
     return credential;
   }, []);
 
@@ -118,8 +120,9 @@ export function useAccountSlice({ resync }: { resync: () => void }) {
   );
 
   const removeCredential = useCallback(async (id: string) => {
-    await api(`/api/credentials/${id}`, { method: "DELETE" });
+    const { settings: aligned } = await api<{ settings: Settings }>(`/api/credentials/${id}`, { method: "DELETE" });
     setCredentials((current) => current.filter((credential) => credential.id !== id));
+    setSettings(aligned);
   }, []);
 
   const validateCredential = useCallback(

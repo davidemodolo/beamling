@@ -2,7 +2,7 @@ import { z } from "zod";
 import { BRAVE_PLANS, isCredentialProvider } from "@/lib/contracts";
 import { PROVIDERS } from "@/lib/provider-catalog";
 import { ApiError, idParam, json, notFound, parseBody } from "@/lib/server/http";
-import { deleteCredential, getCredentialById, updateCredentialLimits } from "@/lib/server/repo";
+import { alignDefaults, deleteCredential, getCredentialById, updateCredentialLimits } from "@/lib/server/repo";
 import { apiRoute } from "@/lib/server/route";
 import { audit } from "@/lib/server/audit";
 
@@ -46,5 +46,6 @@ export const DELETE = apiRoute<{ params: Promise<{ id: string }> }>(async ({ req
   const deleted = await deleteCredential(user.id, id);
   if (!deleted) throw notFound("Credential not found.");
   audit("credential_deleted", { userId: user.id, headers: request.headers, fields: { credentialId: id } });
-  return json({ ok: true });
+  const { settings } = await alignDefaults(user.id);
+  return json({ ok: true, settings });
 });

@@ -233,5 +233,6 @@ export async function completeLogin(requestUrl: string, clientIp: string): Promi
   await createSession(user.id);
   audit("sign_in", { userId: user.id, ipKey: clientIp, fields: { newAccount: user.isNew } });
   if (user.isNew) analytics.capture(user.id, "account_created", {});
-  return { returnTo: user.isNew ? "/onboarding" : transaction.returnTo };
+  // /chat sends an account without keys on to /onboarding.
+  return { returnTo: transaction.returnTo };
 }

@@ -7,7 +7,7 @@ import { encryptCredential } from "@/lib/server/crypto";
 import { ApiError, json, parseBody } from "@/lib/server/http";
 import { validateProviderKey } from "@/lib/server/providers";
 import { credentialStatusFor } from "@/lib/server/providers/errors";
-import { consumeRateLimit, consumeValidation, getCredentialRow, saveCredential } from "@/lib/server/repo";
+import { alignDefaults, consumeRateLimit, consumeValidation, getCredentialRow, saveCredential } from "@/lib/server/repo";
 import { apiRoute } from "@/lib/server/route";
 
 export const runtime = "nodejs";
@@ -90,5 +90,7 @@ export const POST = apiRoute(async ({ request, user }) => {
     provider: credential.provider,
     status: credential.status,
   });
-  return json({ credential }, { status: 201 });
+  // The new key may be the first for its kind: point the defaults at it so it is used at once.
+  const { settings } = await alignDefaults(user.id);
+  return json({ credential, settings }, { status: 201 });
 });

@@ -25,6 +25,14 @@ export async function connectKeys(request: APIRequestContext): Promise<void> {
   }
 }
 
+/** Deletes every saved key, as if the user removed them in Settings during the visit. */
+export async function removeKeys(request: APIRequestContext): Promise<void> {
+  const state = await (await request.get("/api/state")).json();
+  for (const credential of state.credentials as { id: string }[]) {
+    expect((await request.delete(`/api/credentials/${credential.id}`)).ok()).toBe(true);
+  }
+}
+
 export async function createConversation(request: APIRequestContext): Promise<string> {
   const response = await request.post("/api/conversations", { data: { mode: "quick" } });
   expect(response.status()).toBe(201);

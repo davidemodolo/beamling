@@ -1,4 +1,5 @@
 import { and, asc, eq, gte, inArray, sql } from "drizzle-orm";
+import { usableProviders } from "../../provider-catalog";
 import type { BravePlan, Credential, CredentialKind, CredentialProvider, CredentialStatus } from "../../types";
 import { decryptCredential, encryptCredential, providerSlotKey, type EncryptedSecret } from "../crypto";
 import { currentKmsKeyId } from "../kms";
@@ -45,6 +46,15 @@ export async function listCredentials(userId: string): Promise<Credential[]> {
     .orderBy(asc(credentials.createdAt));
   const usage = await usageFor(rows);
   return rows.map((row) => mapCredential(row, usage.get(row.id)));
+}
+
+/** Providers with a usable saved key, without reading usage or key material. */
+export async function keyedProviders(userId: string): Promise<Set<string>> {
+  const rows = await db
+    .select({ provider: credentials.provider, status: credentials.status })
+    .from(credentials)
+    .where(eq(credentials.userId, userId));
+  return usableProviders(rows);
 }
 
 export async function getCredentialRow(userId: string, kind: CredentialKind, provider: CredentialProvider) {

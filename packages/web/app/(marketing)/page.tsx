@@ -1,14 +1,17 @@
 import type { Metadata } from "next";
-import { CinematicLanding } from "@/components/landing/cinematic-landing";
+import { Landing } from "@/components/landing/landing";
+import { getCurrentUser } from "@/lib/server/session";
 
 export const metadata: Metadata = {
-  title: { absolute: "Beamling — a little light on every answer" },
+  title: { absolute: "Beamling — answers you can check" },
   description:
-    "A hosted, bring-your-own-key answer engine. Ask anything and see exactly where the answer comes from.",
+    "A free, open-source answer engine that runs on your own model and search keys. Every claim links to its source.",
   alternates: { canonical: "/" },
   openGraph: { url: "/" },
 };
 
-export default function HomePage() {
-  return <CinematicLanding />;
+export default async function HomePage() {
+  // The landing must render even when the database is down; it then shows the signed-out CTAs.
+  const user = await getCurrentUser().catch(() => null);
+  return <Landing signedIn={!!user} />;
 }

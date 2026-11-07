@@ -45,6 +45,9 @@ export interface LlmAdapter {
 }
 
 const CONTEXT_TOO_LARGE_RE = /context (length|window)|maximum context|too many tokens|prompt is too long/i;
+// OpenRouter's wording for the daily cap on free models and for free models hidden by the account's data policy.
+const FREE_LIMIT_RE = /free-models-per-day/i;
+const DATA_POLICY_RE = /data policy/i;
 
 /** Maps a model provider's HTTP status (or a mid-stream error code) to a stable Beamling error. */
 export function modelHttpError(provider: LlmProvider, status: number, providerMessage = ""): ApiError {
@@ -56,7 +59,21 @@ export function modelHttpError(provider: LlmProvider, status: number, providerMe
   }
   if (status === 401 || status === 403) return error("CREDENTIAL_INVALID", `${name} rejected this key.`, 400);
   if (status === 402) return error("INSUFFICIENT_CREDITS", `${name} has insufficient credits for this key.`, 402);
+  if (status === 404 && DATA_POLICY_RE.test(detail)) {
+    return error(
+      "MODEL_PRIVACY_SETTING",
+      `${name}'s privacy settings block this model. Allow free models in your ${name} privacy settings, or pick a paid model.`,
+      400,
+    );
+  }
   if (status === 404) return error("MODEL_NOT_FOUND", `${name} does not offer this model right now.`, 400);
+  if (status === 429 && FREE_LIMIT_RE.test(detail)) {
+    return error(
+      "FREE_LIMIT_REACHED",
+      `You have used today's free requests on ${name}. They reset at midnight UTC, or pick a paid model in Settings.`,
+      429,
+    );
+  }
   if (status === 429) return error("PROVIDER_RATE_LIMITED", `${name} is rate-limiting this key. Try again shortly.`, 429);
   if (status === 408 || status >= 500) return unavailable(provider, `${name} has no capacity for this model right now.`);
   return error("PROVIDER_ERROR", detail || `${name} returned HTTP ${status}.`, 502);

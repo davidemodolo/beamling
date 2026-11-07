@@ -6,8 +6,8 @@
 
 | Route | Purpose |
 |---|---|
-| `/` | Public marketing landing page; CTA to onboarding or chat |
-| `/onboarding` | One-screen OpenRouter + Brave key setup, Brave plan and optional key limits, and default model |
+| `/` | Public landing page with a free-start path and FAQ; CTAs lead to `/chat`, which routes to setup when keys are missing |
+| `/onboarding` | Choose the free path or your own providers, then a model key and a search key in two steps |
 | `/chat` | New conversation; requires a signed-in account |
 | `/chat/[id]` | Conversation view with pagination |
 | `/login` | Google-only sign-in page; redirects to `/onboarding` or `/chat` after callback |
@@ -54,7 +54,7 @@ The landing page, sign-in, welcome and legal pages share a footer with Privacy, 
 - **ModelBadge:** selected model plus the resolved OpenRouter model and upstream provider when they differ.
 - **UsageLine:** tokens in/out, provider-reported generation cost, estimated Brave cost, search count and latency. It is per answer; there is no cumulative session meter.
 - **KeyCard:** masked last four, status dot, last validation time, revalidate, replace and delete actions.
-- **ModelPicker:** a native select with the five allowlisted OpenRouter models; no search field or price hints.
+- **ModelPicker:** a native select with the six allowlisted OpenRouter models (one free); no search field or price hints.
 - **WorkingBeamling:** the animated mascot plus the current real stage label and progress. It is the only progress indicator.
 - **EmptyState:** mascot, headline and composer prompt.
 

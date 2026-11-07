@@ -4,10 +4,10 @@
 
 | Route | Current behavior |
 |---|---|
-| `/` | Public cinematic landing page with a scripted demo, feature cards, provider list, CTA to `/onboarding` or `/chat`, and the full legal footer |
-| `/login` | Google-only sign-in page; redirects to `/onboarding` or `/chat` after the callback. Sign-in start failures redirect back with `auth_unavailable` or `login_rate_limited` instead of returning JSON. Copy says the Terms and Privacy notice are accepted after sign-in and that Beamling is for people aged 18 and over. While a shutdown is scheduled it shows the closing date and that new accounts are no longer accepted; after the date it says Beamling has shut down and hides the sign-in button. `service_closing` and `service_closed` errors have their own copy. |
+| `/` | Public landing page with a scripted demo, the free setup path, modes, principles, providers and an FAQ. Every CTA links to `/chat`; it reads "Start free" signed out and "Open the app" signed in |
+| `/login` | Google-only sign-in page; returns to the requested page (default `/chat`) after the callback. Sign-in start failures redirect back with `auth_unavailable` or `login_rate_limited` instead of returning JSON. Copy says the Terms and Privacy notice are accepted after sign-in and that Beamling is for people aged 18 and over. While a shutdown is scheduled it shows the closing date and that new accounts are no longer accepted; after the date it says Beamling has shut down and hides the sign-in button. `service_closing` and `service_closed` errors have their own copy. |
 | `/welcome` | Terms acceptance step ([Terms acceptance](accounts.md#terms-acceptance)), not indexed. Signed-out visitors go to `/login`; accounts already on the current version go to `next`. Shows "Before you start" for a new account or "Updated terms" after a version change, three short points (AI-generated answers, the user's responsibility for provider keys and costs, encryption/export/deletion), an "I am at least 18" checkbox and an "I accept the Terms and have read the Privacy notice" checkbox, Accept and Sign out buttons, and a note that accounts that never accept are deleted after seven days. |
-| `/onboarding` | Account setup form: default model (grouped by provider) and that provider's key, search-provider picker and its key (asked once when one provider serves both), plus plan/expiry/budget for providers with key limits; validates and saves, then routes to `/chat` |
+| `/onboarding` | Two-step setup (model key, then search key) after choosing the free path or your own providers; redirects to `/chat` once the account has a usable model key and search key |
 | `/chat` | New-question view; loads workspace state, conversation list and threads. While a shutdown is scheduled, the layout shows an alert banner above the app with the closing date and a "Download my data" button that opens Settings → Account |
 | `/chat/[id]` | Conversation view; loads the newest 60 messages and supports earlier-message pagination |
 | `/privacy` | Privacy notice (Art. 13/14 GDPR): controller with address and optional VAT id, no DPO; data categories with legal basis (account, acceptance record, session, content, credentials, usage, hashed-IP security metadata, logs, optional analytics with opt-out); Google account used to email essential service notices (no newsletters or marketing); Google account required; no solely automated decisions; not for under-18s; provider traffic under the user's own accounts, noting that DeepSeek and some OpenRouter hosts are in China and that the choice is the user's; essential cookies only; retention list (conversations 60 days after their last question, pinned or not, at most 100 per account with the least recently used unpinned ones deleted first; account data until deletion; inactive accounts after 24 months, unaccepted accounts after 7 days, sessions 30 days idle / 90 days max, hashed IPs and counters up to one hour, logs `LEGAL_LOG_RETENTION_DAYS`, backups `LEGAL_BACKUP_RETENTION_DAYS`, analytics until opt-out or deletion; everything on the closing date if the service closes, announced at least 14 days ahead by email and in the interface); recipients and transfers (hosting in Belgium, database in Frankfurt, EU-US Data Privacy Framework or SCCs); rights under Art. 15–21 with the self-service Settings controls, one-month answer and the Garante complaint route; re-acceptance on material changes |
@@ -58,18 +58,18 @@ Behaviour:
 - If the connection fails before a message id arrives, the UI reloads the thread to see whether the server stored the exchange. If not, it keeps a local failed question/answer pair that can be retried without duplicating the question.
 - If a retry stream fails before `meta`, the existing stored answer gets the error and no duplicate card is added.
 
-## Onboarding
+## Setup and onboarding
 
-- Requires a key for the selected model's provider if none is stored; changing the model to another provider switches the key field.
-- Requires a key for the selected search provider if none is stored. When the model's provider is also the search provider, the search card says it uses the same key and shows no second field.
-- The user can switch the selected provider before adding its key. A provider's notice is shown under its key field.
-- Brave requires a plan (`Free · 1 request/second` or `Paid / provider plan`) and accepts optional expiry and monthly budget. All three are user-declared.
-- “Get a key” links open the provider dashboards in a new tab.
-- Keys are masked inputs with show/hide toggles.
-- Saving validates each key through the server; a failure keeps the form open with provider copy.
-- The user can choose any allowlisted model; the selection is saved only if it differs from the current default.
-- If a key is already connected, the field can replace it.
-- Once both keys exist, “Start asking” routes to `/chat`; the default model and search provider are preserved.
+Setup is complete when the account has a model key (OpenRouter or DeepSeek) and a search key (Brave, Tavily, Exa or DeepSeek) whose status is not `invalid`; one DeepSeek key counts for both (`setupState` in `lib/provider-catalog.ts`).
+
+- `/chat` redirects to `/onboarding` until setup is complete, and `/onboarding` redirects to `/chat` once it is. Later key changes happen in Settings → Keys. Sign-in returns to the requested page for new and returning accounts alike.
+- Opening `/chat`, saving a key and deleting one run `alignDefaults`: a default model or search provider without a key moves to the first keyed option, so a Tavily-only account searches with Tavily instead of failing with `CREDENTIAL_MISSING`. `POST /api/credentials` and `DELETE /api/credentials/{id}` return the resulting `settings`.
+- The first screen offers two paths. **Start free** uses the free OpenRouter model (`FREE_LLM_MODEL`) and Brave, with copy on OpenRouter's daily free requests, Brave's monthly credit and card check, and that free-model hosts may keep prompts. **Use my own providers** offers every allowlisted model and search provider.
+- Step 1 saves the model key (and the chosen model, so leaving between steps keeps it); step 2 saves the search key, then writes the default model and search provider and routes to `/chat`. When one provider serves both, step 1 finishes setup.
+- An account that already has a model key starts at step 2. A saved key shows as saved; the field stays empty to keep it, or takes a new key to replace it.
+- Brave's plan (`Free · 1 request/second` by default), expiry and budget sit under "Plan, expiry and budget"; all three are user-declared. Brave and Exa show "Validate the key now".
+- “Get a key” links open the provider dashboards in a new tab; keys are masked inputs with show/hide toggles; a rejected key keeps the step open with provider copy.
+- If keys are deleted during a visit, the empty chat shows "A key is missing" with a button to Settings → Keys.
 
 ## Chat view
 
@@ -109,13 +109,13 @@ Deleting the account hard-deletes server data and the wrapped workspace key, cle
 
 ## Landing page
 
-The root page is static marketing content rendered per request so the CSP nonce can be injected:
+The root page is marketing content rendered per request, so the CSP nonce can be injected and the CTAs follow the session (a failed session lookup renders the signed-out page):
 
 - Dark brand theme, Inter and JetBrains Mono.
-- Hero and mascot.
-- A scripted, replayable demo that cycles through queued/searching/reading/writing/done; it is not a live provider call.
-- Stats, three-step explanation, three feature cards, provider pills.
-- Footer with Privacy, Terms, Cookies, Data processors, Security, Status, Contact and Licenses, “Keys encrypted at rest” and “No training by Beamling.”
+- Hero with the scripted, replayable demo beside it; the demo cycles through queued/searching/reading/writing/done and is not a live provider call.
+- "Start free": the three free steps (Google sign-in, an OpenRouter key, a Brave key) with their cost and dashboard links.
+- The three modes, four principles, provider pills, an FAQ (cost, keys, free limits, paid models, storage, free-model privacy) and a final CTA with the mascot.
+- Nav: Free setup, How it works, FAQ; "Sign in" and "Start free" signed out, "Open the app" signed in. Footer with product links, the source repository and Privacy, Terms, Cookies, Data processors, Security, Status, Contact and Licenses.
 - `prefers-reduced-motion` skips the demo animation.
 
 ## Accessibility and responsive behavior

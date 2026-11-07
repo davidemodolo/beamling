@@ -1,9 +1,10 @@
 import { eq, sql } from "drizzle-orm";
 import { isSearchProvider } from "../../contracts";
-import { isAllowedModel } from "../../provider-catalog";
+import { isAllowedModel, setupState, usableDefaults } from "../../provider-catalog";
 import type { Settings } from "../../types";
 import { db } from "../db";
 import { analyticsErasures, settings } from "../schema";
+import { keyedProviders } from "./credentials";
 import { mapSettings } from "./shared";
 
 export async function ensureSettings(userId: string): Promise<Settings> {
@@ -47,6 +48,18 @@ export async function analyticsExcluded(userId: string, distinctId: string | nul
 /** Drops the cached answer after the account changes its choice on this instance. */
 export function forgetAnalyticsExclusion(userId: string): void {
   exclusionCache.delete(userId);
+}
+
+/**
+ * Moves the answer defaults onto providers that have a key and reports whether setup is complete.
+ * Runs when the app opens and after keys change, so a key saved for any provider is used at once.
+ */
+export async function alignDefaults(userId: string): Promise<{ settings: Settings; complete: boolean }> {
+  const [current, keyed] = await Promise.all([ensureSettings(userId), keyedProviders(userId)]);
+  const usable = usableDefaults(current, keyed);
+  const changed = usable.llmModel !== current.llmModel || usable.defaultSearchProvider !== current.defaultSearchProvider;
+  const settings = changed ? await updateSettings(userId, usable) : current;
+  return { settings, complete: setupState(keyed).complete };
 }
 
 /** Updates the answer defaults. The analytics objection has its own path (setAnalyticsOptOut). */
