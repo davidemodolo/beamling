@@ -2,7 +2,7 @@ name: beamling
 
 services:
   certs:
-    image: alpine:3.22
+    image: alpine:3.24
     entrypoint: ["/bin/sh", "-c", "apk add --no-cache openssl >/dev/null && /bin/sh /certs/generate.sh"]
     volumes:
       - beamling-local-certs:/certs
@@ -39,6 +39,7 @@ services:
         condition: service_completed_successfully
 
   localstack:
+    # Last LocalStack release that runs without an account auth token; do not bump.
     image: localstack/localstack:4.14.0
     environment:
       SERVICES: kms
@@ -56,7 +57,7 @@ services:
       retries: 30
 
   dex:
-    image: ghcr.io/dexidp/dex:v2.46.0
+    image: ghcr.io/dexidp/dex:v2.46.1
     command: ["dex", "serve", "/etc/dex/config.yaml"]
     volumes:
       - ./local/dex/config.yaml:/etc/dex/config.yaml:ro
@@ -139,7 +140,7 @@ services:
         condition: service_started
 
   caddy:
-    image: caddy:2.11.7-alpine
+    image: caddy:2.11.9-alpine
     # Loopback only: this stack uses a default AUTH_SECRET and a test identity provider.
     ports:
       - "127.0.0.1:80:80"

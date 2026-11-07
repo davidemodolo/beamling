@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.2.0",
   "license": "MIT",
-  "packageManager": "pnpm@10.33.0",
+  "packageManager": "pnpm@12.18.0",
   "scripts": {
     "mascot:dev": "pnpm --filter @beamling/mascot dev",
     "mascot:build": "pnpm --filter @beamling/mascot build",

@@ -2,3 +2,8 @@ packages:
   - "packages/*"
 ignoredOptionalDependencies:
   - sharp
+# Dependency build scripts are denied. esbuild ships its binary as an optional
+# dependency and protobufjs only prints a version check.
+allowBuilds:
+  esbuild: false
+  protobufjs: false

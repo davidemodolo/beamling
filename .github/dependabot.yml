@@ -23,6 +23,6 @@ updates:
     schedule:
       interval: weekly
     ignore:
-      # Stay on the Node LTS line the spec targets (Node 24).
+      # Move between Node LTS lines deliberately (currently Node 26).
       - dependency-name: node
         update-types: ["version-update:semver-major"]
