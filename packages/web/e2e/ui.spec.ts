@@ -125,7 +125,14 @@ test("sidebar chats can be pinned and searched", async ({ page }) => {
 
   const item = sidebarItem(page, "Pinned chat");
   await item.hover();
+  // The sidebar pins optimistically; wait for the server to store it before reloading,
+  // or the reload can abort the request.
+  const pinSaved = page.waitForResponse(
+    (response) =>
+      response.request().method() === "PATCH" && response.url().includes("/api/conversations/") && response.ok(),
+  );
   await item.getByRole("button", { name: "Pin Pinned chat" }).click();
+  await pinSaved;
 
   const pinnedSection = page.locator('.sidebar section[aria-label="Pinned"]');
   await expect(pinnedSection).toContainText("Pinned chat");
