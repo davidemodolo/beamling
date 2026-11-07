@@ -123,5 +123,5 @@ export async function fakeChat(options: {
     options.onDelta?.(`${word} `);
     await sleep(8);
   }
-  return { ...result(content, { promptTokens: 420, completionTokens: 80, costUsd: 0.00005 }), reasoning };
+  return result(content, { promptTokens: 420, completionTokens: 80, costUsd: 0.00005 });
 }

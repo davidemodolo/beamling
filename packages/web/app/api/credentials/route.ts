@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { BUDGET_PERIODS, BRAVE_PLANS, CREDENTIAL_KINDS, CREDENTIAL_PROVIDER_IDS, credentialKind } from "@/lib/contracts";
+import { BUDGET_PERIODS, BRAVE_PLANS, CREDENTIAL_PROVIDER_IDS, credentialKind } from "@/lib/contracts";
 import { PROVIDERS } from "@/lib/provider-catalog";
 import { analytics } from "@/lib/server/analytics";
 import { audit } from "@/lib/server/audit";
@@ -15,8 +15,6 @@ export const dynamic = "force-dynamic";
 
 const schema = z
   .object({
-    // Derived from the provider; still accepted from older clients, and must then agree.
-    kind: z.enum(CREDENTIAL_KINDS).optional(),
     provider: z.enum(CREDENTIAL_PROVIDER_IDS),
     key: z.string().trim().min(8).max(600),
     plan: z.enum(BRAVE_PLANS).optional(),
@@ -29,9 +27,6 @@ const schema = z
   })
   .superRefine((value, ctx) => {
     const info = PROVIDERS[value.provider];
-    if (value.kind && value.kind !== credentialKind(value.provider)) {
-      ctx.addIssue({ code: "custom", path: ["kind"], message: "Provider does not match credential kind." });
-    }
     if (info.keyLimits && !value.plan) {
       ctx.addIssue({ code: "custom", path: ["plan"], message: `Choose the ${info.name} plan for this key.` });
     }
@@ -90,7 +85,8 @@ export const POST = apiRoute(async ({ request, user }) => {
     plan: limits ? (input.plan ?? "free") : null,
     expiresOn: input.expiresOn ?? null,
     budgetUsd: input.budgetUsd ?? null,
-    budgetPeriod: input.budgetPeriod ?? (input.budgetUsd == null ? null : "month"),
+    // saveCredential defaults the period to a month when a budget is set.
+    budgetPeriod: input.budgetPeriod ?? null,
     preserveUsage: Boolean(existing),
   });
   audit("credential_saved", {

@@ -30,6 +30,11 @@ export function plural(count: number, one: string, many = `${one}s`): string {
   return `${count} ${count === 1 ? one : many}`;
 }
 
+/** "A, B or C". */
+export function orList(items: readonly string[]): string {
+  return items.length > 1 ? `${items.slice(0, -1).join(", ")} or ${items[items.length - 1]}` : (items[0] ?? "");
+}
+
 export function createId(prefix: string): string {
   const uuid = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : Math.random().toString(36).slice(2, 10);
   return `${prefix}-${uuid}`;

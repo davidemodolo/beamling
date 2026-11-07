@@ -109,7 +109,7 @@ The current checkout has a marketing landing page at `/`, `/login`, a `/welcome`
 **Welcome page**
 
 - One primary CTA: "Start free". Secondary links: "How it works", "Docs" and "Status".
-- Explain in plain language: BYOK, OpenRouter plus Brave/Tavily/Exa, keys encrypted at rest, questions go to the selected providers, the service is not end-to-end encrypted, and the alpha is free.
+- Explain in plain language: BYOK, OpenRouter or DeepSeek plus Brave/Tavily/Exa/DeepSeek, keys encrypted at rest, questions go to the selected providers, the service is not end-to-end encrypted, and the alpha is free.
 - No fake testimonials, user counts, benchmarks, "private" claims or provider logos without permission. No autoplay video.
 - A short "What Beamling is not": not a lawyer or doctor, not its own search index.
 - The global footer on every public page links to: Privacy Policy, Terms of Service, Cookie Policy, Open-source licenses, Subprocessors, Security, Contact/Abuse, Support, Status, Docs and "Report an issue".

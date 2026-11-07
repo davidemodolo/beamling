@@ -4,7 +4,7 @@
 
 ### Alpha 1 scope
 
-Alpha 1 is the first end-to-end, BYOK product slice. It is deliberately narrow: OpenRouter for generation; Brave, Tavily or Exa for retrieval (one selected provider per answer); Quick, Deep and Deeper modes; and the animated search experience. The state column records the current checkout against that target.
+Alpha 1 is the first end-to-end, BYOK product slice. It is deliberately narrow: OpenRouter or DeepSeek for generation; Brave, Tavily, Exa or DeepSeek for retrieval (one selected provider per answer; one DeepSeek key can serve both); Quick, Deep and Deeper modes; and the animated search experience. The state column records the current checkout against that target.
 
 | Area | Feature | Priority | State |
 |---|---|---|---|
@@ -133,7 +133,7 @@ A single `SearchProvider` adapter interface normalizes every provider to `{url, 
 
 ## Core User Flows
 
-The current flow is OpenRouter plus one selected search provider, with encrypted content. Provider-specific plan metadata remains Brave-only; see [Document status and current implementation](index.md#document-status-and-current-implementation).
+The current flow is one model provider (OpenRouter or DeepSeek) plus one selected search provider, with encrypted content. Provider-specific plan metadata remains Brave-only; see [Document status and current implementation](index.md#document-status-and-current-implementation).
 
 ### Sign-in and onboarding
 

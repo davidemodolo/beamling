@@ -1,6 +1,6 @@
 # Answer Pipeline
 
-The implemented pipeline is OpenRouter plus one selected search provider. It has fixed source counts and character caps, but no token-counting/context-trimming pass. Dynamic token budgets and provider-reported search costs are target behavior; current mechanics are documented in the [technical reference](../reference/index.md).
+The implemented pipeline is one model provider (OpenRouter or DeepSeek) plus one selected search provider. It has fixed source counts and character caps, but no token-counting/context-trimming pass. Dynamic token budgets and provider-reported search costs are target behavior; current mechanics are documented in the [technical reference](../reference/index.md).
 
 ## Stages
 

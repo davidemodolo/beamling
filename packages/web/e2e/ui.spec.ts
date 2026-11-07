@@ -109,7 +109,7 @@ test("a Quick answer streams with citations, cost breakdown and sources", async 
 test("a different search provider can be selected for an answer", async ({ page }) => {
   await connectKeys(page.request);
   const tavily = await page.request.post("/api/credentials", {
-    data: { kind: "search", provider: "tavily", key: "test-tavily-key" },
+    data: { provider: "tavily", key: "test-tavily-key" },
   });
   expect(tavily.status()).toBe(201);
 

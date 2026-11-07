@@ -13,13 +13,9 @@ export async function signIn(request: APIRequestContext, options: { pendingTerms
 export async function connectKeys(request: APIRequestContext): Promise<void> {
   await signIn(request);
   expect((await request.get("/api/state")).ok()).toBe(true);
-  for (const [kind, provider] of [
-    ["llm", "openrouter"],
-    ["search", "brave"],
-  ]) {
+  for (const provider of ["openrouter", "brave"]) {
     const response = await request.post("/api/credentials", {
       data: {
-        kind,
         provider,
         key: `test-${provider}-key`,
         ...(provider === "brave" ? { plan: "free" } : {}),
