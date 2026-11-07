@@ -6,7 +6,7 @@ import {
   clampQuery,
   DEFAULT_RETRY_WAIT_MS,
   requestSignal,
-  normalizedSource,
+  normalizedSources,
   retryOnceOn429,
   retryWaitMs as baseRetryWaitMs,
   type RetrievedSource,
@@ -145,19 +145,12 @@ export async function searchBrave(
     if (options.signal?.aborted) throw error;
     throw unavailable("brave", "Brave Search returned an unreadable response.");
   }
-  const results = Array.isArray(body.web?.results) ? body.web.results : [];
-  const seen = new Set<string>();
-  const out: RetrievedSource[] = [];
-
-  for (const item of results) {
-    if (!item.url || seen.has(item.url)) continue;
-    const source = normalizedSource(
-      { url: item.url, title: item.title, snippet: item.description, publishedAt: item.age },
-      out.length + 1,
-    );
-    if (!source) continue;
-    seen.add(item.url);
-    out.push(source);
-  }
-  return out;
+  return normalizedSources(
+    (Array.isArray(body.web?.results) ? body.web.results : []).map((item) => ({
+      url: item.url,
+      title: item.title,
+      snippet: item.description,
+      publishedAt: item.age,
+    })),
+  );
 }

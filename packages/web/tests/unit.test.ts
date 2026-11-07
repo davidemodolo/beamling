@@ -51,6 +51,17 @@ function withEnv(t: TestContext, values: Record<string, string | undefined>) {
   });
 }
 
+/** Collects console.error lines (where the structured logger writes) until the test ends. */
+function captureConsoleError(t: TestContext): string[] {
+  const lines: string[] = [];
+  const original = console.error;
+  console.error = (line: string) => lines.push(line);
+  t.after(() => {
+    console.error = original;
+  });
+  return lines;
+}
+
 function jsonResponse(body: unknown, status = 200, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...headers } });
 }
@@ -808,12 +819,7 @@ test("request bodies are size-limited and stripped of control characters", async
 
 test("logs never include query parameters", async (t) => {
   const { log } = await import("../lib/server/log");
-  const lines: string[] = [];
-  const original = console.error;
-  console.error = (line: string) => lines.push(line);
-  t.after(() => {
-    console.error = original;
-  });
+  const lines = captureConsoleError(t);
   const cause = Object.assign(new Error('invalid byte sequence for encoding "UTF8": 0x00'), { code: "22021" });
   const error = Object.assign(new Error("Failed query: insert into messages\nparams: secret question,token-hash"), {
     query: "insert into messages",
@@ -830,12 +836,7 @@ test("logs never include query parameters", async (t) => {
 
 test("logs redact provider keys and response bodies", async (t) => {
   const { log } = await import("../lib/server/log");
-  const lines: string[] = [];
-  const original = console.error;
-  console.error = (line: string) => lines.push(line);
-  t.after(() => {
-    console.error = original;
-  });
+  const lines = captureConsoleError(t);
   const key = "sk-or-v1-abcdefghijklmnopqrstuvwxyz";
   const top = new Error(`Provider failed: responseBody: {"answer":"private model text"} Authorization: Bearer ${key}`);
   log.error("Provider error", top);

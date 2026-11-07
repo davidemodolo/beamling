@@ -1,7 +1,7 @@
 import { ApiError } from "../http";
 import { log } from "../log";
 import { providerFetch, unavailable } from "./errors";
-import { clampQuery, normalizedSource, requestSignal, retryOnceOn429, type RetrievedSource, type SearchOptions } from "./shared";
+import { clampQuery, normalizedSources, requestSignal, retryOnceOn429, type RetrievedSource, type SearchOptions } from "./shared";
 
 interface ExaResponse {
   results?: {
@@ -101,22 +101,12 @@ export async function searchExa(key: string, query: string, options: SearchOptio
     if (options.signal?.aborted) throw error;
     throw unavailable("exa", "Exa returned an unreadable response.");
   }
-  const seen = new Set<string>();
-  const out: RetrievedSource[] = [];
-  for (const item of Array.isArray(body.results) ? body.results : []) {
-    if (!item.url || seen.has(item.url)) continue;
-    const source = normalizedSource(
-      {
-        url: item.url,
-        title: item.title,
-        snippet: (item.highlights ?? []).join(" "),
-        publishedAt: item.publishedDate,
-      },
-      out.length + 1,
-    );
-    if (!source) continue;
-    seen.add(item.url);
-    out.push(source);
-  }
-  return out;
+  return normalizedSources(
+    (Array.isArray(body.results) ? body.results : []).map((item) => ({
+      url: item.url,
+      title: item.title,
+      snippet: (item.highlights ?? []).join(" "),
+      publishedAt: item.publishedDate,
+    })),
+  );
 }

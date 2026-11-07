@@ -2,7 +2,9 @@
 
 import { createParser } from "eventsource-parser";
 import type { ChatStage, DoneEvent, Mode, SearchProvider, SearchTrace, Source, Usage } from "./types";
-import { parseStreamEvent } from "./stream-events";
+import { parseStreamEvent, type StreamError, type StreamMeta } from "./stream-events";
+
+export type { StreamError, StreamMeta };
 
 export class ApiRequestError extends Error {
   constructor(
@@ -15,12 +17,6 @@ export class ApiRequestError extends Error {
   ) {
     super(message);
   }
-}
-
-export interface StreamError {
-  code: string;
-  message: string;
-  provider?: string;
 }
 
 const SESSION_EXPIRED = "Your session expired. Sign in again to continue.";
@@ -155,14 +151,6 @@ export async function api<T>(path: string, init?: RequestInit & { timeoutMs?: nu
     if (timeout.aborted) throw new ApiRequestError("TIMEOUT", GENERIC_COPY.TIMEOUT, response.status);
     throw new ApiRequestError("INVALID_RESPONSE", "The server sent an unexpected response.", response.status);
   }
-}
-
-export interface StreamMeta {
-  conversationId: string;
-  messageId: string;
-  userMessageId: string;
-  /** Conversations the server deleted to keep the account within its cap. */
-  removed: string[];
 }
 
 export interface StreamEvents {

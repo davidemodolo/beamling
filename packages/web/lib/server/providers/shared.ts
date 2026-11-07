@@ -120,3 +120,17 @@ export function normalizedSource(fields: SearchResultFields, position: number): 
       typeof fields.publishedAt === "string" ? normalizedDate(fields.publishedAt)?.slice(0, 40) : undefined,
   };
 }
+
+/** Normalizes provider results in order, dropping unusable entries and repeated URLs; positions start at 1. */
+export function normalizedSources(items: readonly SearchResultFields[]): RetrievedSource[] {
+  const seen = new Set<string>();
+  const out: RetrievedSource[] = [];
+  for (const fields of items) {
+    if (typeof fields.url !== "string" || !fields.url || seen.has(fields.url)) continue;
+    const source = normalizedSource(fields, out.length + 1);
+    if (!source) continue;
+    seen.add(fields.url);
+    out.push(source);
+  }
+  return out;
+}
