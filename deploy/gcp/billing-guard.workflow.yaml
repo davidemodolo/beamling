@@ -1,7 +1,9 @@
 # Billing kill switch. Triggered by every budget notification on the billing-guard Pub/Sub topic.
 # When the month's cost reaches the budget, it detaches billing from every project on the billing
 # account, the project hosting this workflow last, which stops all paid services. Re-enable
-# billing on each project by hand afterwards. A message with "dryRun": true only lists the projects.
+# billing on each project by hand afterwards. A message with "dryRun": true only lists the projects;
+# one with "testProject" stops only that project (used to prove the stop on a throwaway project).
+# Real budget notifications carry neither field.
 main:
   params: [event]
   steps:
@@ -11,6 +13,7 @@ main:
           - hostProject: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
           - data: ${json.decode(base64.decode(event.data.message.data))}
           - dryRun: ${default(map.get(data, "dryRun"), false)}
+          - testProject: ${default(map.get(data, "testProject"), "")}
     - checkBudget:
         switch:
           - condition: ${not dryRun and data.costAmount < data.budgetAmount}
@@ -55,6 +58,29 @@ main:
               - appendHost:
                   assign:
                     - targets: ${list.concat(targets, hostProject)}
+    - limitToTest:
+        switch:
+          - condition: ${testProject != ""}
+            steps:
+              - onlyTest:
+                  assign:
+                    - targets: []
+                    - hostLinked: false
+              - checkTest:
+                  for:
+                    value: candidate
+                    in: ${others}
+                    steps:
+                      - match:
+                          switch:
+                            - condition: ${candidate == testProject}
+                              steps:
+                                - keep:
+                                    assign:
+                                      - targets: ${list.concat([], candidate)}
+              - useTest:
+                  assign:
+                    - others: ${targets}
     - reportDryRun:
         switch:
           - condition: ${dryRun}
@@ -70,23 +96,34 @@ main:
             costAmount: ${data.costAmount}
             budgetAmount: ${data.budgetAmount}
             projects: ${targets}
-    - disableOthers:
+    - startDisabling:
+        assign:
+          - failures: []
+    # Every project is attempted even if an earlier one fails; the host goes last because
+    # disabling its billing also stops this workflow.
+    - disableAll:
         for:
           value: projectId
-          in: ${others}
+          in: ${targets}
           steps:
             - disable:
                 call: unlinkBilling
                 args:
                   projectId: ${projectId}
-    - disableHost:
+                result: disabled
+            - recordFailure:
+                switch:
+                  - condition: ${not disabled}
+                    steps:
+                      - addFailure:
+                          assign:
+                            - failures: ${list.concat(failures, projectId)}
+    - reportFailures:
         switch:
-          - condition: ${hostLinked}
-            steps:
-              - unlinkHost:
-                  call: unlinkBilling
-                  args:
-                    projectId: ${hostProject}
+          - condition: ${len(failures) > 0}
+            raise:
+              message: Could not disable billing on some projects
+              projects: ${failures}
     - done:
         return: Billing disabled
 
@@ -102,6 +139,8 @@ unlinkBilling:
               type: OAuth2
             body:
               billingAccountName: ""
+        # Retries transient errors (429, 5xx, connection failures) with backoff.
+        retry: ${http.default_retry}
         except:
           as: e
           steps:

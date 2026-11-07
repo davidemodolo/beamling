@@ -18,6 +18,7 @@ REGION="${REGION:-europe-west1}"
 BILLING_ACCOUNT="${BILLING_ACCOUNT:?set BILLING_ACCOUNT to the billing account id}"
 BUDGET="${BUDGET:-5EUR}"
 BUDGET_NAME="Account hard limit"
+ALERT_EMAIL="${ALERT_EMAIL:-}"                       # optional: email when the switch fires or fails
 
 g() { gcloud --project "$PROJECT_ID" --quiet "$@"; }
 exists() { "$@" >/dev/null 2>&1; }
@@ -77,3 +78,51 @@ if [[ -z "$existing" ]]; then
     --notifications-rule-pubsub-topic "$TOPIC" >/dev/null
 fi
 echo "Budget: $BUDGET across every project on $BILLING_ACCOUNT (project number $PROJECT_NUMBER hosts the guard)."
+
+step "Native Cloud Run spend cap (pauses Cloud Run; nothing is deleted; resets monthly)"
+# Google's spend caps cover only Cloud Run, Cloud Run functions, Gemini and Vertex AI. The cap is on
+# gross list-price cost (before the free allowance), so it pauses Cloud Run long before real charges
+# approach the account budget above. services/152E-C115-5142 is the Cloud Run billing service.
+CAP_NAME="Cloud Run spend cap ($PROJECT_ID)"
+if ! gcloud billing budgets list --billing-account "$BILLING_ACCOUNT" --billing-project "$PROJECT_ID" \
+  --format='value(displayName)' | grep -qxF "$CAP_NAME"; then
+  curl -sSf -X POST -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+    -H "x-goog-user-project: $PROJECT_ID" -H "Content-Type: application/json" \
+    "https://billingbudgets.googleapis.com/v1/billingAccounts/$BILLING_ACCOUNT/budgets" -d @- >/dev/null <<JSON
+{
+  "displayName": "$CAP_NAME",
+  "budgetFilter": {"projects": ["projects/$PROJECT_ID"], "services": ["services/152E-C115-5142"],
+                   "creditTypesTreatment": "EXCLUDE_ALL_CREDITS", "calendarPeriod": "MONTH"},
+  "amount": {"specifiedAmount": {"units": "${CAP_UNITS:-5}"}},
+  "thresholdRules": [{"thresholdPercent": 0.5}, {"thresholdPercent": 0.8}, {"thresholdPercent": 1.0}],
+  "notificationsRule": {"enableProjectLevelRecipients": true},
+  "spendCap": {"inputState": "CONFIGURED"}
+}
+JSON
+fi
+
+if [[ -n "${ALERT_EMAIL:-}" ]]; then
+  step "Email when the kill switch fires or fails"
+  channel="$(gcloud beta monitoring channels list --project "$PROJECT_ID" --format='value(name,labels.email_address)' |
+    awk -F'\t' -v e="$ALERT_EMAIL" '$2 == e {print $1; exit}')"
+  [[ -n "$channel" ]] || channel="$(gcloud beta monitoring channels create --project "$PROJECT_ID" --type email \
+    --display-name "$ALERT_EMAIL" --channel-labels "email_address=$ALERT_EMAIL" --format='value(name)')"
+  if ! gcloud alpha monitoring policies list --project "$PROJECT_ID" --format='value(displayName)' |
+    grep -qxF "Billing kill switch fired or failed"; then
+    policy="$(mktemp)"
+    cat >"$policy" <<JSON
+{
+  "displayName": "Billing kill switch fired or failed",
+  "documentation": {"mimeType": "text/markdown", "content": "The billing-guard workflow is disabling billing (ALERT) or could not stop a project (ERROR). Check Workflows > billing-guard > Executions. Re-link billing promptly so Google does not start deleting resources."},
+  "combiner": "OR",
+  "conditions": [{"displayName": "billing-guard ALERT or ERROR log",
+    "conditionMatchedLog": {"filter": "resource.type=\"workflows.googleapis.com/Workflow\" AND resource.labels.workflow_id=\"billing-guard\" AND severity>=ERROR"}}],
+  "alertStrategy": {"notificationRateLimit": {"period": "300s"}, "autoClose": "604800s"},
+  "notificationChannels": ["$channel"],
+  "severity": "CRITICAL"
+}
+JSON
+    gcloud alpha monitoring policies create --project "$PROJECT_ID" --policy-from-file "$policy" >/dev/null
+    rm -f "$policy"
+  fi
+fi
