@@ -9,11 +9,11 @@ import { getCurrentUser } from "@/lib/server/session";
 
 export const metadata: Metadata = { title: "Terms", robots: { index: false, follow: false } };
 
-const NEXT_PATH = /^\/(chat|onboarding)(\/[0-9a-f-]{36})?$/i;
+const NEXT_PATH = /^\/((chat|onboarding)(\/[0-9a-f-]{36})?)?$/i;
 
 export default async function WelcomePage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
   const params = await searchParams;
-  const next = params.next && NEXT_PATH.test(params.next) ? params.next : "/chat";
+  const next = params.next && NEXT_PATH.test(params.next) ? params.next : "/";
   const user = await getCurrentUser();
   if (!user) redirect(`/login?next=${encodeURIComponent(next)}`);
   if (user.termsVersion === LEGAL_VERSION) redirect(next);

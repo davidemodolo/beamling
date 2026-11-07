@@ -11,9 +11,9 @@ export const metadata: Metadata = { title: "Sign in", robots: { index: false, fo
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string; error?: string }> }) {
   const user = await getCurrentUser();
-  if (user) redirect("/chat");
+  if (user) redirect("/");
   const params = await searchParams;
-  const next = params.next && /^\/(chat|onboarding)/.test(params.next) ? params.next : "/chat";
+  const next = params.next && /^\/(chat|onboarding)?/.test(params.next) ? params.next : "/";
   const shutdown = await getShutdown().catch(() => null);
   const closed = isClosed(shutdown);
   return (

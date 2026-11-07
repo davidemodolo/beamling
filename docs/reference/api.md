@@ -25,9 +25,9 @@ Errors use one envelope ([Error model](errors.md)):
 | Method | Path | Auth | Body / query | Success |
 |---|---|---|---|---|
 | `GET` | `/api/auth/login` | None | `?next=` | 307 to the OIDC provider |
-| `GET` | `/api/auth/callback/google` | OIDC transaction cookie | `code`, `state` | 307 to the stored return path (default `/chat`) |
+| `GET` | `/api/auth/callback/google` | OIDC transaction cookie | `code`, `state` | 307 to the stored return path (default `/`) |
 | `POST` | `/api/auth/logout` | Optional, terms not required | `?scope=all` signs out every session | `{ ok: true }` and cleared cookie |
-| `GET` | `/api/state` | Required | — | `{ user, conversations, nextCursor, conversationCount, credentials, settings }` |
+| `GET` | `/api/state` | Required | None | `{ user, conversations, nextCursor, conversationCount, credentials, settings }` |
 | `POST` | `/api/chat` | Required | `{ conversationId?, question?, retryOf?, mode, searchProvider? }` | SSE stream |
 | `POST` | `/api/chat/stop` | Required | `{ messageId }` | `{ stopped: boolean }` |
 | `GET` | `/api/conversations` | Required | `?cursor=` | `{ conversations, nextCursor }` |
@@ -35,23 +35,23 @@ Errors use one envelope ([Error model](errors.md)):
 | `GET` | `/api/conversations/:id` | Required | UUID id | `{ conversation }` with newest 60 messages |
 | `GET` | `/api/conversations/:id/messages` | Required | `?before=<messageId>` | `{ messages, hasMore }` |
 | `PATCH` | `/api/conversations/:id` | Required | `{ mode?, pinned? }` (at least one) | `{ conversation }` |
-| `DELETE` | `/api/conversations/:id` | Required | — | `{ ok: true }` |
+| `DELETE` | `/api/conversations/:id` | Required | None | `{ ok: true }` |
 | `POST` | `/api/credentials` | Required | `{ provider, key, plan?, expiresOn?, budgetUsd?, validate? }` ([Accepted credentials](credentials.md#accepted-credentials)) | `201 { credential }` |
-| `POST` | `/api/credentials/:id/validate` | Required | — | `{ credential }` |
+| `POST` | `/api/credentials/:id/validate` | Required | None | `{ credential }` |
 | `PATCH` | `/api/credentials/:id` | Required | `{ plan?, expiresOn?, budgetUsd? }` | `{ credential }` |
-| `DELETE` | `/api/credentials/:id` | Required | — | `{ ok: true }` |
+| `DELETE` | `/api/credentials/:id` | Required | None | `{ ok: true }` |
 | `PATCH` | `/api/settings` | Required | `{ llmModel?, defaultSearchProvider?, defaultMode?, analyticsOptOut? }` | `{ settings }` |
 | `POST` | `/api/account/terms` | Required, terms not required | `{ version, confirmAge: true }` | `{ ok: true, version }` |
-| `GET` | `/api/account/export` | Required, terms not required | — | JSON attachment `beamling-export-<date>.json` |
-| `DELETE` | `/api/account` | Optional, terms not required | — | `{ ok: true }` and cleared cookie |
+| `GET` | `/api/account/export` | Required, terms not required | None | JSON attachment `beamling-export-<date>.json` |
+| `DELETE` | `/api/account` | Optional, terms not required | None | `{ ok: true }` and cleared cookie |
 | `POST` | `/api/internal/kill` | Bearer `KILL_SWITCH_SECRET` | `{ acceptingNewStreams: boolean, reason? }` | `{ acceptingNewStreams }` |
-| `GET` | `/api/internal/metrics` | Bearer `METRICS_SECRET` | — | Deployment flag, active streams and build identity |
-| `GET` | `/api/internal/shutdown` | Bearer `KILL_SWITCH_SECRET` | — | `{ shutdown: { scheduledAt, reason, notify } \| null, mailConfigured, accounts, notified }` |
+| `GET` | `/api/internal/metrics` | Bearer `METRICS_SECRET` | None | Deployment flag, active streams and build identity |
+| `GET` | `/api/internal/shutdown` | Bearer `KILL_SWITCH_SECRET` | None | `{ shutdown: { scheduledAt, reason, notify } \| null, mailConfigured, accounts, notified }` |
 | `POST` | `/api/internal/shutdown` | Bearer `KILL_SWITCH_SECRET` | `{ action: "schedule", days?: 14–365 (default 14), reason?: ≤1,000 chars, notify?: boolean (default true) }` or `{ action: "cancel" }` | Same as `GET`; `MAIL_NOT_CONFIGURED` (409) if `notify` without SMTP ([Scheduled shutdown](conversations.md#scheduled-shutdown)) |
-| `GET` | `/api/health` | None | — | Readiness `{ ok, database, schema, kms, version, commit, builtAt }`: 200 ready, 503 not; `Cache-Control: no-store` |
-| `GET` | `/api/live` | None | — | Liveness, no database: `{ ok: true }`; `Cache-Control: no-store` |
+| `GET` | `/api/health` | None | None | Readiness `{ ok, database, schema, kms, version, commit, builtAt }`: 200 ready, 503 not; `Cache-Control: no-store` |
+| `GET` | `/api/live` | None | None | Liveness, no database: `{ ok: true }`; `Cache-Control: no-store` |
 | `POST` | `/api/auth/test-login` | None | `?terms=pending` | Test only: signs in a new fixture account. 404 unless `BEAMLING_TEST_AUTH=1`, fixture providers and a localhost `APP_URL` |
-| `GET` | `/.well-known/security.txt` | None | — | RFC 9116 text: `Contact` (mailto `LEGAL_CONTACT_EMAIL` when set, and `/contact`), `Expires` 180 days ahead, `Policy` `/security`, `Canonical`, `Preferred-Languages: en`; `Cache-Control: public, max-age=86400` |
+| `GET` | `/.well-known/security.txt` | None | None | RFC 9116 text: `Contact` (mailto `LEGAL_CONTACT_EMAIL` when set, and `/contact`), `Expires` 180 days ahead, `Policy` `/security`, `Canonical`, `Preferred-Languages: en`; `Cache-Control: public, max-age=86400` |
 
 `apiRoute` wraps every session route. After the same-origin check and session load, it returns `TERMS_REQUIRED` (403) if the account's `terms_version` is not the current `LEGAL_VERSION`, unless the route sets `requireTerms: false` ([Terms acceptance](accounts.md#terms-acceptance)).
 

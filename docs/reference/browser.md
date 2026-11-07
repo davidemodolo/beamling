@@ -4,11 +4,12 @@
 
 | Route | Current behavior |
 |---|---|
-| `/` | Landing page ([below](#landing-page)). Every CTA links to `/chat`: "Get started" signed out, "Open the app" signed in |
-| `/login` | Google-only sign-in; returns to the requested page (default `/chat`). Start failures redirect back with `auth_unavailable` or `login_rate_limited` instead of JSON. Says terms are accepted after sign-in and Beamling is 18+. During a scheduled shutdown it shows the closing date and that new accounts are closed; after it, that Beamling has shut down, with no sign-in button. `service_closing` and `service_closed` have their own copy |
+| `/` | Signed out: landing page ([below](#landing-page)), CTAs to `/login`. Signed in: the app (new question). Signing out is the only way back to the landing page. `/` and `/chat/:id` share `app/(app)/layout.tsx`, which checks terms and setup and mounts the shell |
+| `/login` | Google-only sign-in; returns to the requested page (default `/`). Start failures redirect back with `auth_unavailable` or `login_rate_limited` instead of JSON. Says terms are accepted after sign-in and Beamling is 18+. During a scheduled shutdown it shows the closing date and that new accounts are closed; after it, that Beamling has shut down, with no sign-in button. `service_closing` and `service_closed` have their own copy |
 | `/welcome` | Terms acceptance ([Terms acceptance](accounts.md#terms-acceptance)), not indexed. Signed out → `/login`; already current → `next`. Badge "Before you start" (new) or "Updated terms" (version change), three points (AI answers can be wrong, user owns provider keys and costs, data encrypted and exportable), checkboxes "I am at least 18 years old." and "I accept the Terms and have read the Privacy notice", Accept and Sign out, and a note that unaccepted accounts are deleted after seven days |
-| `/onboarding` | Two steps (model key, search key) after picking a path; redirects to `/chat` once setup is complete |
-| `/chat` | New-question view; loads workspace state, conversation list and threads. During a scheduled shutdown a banner shows the closing date and a "Download my data" button (Settings → Account) |
+| `/onboarding` | Two steps (model key, search key) after picking a path; redirects to `/` once setup is complete |
+| `/chat` | Redirects to `/` |
+| `/chat/:id` | A conversation; signed-out visitors go to `/login`. The app loads workspace state, conversation list and threads. During a scheduled shutdown a banner shows the closing date and a "Download my data" button (Settings → Account) |
 | `/chat/[id]` | Conversation; newest 60 messages, then earlier pages |
 | `/privacy` | GDPR Art. 13/14 notice: controller, data and legal bases, retention (below), providers on the user's accounts (some in China), transfers (hosting in Belgium, database in Frankfurt), Art. 15–21 rights, Garante complaints |
 | `/terms` | Alpha terms: 18+, user owns keys, costs and provider choice, storage limits, acceptable use, MIT source (name and logo not licensed), liability limits, 24-month inactive deletion, closure with 14 days' notice, DSA contact, `LEGAL_GOVERNING_LAW` with consumer forum |
@@ -59,10 +60,10 @@ Behavior:
 
 Setup is complete with a model key (OpenRouter or DeepSeek) and a search key (Brave, Tavily, Exa or DeepSeek) not marked `invalid`. One DeepSeek key counts for both (`setupState` in `lib/provider-catalog.ts`).
 
-- `/chat` redirects to `/onboarding` until setup is complete, and back once it is. Later changes happen in Settings → Keys.
-- Opening `/chat`, saving a key and deleting one run `alignDefaults`: a default model or search provider without a key moves to the first keyed option. `POST /api/credentials` and `DELETE /api/credentials/{id}` return the resulting `settings`.
+- Signed in, `/` redirects to `/onboarding` until setup is complete, and back once it is. Later changes happen in Settings → Keys.
+- Opening `/`, saving a key and deleting one run `alignDefaults`: a default model or search provider without a key moves to the first keyed option. `POST /api/credentials` and `DELETE /api/credentials/{id}` return the resulting `settings`.
 - Two paths: **Quick setup** ("An OpenRouter free model and Brave Search.") uses `FREE_LLM_MODEL` and Brave, and notes that limits and data use follow OpenRouter's terms. **Use my own providers** offers every allowlisted model and search provider.
-- Step 1 saves the model key and model; step 2 saves the search key, writes the defaults and routes to `/chat`. If one provider serves both, step 1 finishes setup.
+- Step 1 saves the model key and model; step 2 saves the search key, writes the defaults and routes to `/`. If one provider serves both, step 1 finishes setup.
 - An account with a model key starts at step 2. A saved key shows "Key saved." with placeholder "Saved · paste a new key to replace it"; leave it empty to keep it.
 - Brave's plan (default `Free · 1 request/second`), expiry and budget sit under "Plan, expiry and budget", all user-declared. Brave and Exa show "Validate the key now".
 - "Get a key" opens the provider dashboard in a new tab. Key inputs are masked with a show/hide toggle. A rejected key keeps the step open.
@@ -75,7 +76,7 @@ Setup is complete with a model key (OpenRouter or DeepSeek) and a search key (Br
 - **Header**: title, mode, model, search provider, source-count button, avatar.
 - **Sidebar**: title search over loaded pages, Pinned section, Today/Yesterday/Previous (UTC), pin/unpin, delete confirmation, "Show older conversations", Settings, email, sign-out. Retention note: "Chats are deleted 60 days after their last message." From 90 conversations it adds "N of 100 chats. New chats replace the oldest unpinned ones." as a highlighted status.
 - **Thread**: user bubbles, answer cards, working card, earlier-messages button, empty, not-found and load-error states.
-- **Composer**: textarea growing to 190 px, Enter sends, Shift+Enter adds a newline, Quick/Deep/Deeper control, model badge, search-provider selector (unkeyed ones marked "· no key"), Stop while busy. Hint: "Answers are AI-generated with your keys and can be wrong — check the sources." Sending is not blocked client-side; the server's `CREDENTIAL_MISSING` shows the "Key needed" card.
+- **Composer**: textarea growing to 190 px, Enter sends, Shift+Enter adds a newline, Quick/Deep/Deeper control, model badge, search-provider selector (unkeyed ones marked "· no key"), Stop while busy. Hint: "Answers are AI-generated with your keys and can be wrong. Check the sources." Sending is not blocked client-side; the server's `CREDENTIAL_MISSING` shows the "Key needed" card.
 - **Answer card**: streamed markdown, citation buttons, **Searches** and **Model reasoning** panels (collapsed, also live), an "Uncited" badge when no valid citation survives, stopped/error/truncated/degraded/partial-search notices, and retry on the latest failed or stopped answer. The no-sources answer is its fixed text, no extra notice. Footer: model, search provider, total cost and time, copy and sources buttons; tooltips show the actual model and host, tokens and cost split (generation from OpenRouter or DeepSeek token estimate, search from list price).
 - **Source panel**: right pane on desktop, focus-trapped bottom sheet on mobile; count, provider badge (from the stored answer), title, domain, date, snippet, link.
 - **Working card**: mascot, stage label, detail string, skeleton or streaming body, Stop.
@@ -112,7 +113,7 @@ Rendered per request, so the CSP nonce is injected and CTAs follow the session (
 - Hero with a scripted, replayable demo (queued → searching → reading → writing → done); no live provider call.
 - "Get started in three steps": Google sign-in, an OpenRouter key, a Brave key, each with a dashboard link. The copy makes no claims about provider plans, limits or privacy.
 - Modes, four principles, provider pills, FAQ (cost, own keys, limits and billing, other models, data location), final CTA with the mascot.
-- Nav: Setup, How it works, FAQ; "Sign in" and "Get started" signed out, "Open the app" signed in. Footer: product links, source repository, Privacy, Terms, Cookies, Data processors, Security, Status, Contact, Licenses.
+- Nav: Setup, How it works, FAQ; "Sign in" and "Get started". Footer: product links, source repository, Privacy, Terms, Cookies, Data processors, Security, Status, Contact, Licenses.
 - `prefers-reduced-motion` skips the demo animation.
 
 ## Accessibility and responsive behavior
@@ -123,4 +124,4 @@ Rendered per request, so the CSP nonce is injected and CTAs follow the session (
 - The mascot is hidden from assistive tech; stage text carries the state.
 - Global focus-visible outlines; reduced motion respected in the mascot and demo.
 - Touch targets and 360 px layout via responsive CSS.
-- E2E runs axe-core on `/`, `/chat`, `/onboarding`, `/welcome`, `/privacy`, `/terms`, `/licenses`, `/cookies`, `/subprocessors`, `/security`, `/status` and `/contact`, failing on serious or critical violations.
+- E2E runs axe-core on `/` (signed out and signed in), `/onboarding`, `/welcome`, `/privacy`, `/terms`, `/licenses`, `/cookies`, `/subprocessors`, `/security`, `/status` and `/contact`, failing on serious or critical violations.

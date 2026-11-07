@@ -1,4 +1,5 @@
 import Link from "next/link";
+import "./landing.css";
 import { Mascot } from "@/components/mascot";
 import { Icon } from "@/components/ui/icon";
 import { SOURCE_URL } from "@/lib/legal";
@@ -7,16 +8,16 @@ import { LandingDemo } from "./demo";
 import { FAQ, FREE_STEPS, MODE_CARDS, PRINCIPLES } from "./landing-data";
 import { Brand, ProviderPills, SiteFooter } from "./landing-parts";
 
-/** The primary call to action: straight into the app when signed in, the setup otherwise. */
-function MainCta({ signedIn, large }: { signedIn: boolean; large?: boolean }) {
+/** The primary call to action: sign in, then setup or the app. */
+function MainCta({ large }: { large?: boolean }) {
   return (
-    <Link href="/chat" className={`l-btn l-btn-solid${large ? " l-btn-lg" : ""}`}>
-      {signedIn ? "Open the app" : "Get started"} <Icon name="arrow-right" size={large ? 15 : 13} />
+    <Link href="/login" className={`l-btn l-btn-solid${large ? " l-btn-lg" : ""}`}>
+      Get started <Icon name="arrow-right" size={large ? 15 : 13} />
     </Link>
   );
 }
 
-export function Landing({ signedIn }: { signedIn: boolean }) {
+export function Landing() {
   const host = new URL(appUrl()).host;
   return (
     <div className="lp">
@@ -29,12 +30,10 @@ export function Landing({ signedIn }: { signedIn: boolean }) {
             <a href="#faq">FAQ</a>
           </div>
           <div className="l-actions">
-            {signedIn ? null : (
-              <Link href="/login" className="l-btn l-btn-ghost">
-                Sign in
-              </Link>
-            )}
-            <MainCta signedIn={signedIn} />
+            <Link href="/login" className="l-btn l-btn-ghost">
+              Sign in
+            </Link>
+            <MainCta />
           </div>
         </div>
       </nav>
@@ -51,7 +50,7 @@ export function Landing({ signedIn }: { signedIn: boolean }) {
                 Web answers where every claim links to its source. Runs on your own provider keys.
               </p>
               <div className="l-cta">
-                <MainCta signedIn={signedIn} large />
+                <MainCta large />
                 <a href="#how" className="l-btn l-btn-ghost l-btn-lg">
                   See how it works
                 </a>
@@ -98,7 +97,7 @@ export function Landing({ signedIn }: { signedIn: boolean }) {
               ))}
             </ol>
             <div className="l-cta lp-section-cta">
-              <MainCta signedIn={signedIn} large />
+              <MainCta large />
               <span className="lp-note">Or use your paid keys.</span>
             </div>
           </div>
@@ -184,7 +183,7 @@ export function Landing({ signedIn }: { signedIn: boolean }) {
                 <h2>Ask your first question.</h2>
                 <p>Free and open source.</p>
                 <div className="l-cta">
-                  <MainCta signedIn={signedIn} large />
+                  <MainCta large />
                 </div>
               </div>
               <div className="lp-final-mark" aria-hidden="true">

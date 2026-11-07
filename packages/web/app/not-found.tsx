@@ -11,11 +11,8 @@ export default function NotFound() {
         <h1>Nothing is lit here</h1>
         <p>The page you are looking for does not exist, or it moved.</p>
         <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 22 }}>
-          <Link href="/" className="btn btn-secondary">
+          <Link href="/" className="btn btn-primary">
             Home
-          </Link>
-          <Link href="/chat" className="btn btn-primary">
-            Ask a question
           </Link>
         </div>
       </div>

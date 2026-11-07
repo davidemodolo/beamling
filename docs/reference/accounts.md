@@ -44,7 +44,7 @@ GET /api/auth/callback/google
 - Cookie: `HttpOnly`, `SameSite=Lax`, `Path=/`, `Max-Age` until the stored expiry. Named `__Host-beamling_session` with Secure cookies, `beamling_session` otherwise.
 - Expiry slides to 30 days (`SESSION_TTL_DAYS`) after the last renewal, capped at 90 days (`SESSION_MAX_AGE_DAYS`) after creation. `getCurrentUser` renews at most daily, updating `users.last_seen_at` and the cookie.
 - No valid session on a protected route: `UNAUTHENTICATED` (401).
-- `/chat` and `/onboarding` redirect signed-out users to `/login`.
+- `/chat/:id` and `/onboarding` redirect signed-out users to `/login`; `/` shows them the landing page.
 
 ## Account routes
 
@@ -57,7 +57,7 @@ GET /api/auth/callback/google
 ## Terms acceptance
 
 - `lib/legal.ts` defines `LEGAL_VERSION` (now `2026-11-07.2`), plus `MINIMUM_AGE = 18`, `INACTIVE_ACCOUNT_MONTHS = 24`, `UNACCEPTED_ACCOUNT_DAYS = 7`, `CONVERSATION_RETENTION_DAYS = 60`, `MAX_CONVERSATIONS = 100`, `CONVERSATION_WARNING_THRESHOLD = 90` and `SHUTDOWN_NOTICE_DAYS = 14`.
-- `users.terms_version` and `users.terms_accepted_at` record acceptance. While `terms_version` ≠ `LEGAL_VERSION`, `requirePageUser` redirects pages to `/welcome?next=<path>`. `/welcome` accepts only `/chat`, `/chat/<uuid>` or `/onboarding` as `next`.
+- `users.terms_version` and `users.terms_accepted_at` record acceptance. While `terms_version` ≠ `LEGAL_VERSION`, `requirePageUser` redirects pages to `/welcome?next=<path>`. `/welcome` accepts only `/`, `/chat`, `/chat/<uuid>` or `/onboarding` as `next`.
 - `apiRoute` answers `TERMS_REQUIRED` (403), except routes with `requireTerms: false`: `POST /api/account/terms`, `GET /api/account/export`, `POST /api/auth/logout`, `DELETE /api/account`. The browser client then redirects to `/welcome`.
 - `POST /api/account/terms` takes `{ version, confirmAge: true }`. A stale version returns `TERMS_OUTDATED` (409). Success audits `terms_accepted`.
 - Bumping `LEGAL_VERSION` forces re-acceptance.

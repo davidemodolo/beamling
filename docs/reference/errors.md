@@ -47,9 +47,9 @@ Error codes are stable strings. The UI maps each to a title, message and action.
 | `NOT_FOUND` / `CONVERSATION_NOT_FOUND` / `MESSAGE_NOT_FOUND` | Missing or not owned; internal endpoint without its secret configured | 404 |
 | `UNAUTHORIZED` | Internal endpoint with a wrong bearer secret | 401 |
 | `INTERNAL` | Unhandled error | 500 |
-| `INTERRUPTED` | Stored on an abandoned stream | — |
-| `GENERATION_TIMEOUT` | Stored when the time limit is hit | — |
-| `CLIENT_DISCONNECT` | Stored when the browser disconnected | — |
+| `INTERRUPTED` | Stored on an abandoned stream | Not returned |
+| `GENERATION_TIMEOUT` | Stored when the time limit is hit | Not returned |
+| `CLIENT_DISCONNECT` | Stored when the browser disconnected | Not returned |
 
 UI actions (`describeAnswerError` in `lib/api.ts`):
 

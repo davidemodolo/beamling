@@ -6,11 +6,11 @@
 
 | Route | Purpose |
 |---|---|
-| `/` | Landing page with free-start path and FAQ; CTAs go to `/chat`, which routes to setup if keys are missing |
+| `/` | Signed out: landing page with setup path and FAQ. Signed in: the app, or setup if keys are missing. Only signing out shows the landing page again |
 | `/onboarding` | Free path or own providers, then model key and search key |
-| `/chat` | New conversation; signed-in only |
+| `/chat/:id` | A conversation; signed-in only |
 | `/chat/[id]` | Conversation with pagination |
-| `/login` | Google-only sign-in; then `/onboarding` or `/chat` |
+| `/login` | Google-only sign-in; then `/onboarding` or `/` |
 | `/welcome` | Terms and 18+ confirmation; shown again when terms change |
 | `/privacy`, `/terms`, `/cookies`, `/subprocessors`, `/security`, `/contact`, `/status` | Legal/status pages; legal review pending |
 | `/licenses` | MIT statement and generated third-party inventory |

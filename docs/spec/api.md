@@ -173,8 +173,8 @@ Stream rules:
 | `INVALID_PROVIDER`, `MODEL_NOT_ALLOWED` | Provider or model outside the allowlist | 400 |
 | `PROVIDER_ERROR` | Other provider rejection | 502 |
 | `SERVER_BUSY` | Global, Deeper (half the global slots) or per-account concurrency cap | 503 |
-| `INTERRUPTED` | Server restarted mid-answer (stored) | — |
-| `GENERATION_TIMEOUT` | Quick > 60 s, Deep > 90 s, Deeper > 360 s (stored) | — |
+| `INTERRUPTED` | Server restarted mid-answer (stored) | Not returned |
+| `GENERATION_TIMEOUT` | Quick > 60 s, Deep > 90 s, Deeper > 360 s (stored) | Not returned |
 
 Warnings (not error codes):
 

@@ -5,7 +5,7 @@ Priority: P0 = Alpha 1 target, P1 = private alpha/v1, P2 = later. Priority is no
 ## Authentication and account
 
 - **FR-01 (P0):** First visit requires Google sign-in; no guest workspace.
-  - Acceptance: unauthenticated API calls return `UNAUTHENTICATED`; `/chat` and `/onboarding` redirect to `/login`; one account per Google subject.
+  - Acceptance: unauthenticated API calls return `UNAUTHENTICATED`; `/chat/:id` and `/onboarding` redirect to `/login`, `/` shows the landing page; one account per Google subject.
 - **FR-02 (P0):** Google is the only identity provider: no password, magic link, OTP, passkey or other OAuth.
   - Acceptance: `/login` shows only Google; other issuers are rejected; no email needed to sign in. The only email sent is the shutdown notice (FR-75), via optional SMTP.
 - **FR-03 (P0):** OIDC uses code + PKCE, `state` and `nonce`; ID tokens are checked for signature, issuer, audience, expiry and verified email.
@@ -20,8 +20,8 @@ Priority: P0 = Alpha 1 target, P1 = private alpha/v1, P2 = later. Priority is no
   - Acceptance: `GET /api/account/export` returns account, settings, credential metadata, sessions and decrypted conversations with sources, never keys or tokens; opting out stops new events and queues erasure of past ones.
 - **FR-73 (P0):** The cleanup job deletes accounts unused for 24 months, and accounts that never accepted the terms after 7 days, with all data. Implemented.
 - **FR-75 (P0):** The operator can close the service with ≥ 14 days' notice. Accounts are told by email and in the UI, can sign in and export until the date, then are deleted. Implemented.
-  - Acceptance: `POST /api/internal/shutdown` (`KILL_SWITCH_SECRET`) refuses < 14 days and email notice without SMTP (`MAIL_NOT_CONFIGURED`). One English plain-text notice per account, resumed after restarts, re-sent on reschedule. While scheduled, sign-ups get `SERVICE_CLOSING` and `/chat`, `/login`, `/status` show the date. Afterwards sign-in returns `SERVICE_CLOSED` and cleanup deletes every account via normal deletion. Cancelling restores normal operation. Destroying the KMS key then makes backups unreadable.
-- **FR-60 (P0 — public-launch target):** Each account has its own workspace data key; all content is AES-256-GCM encrypted before reaching PostgreSQL, so a dump, backup, replica or read-only compromise reveals only the metadata listed in [Workspace data encryption](keys.md#workspace-data-encryption-public-launch-target).
+  - Acceptance: `POST /api/internal/shutdown` (`KILL_SWITCH_SECRET`) refuses < 14 days and email notice without SMTP (`MAIL_NOT_CONFIGURED`). One English plain-text notice per account, resumed after restarts, re-sent on reschedule. While scheduled, sign-ups get `SERVICE_CLOSING` and the app, `/login`, `/status` show the date. Afterwards sign-in returns `SERVICE_CLOSED` and cleanup deletes every account via normal deletion. Cancelling restores normal operation. Destroying the KMS key then makes backups unreadable.
+- **FR-60 (P0, public-launch target):** Each account has its own workspace data key; all content is AES-256-GCM encrypted before reaching PostgreSQL, so a dump, backup, replica or read-only compromise reveals only the metadata listed in [Workspace data encryption](keys.md#workspace-data-encryption-public-launch-target).
   - Acceptance: a raw `pg_dump` contains no question, answer or source plaintext; another account's ciphertext can't be decrypted; the master key is never in the database; deletion removes the wrapped key.
 - **FR-51 (P0):** Users choose the search provider per answer (Brave, Tavily or Exa); it is stored and shown with the answer.
   - Acceptance: a missing credential returns `CREDENTIAL_MISSING` with a link to setup; never falls back to another provider.

@@ -17,8 +17,8 @@ export function LegalPage({
       <header className="legal-top">
         <Wordmark />
         <span style={{ flex: 1 }} />
-        <Link href="/chat" className="btn btn-secondary btn-sm">
-          Back to chat
+        <Link href="/" className="btn btn-secondary btn-sm">
+          Back to Beamling
         </Link>
       </header>
       <main className="legal">

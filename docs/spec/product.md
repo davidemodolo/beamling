@@ -28,7 +28,7 @@ Beamling is the middle ground: hosted, no infrastructure for the user, full prov
 | Hosted answer engines | Perplexity, You.com, Phind | Yes | No | Yes | No |
 | OSS answer engines | Vane/Perplexica, Morphic, Farfalle, SurfSense | No | Yes | Yes | Yes |
 | BYOK chat clients | Open WebUI, LobeChat, Chatbox | Sometimes | Yes | Partial | Often |
-| **Beamling** | — | **Yes** | **Yes** | **Yes** | **No** |
+| **Beamling** | This project | **Yes** | **Yes** | **Yes** | **No** |
 
 No managed, search-first, citation-first BYOK product exists.
 
@@ -64,21 +64,21 @@ No managed, search-first, citation-first BYOK product exists.
 
 ## Target Users and Personas
 
-### P1 — The AI power user
+### P1: The AI power user
 
 - Pays for OpenAI, Anthropic or Google API access; uses Perplexity or ChatGPT daily.
 - Wants control over model and cost, citations, export, provider switching.
 
-### P2 — The privacy-conscious professional
+### P2: The privacy-conscious professional
 
 - Consultant, lawyer, researcher or analyst; can't send client material to unknown vendors without a DPA.
 - Wants provider choice, minimal retention, a calm credible interface.
 
-### P3 — The indie developer
+### P3: The indie developer
 
 - Builds with LLM APIs; wants a polished answer engine, clean API, exports, transparent usage.
 
-### P4 — The small team (later)
+### P4: The small team (later)
 
 - 3–20 people wanting shared history and provider policy. Not in v1; the data model must not block it.
 
