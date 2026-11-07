@@ -7,9 +7,8 @@ export const metadata: Metadata = { title: "Data processors" };
 
 /** Processors the operator uses to run Beamling, under a data-processing agreement. */
 const PROCESSORS = [
-  ["Fly.io", "Application hosting, TLS termination and logs.", "Frankfurt, Germany (company in the US)", "https://fly.io/legal/privacy-policy"],
-  ["Neon", "Managed PostgreSQL database and backups. Content and keys are stored encrypted.", "EU region (company in the US)", "https://neon.com/privacy-policy"],
-  ["Google Cloud KMS", "Wrapping and unwrapping encryption keys. Receives no content or account data.", "EU region (company in the US)", "https://cloud.google.com/terms/cloud-privacy-notice"],
+  ["Google Cloud", "Application hosting (Cloud Run), TLS termination and logs; Cloud KMS wraps and unwraps encryption keys and receives no content or account data.", "Belgium (hosting, logs) and Frankfurt, Germany (KMS) (company in the US)", "https://cloud.google.com/terms/cloud-privacy-notice"],
+  ["Neon", "Managed PostgreSQL database and backups. Content and keys are stored encrypted.", "Frankfurt, Germany (company in the US)", "https://neon.com/privacy-policy"],
   ["PostHog Cloud (optional)", "Server-side product analytics: metadata only, linked to a keyed hash.", "EU region (company in the US)", "https://posthog.com/privacy"],
 ] as const;
 

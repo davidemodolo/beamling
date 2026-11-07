@@ -1,0 +1,112 @@
+# Cloud Run service: the production topology. The deploy job fills ${IMAGE} (the released digest,
+# pulled through the Artifact Registry GHCR proxy) and ${SIGNUP_ALLOWED_EMAILS} (a GitHub
+# environment secret, kept out of the repository), then applies it with `gcloud run services replace`.
+# Deploys never change IAM: public access is granted once by deploy/gcp/setup.sh.
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: beamling
+  labels:
+    cloud.googleapis.com/location: europe-west1
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        # Scale to zero when idle. The maximum is the spend cap: Cloud Run never starts more.
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "2"
+        # Request-based billing: CPU is allocated only while a request (or stream) is in flight.
+        run.googleapis.com/cpu-throttling: "true"
+        run.googleapis.com/startup-cpu-boost: "true"
+    spec:
+      serviceAccountName: beamling-app@beamling-prod.iam.gserviceaccount.com
+      # Per-instance request ceiling; PLATFORM_CONNECTION_LIMIT below must match it.
+      containerConcurrency: 40
+      # Longest answer (Deeper, 360 s) plus time to store its outcome.
+      timeoutSeconds: 420
+      containers:
+        - image: ${IMAGE}
+          ports:
+            - name: http1
+              containerPort: 3000
+          resources:
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: APP_URL
+              value: https://beamling.app
+            - name: COOKIE_SECURE
+              value: "true"
+            # Google's front end appends the client address to X-Forwarded-For.
+            - name: TRUSTED_PROXY_HOPS
+              value: "1"
+            - name: OIDC_ISSUER
+              value: https://accounts.google.com
+            - name: OIDC_CLIENT_ID
+              value: ${OIDC_CLIENT_ID}
+            - name: KMS_PROVIDER
+              value: gcp
+            # The service account above is the only credential; no key file is involved.
+            - name: KMS_KEY_NAME
+              value: projects/beamling-prod/locations/europe-west3/keyRings/beamling/cryptoKeys/workspace
+            - name: DATABASE_SSL
+              value: "true"
+            - name: DATABASE_SSL_REJECT_UNAUTHORIZED
+              value: "true"
+            # Keep in-flight streams below the per-instance request ceiling so health checks and
+            # ordinary requests retain headroom.
+            - name: MAX_CONCURRENT_CHATS
+              value: "30"
+            - name: PLATFORM_CONNECTION_LIMIT
+              value: "40"
+            - name: DATABASE_POOL_MAX
+              value: "10"
+            # Safe default: only invited addresses may create accounts. Set to "open" to launch publicly.
+            - name: SIGNUP_MODE
+              value: allowlist
+            - name: SIGNUP_ALLOWED_EMAILS
+              value: "${SIGNUP_ALLOWED_EMAILS}"
+            - name: LEGAL_ENTITY
+              value: Davide Modolo
+            - name: LEGAL_CONTACT_EMAIL
+              value: privacy@beamling.app
+            # Cloud Logging keeps logs 30 days (the default). Neon Free keeps 6 hours of restore history.
+            - name: LEGAL_LOG_RETENTION_DAYS
+              value: "30"
+            - name: LEGAL_BACKUP_RETENTION_DAYS
+              value: "1"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: { name: DATABASE_URL, key: latest }
+            - name: DATABASE_URL_DIRECT
+              valueFrom:
+                secretKeyRef: { name: DATABASE_URL_DIRECT, key: latest }
+            - name: AUTH_SECRET
+              valueFrom:
+                secretKeyRef: { name: AUTH_SECRET, key: latest }
+            - name: OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef: { name: OIDC_CLIENT_SECRET, key: latest }
+            - name: KILL_SWITCH_SECRET
+              valueFrom:
+                secretKeyRef: { name: KILL_SWITCH_SECRET, key: latest }
+            - name: METRICS_SECRET
+              valueFrom:
+                secretKeyRef: { name: METRICS_SECRET, key: latest }
+          # Liveness only: /api/live never touches the database, so a sleeping Neon compute
+          # does not get the container restarted.
+          startupProbe:
+            httpGet: { path: /api/live, port: 3000 }
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 15
+          livenessProbe:
+            httpGet: { path: /api/live, port: 3000 }
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3

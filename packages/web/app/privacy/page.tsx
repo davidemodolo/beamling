@@ -142,7 +142,7 @@ export default function PrivacyPage() {
       <h2>Recipients and international transfers</h2>
       <p>
         The <Link href="/subprocessors">data processors page</Link> lists the processors that run Beamling for us and the
-        providers you choose with your own keys, with where they process data. Hosting runs in Frankfurt, Germany. Some
+        providers you choose with your own keys, with where they process data. Hosting runs in Belgium and the database in Frankfurt, Germany. Some
         providers are based in, or process data in, the United States or other countries outside the European Economic
         Area. These transfers rely on the EU-US Data Privacy Framework for certified providers, or on the European
         Commission&apos;s standard contractual clauses (Art. 45 and 46 GDPR). Write to {contact} for a copy of the relevant

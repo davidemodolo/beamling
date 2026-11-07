@@ -1,0 +1,36 @@
+# Cloud Run job that applies database migrations with the released image before the service is
+# updated. It reads only DATABASE_URL_DIRECT: migrations take advisory locks and change role
+# defaults, which the Neon pooler does not support. The deploy job fills ${IMAGE}.
+apiVersion: run.googleapis.com/v1
+kind: Job
+metadata:
+  name: beamling-migrate
+  labels:
+    cloud.googleapis.com/location: europe-west1
+spec:
+  template:
+    spec:
+      taskCount: 1
+      template:
+        spec:
+          serviceAccountName: beamling-migrate@beamling-prod.iam.gserviceaccount.com
+          maxRetries: 0
+          timeoutSeconds: 600
+          containers:
+            - image: ${IMAGE}
+              command: [node]
+              args: [scripts/migrate.mjs]
+              resources:
+                limits:
+                  cpu: "1"
+                  memory: 512Mi
+              env:
+                - name: NODE_ENV
+                  value: production
+                - name: DATABASE_SSL
+                  value: "true"
+                - name: DATABASE_SSL_REJECT_UNAUTHORIZED
+                  value: "true"
+                - name: DATABASE_URL_DIRECT
+                  valueFrom:
+                    secretKeyRef: { name: DATABASE_URL_DIRECT, key: latest }

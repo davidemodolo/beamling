@@ -49,8 +49,11 @@ export function summarizeError(error: unknown, depth = 0): ErrorSummary | string
   return summary;
 }
 
+/** Cloud Logging reads `severity` from structured stdout lines. */
+const SEVERITY: Record<Level, string> = { info: "INFO", warn: "WARNING", error: "ERROR" };
+
 function write(level: Level, message: string, fields?: Record<string, unknown>) {
-  const entry = JSON.stringify({ level, time: new Date().toISOString(), message, ...fields });
+  const entry = JSON.stringify({ level, severity: SEVERITY[level], time: new Date().toISOString(), message, ...fields });
   if (level === "error") console.error(entry);
   else if (level === "warn") console.warn(entry);
   else console.info(entry);
