@@ -7,11 +7,11 @@ import { LandingDemo } from "./demo";
 import { FAQ, FREE_STEPS, MODE_CARDS, PRINCIPLES } from "./landing-data";
 import { Brand, ProviderPills, SiteFooter } from "./landing-parts";
 
-/** The primary call to action: straight into the app when signed in, the free setup otherwise. */
+/** The primary call to action: straight into the app when signed in, the setup otherwise. */
 function MainCta({ signedIn, large }: { signedIn: boolean; large?: boolean }) {
   return (
     <Link href="/chat" className={`l-btn l-btn-solid${large ? " l-btn-lg" : ""}`}>
-      {signedIn ? "Open the app" : "Start free"} <Icon name="arrow-right" size={large ? 15 : 13} />
+      {signedIn ? "Open the app" : "Get started"} <Icon name="arrow-right" size={large ? 15 : 13} />
     </Link>
   );
 }
@@ -24,7 +24,7 @@ export function Landing({ signedIn }: { signedIn: boolean }) {
         <div className="lp-container l-nav-row">
           <Brand />
           <div className="l-links">
-            <a href="#free">Free setup</a>
+            <a href="#free">Setup</a>
             <a href="#how">How it works</a>
             <a href="#faq">FAQ</a>
           </div>
@@ -48,7 +48,7 @@ export function Landing({ signedIn }: { signedIn: boolean }) {
                 Answers you can <em>check.</em>
               </h1>
               <p className="lp-lead">
-                Web answers where every claim links to its source. Runs on your own keys, free to start.
+                Web answers where every claim links to its source. Runs on your own provider keys.
               </p>
               <div className="l-cta">
                 <MainCta signedIn={signedIn} large />
@@ -58,7 +58,7 @@ export function Landing({ signedIn }: { signedIn: boolean }) {
               </div>
               <ul className="lp-checks">
                 <li>
-                  <Icon name="check" size={13} /> Free
+                  <Icon name="check" size={13} /> No Beamling fees
                 </li>
                 <li>
                   <Icon name="check" size={13} /> Encrypted keys
@@ -77,8 +77,8 @@ export function Landing({ signedIn }: { signedIn: boolean }) {
         <section className="lp-section" id="free">
           <div className="lp-container">
             <div className="lp-head">
-              <span className="l-eyebrow">Start free</span>
-              <h2>Start free in three steps.</h2>
+              <span className="l-eyebrow">Setup</span>
+              <h2>Get started in three steps.</h2>
             </div>
             <ol className="lp-free">
               {FREE_STEPS.map((step, index) => (

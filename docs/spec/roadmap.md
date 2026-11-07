@@ -93,8 +93,8 @@ Verified 2026-10-21 (see [Providers](../reference/providers.md) for current beha
 
 - OpenRouter streams OpenAI-compatible SSE. `: OPENROUTER PROCESSING` lines are keep-alives; usage comes once in the last chunk before `[DONE]`; mid-stream errors are `data:` events with `error` and `finish_reason: "error"`.
 - OpenRouter may fall back upstream on `5xx` or rate limits; the model id stays, the upstream provider may change.
-- Brave returns `web.results[]`; Beamling uses the description only, requests no extra snippets and never fetches the page. Brave has a free plan. The API doesn't expose the plan, so users declare Free (Beamling limits it to 1 request/second) or Paid.
-- Tavily: `POST /search` with Bearer; `advanced` costs more credits than `basic`. Tavily has a free plan.
+- Brave returns `web.results[]`; Beamling uses the description only, requests no extra snippets and never fetches the page. The API doesn't expose the plan, so users declare Free (Beamling limits it to 1 request/second) or Paid.
+- Tavily: `POST /search` with Bearer; `advanced` costs more credits than `basic`.
 - Exa: `POST /search` with `type=auto` and `contents.highlights`; responses may include `costDollars`.
 
 Re-check APIs and pricing before implementing or publishing cost estimates. Validation calls must be the cheapest request.

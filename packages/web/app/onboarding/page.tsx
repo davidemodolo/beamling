@@ -225,10 +225,10 @@ export default function OnboardingPage() {
                 }}
               >
                 <span className="badge badge-success">Recommended</span>
-                <strong>Start free</strong>
-                <span>OpenRouter and Brave free plans.</span>
+                <strong>Quick setup</strong>
+                <span>An OpenRouter free model and Brave Search.</span>
                 <span className="onboard-path-go">
-                  Set up for free <Icon name="arrow-right" size={13} />
+                  Set up <Icon name="arrow-right" size={13} />
                 </span>
               </button>
               <button
@@ -251,10 +251,10 @@ export default function OnboardingPage() {
           <form className="onboard-step" onSubmit={(event) => void submitModel(event)} noValidate>
             <StepHeader
               index={1}
-              title={path === "free" ? "Connect a free model" : "Choose your model"}
+              title={path === "free" ? "Connect OpenRouter" : "Choose your model"}
               lead={
                 path === "free" ? (
-                  "Create a free OpenRouter key. No card needed."
+                  "Create an OpenRouter key."
                 ) : (
                   "You can change it later in Settings."
                 )
@@ -265,7 +265,7 @@ export default function OnboardingPage() {
                 <Icon name="sparkles" size={16} />
                 <div>
                   <strong>{llmModelName(llmModel)}</strong>
-                  <span>Free on OpenRouter</span>
+                  <span>Listed as free on OpenRouter</span>
                 </div>
               </div>
             ) : (
@@ -304,7 +304,7 @@ export default function OnboardingPage() {
               }}
             >
               {path === "free" ? (
-                <p className="hint">Free hosts may train on prompts; avoid private questions.</p>
+                <p className="hint">Limits and data use follow OpenRouter&apos;s terms.</p>
               ) : null}
             </KeyField>
             <div className="onboard-actions">
@@ -324,7 +324,7 @@ export default function OnboardingPage() {
               title={path === "free" ? "Connect Brave Search" : "Choose your search provider"}
               lead={
                 path === "free" ? (
-                  "Brave has a free plan. Create a key on the Search plan."
+                  "Create a key on Brave's Search plan."
                 ) : (
                   "You can switch provider per question."
                 )

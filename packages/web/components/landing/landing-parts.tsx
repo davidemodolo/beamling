@@ -53,7 +53,7 @@ export function SiteFooter() {
         </div>
         <div>
           <h3>Product</h3>
-          <a href="#free">Free setup</a>
+          <a href="#free">Setup</a>
           <a href="#how">How it works</a>
           <a href="#faq">FAQ</a>
           <a href={SOURCE_URL}>Source code</a>
