@@ -13,3 +13,11 @@ allowBuilds:
 overrides:
   "minimatch@>=7.0.0 <11.0.1": 11.0.5
   "@esbuild-kit/core-utils>esbuild": 0.25.12
+# eslint-config-next's plugins (react, jsx-a11y, import) have not yet declared ESLint 10 in their
+# peer range, even in their latest releases. Their rules were checked to run under ESLint 10.
+# Drop an entry once the plugin's own peer range includes ESLint 10.
+peerDependencyRules:
+  allowedVersions:
+    eslint-plugin-react>eslint: "10"
+    eslint-plugin-jsx-a11y>eslint: "10"
+    eslint-plugin-import>eslint: "10"

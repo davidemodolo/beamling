@@ -1,9 +1,10 @@
 # syntax=docker/dockerfile:1
 
 FROM node:26-alpine@sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a881ead0b064ce216 AS base
-# Node 25+ no longer bundles corepack; keep this version in sync with packageManager.
-RUN npm install -g pnpm@12.18.0
 WORKDIR /app
+# Node 25+ no longer bundles corepack: install the pnpm version pinned in package.json's packageManager.
+COPY package.json ./
+RUN npm install -g --ignore-scripts "$(node -p "require('./package.json').packageManager")"
 ENV NEXT_TELEMETRY_DISABLED=1
 
 FROM base AS deps
