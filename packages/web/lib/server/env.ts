@@ -427,8 +427,10 @@ export function productionConfigErrors(): string[] {
     if (!contact || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact)) {
       errors.push("LEGAL_CONTACT_EMAIL must be a monitored email address outside localhost.");
     }
-    if (!process.env.LEGAL_ADDRESS?.trim()) {
-      errors.push("LEGAL_ADDRESS is required outside localhost: the privacy notice and terms must give a postal address.");
+    // A private, non-commercial operator may publish only a name and email; a business must give
+    // its registered address alongside its VAT number.
+    if (process.env.LEGAL_VAT_ID?.trim() && !process.env.LEGAL_ADDRESS?.trim()) {
+      errors.push("LEGAL_ADDRESS is required when LEGAL_VAT_ID is set: a business must publish its registered address.");
     }
     const smtp = smtpUrl();
     if (smtp) {
