@@ -539,6 +539,16 @@ Each requirement has a priority (P0 = Alpha 1 target, P1 = private alpha/v1, P2 
   - Acceptance: the link opens the provider-hosted page in a new tab; no payment script loads on Beamling; no donation prompt blocks chat.
 - **FR-59 (P2):** `/supporters` lists only donors who explicitly consented to publication, with no amounts, emails, legal names or scraped data.
   - Acceptance: every entry has a recorded consent reference; removal requests are honored; the page has no payment SDK.
+- **FR-60 (P1, target, not started):** A plain-language page (working title "How Beamling keeps your keys safe", linked from `/security` and onboarding) explains why it is safe to paste an API key into Beamling, and backs each claim with a link to the exact code in the public repository (permalinks pinned to the released commit, so a link never points at changed code). Topics:
+  - the key travels over HTTPS and is encrypted before it is stored (KMS envelope encryption, `lib/server/crypto.ts`, `lib/server/kms.ts`);
+  - after saving, the full key is never sent back to the browser, only its last four characters, or none for short keys;
+  - the key is decrypted only in server memory, for one request, and sent only to its own provider;
+  - keys and response bodies are redacted from logs (`lib/server/log.ts`);
+  - conversations are encrypted per account at rest (`lib/server/workspace-key.ts`);
+  - deleting a key or the account removes it;
+  - everything is open source, so each claim can be checked.
+  - It also states the limits plainly: this is not end-to-end encryption, because the server must decrypt a key to call the provider on the user's behalf, and the operator runs that server.
+  - Acceptance: every claim on the page has a working code permalink; wording reviewed for plain language; the page states its limits and never claims end-to-end encryption (FR-57).
 
 **Current checkout:** `/licenses` states that Beamling is MIT-licensed and lists the third-party inventory generated from the production dependency graph; every installed license is checked against the allowlist in CI. The public pages share a footer with Privacy, Terms, Cookies, Data processors, Security, Status, Contact and Licenses, and the MIT notice. `/contact`, `/cookies`, `/subprocessors`, `/security`, `/status` and `/.well-known/security.txt` exist. Legal review and the public docs/support pages remain target work.
 
@@ -1891,7 +1901,7 @@ Evaluation methodology: each golden question has a reference answer and expected
 | M0 — Spec | This document, brand assets brief, domain purchases | Review complete | Spec exists; domain purchase unconfirmed |
 | M1 — Alpha 1 | Google-only accounts, OpenRouter credentials and streaming, Brave/Tavily/Exa search adapters, Brave plan/expiry/budget metadata, Quick, Deep, Deeper, citations, search animation, history, PostHog usage analytics, production-parity local stack | Quick and Deep cited answers render end to end; Google login works; animation follows real stages; local stack runs the production image with KMS-backed crypto | Implemented in code and tests, including PostHog events, kill switch and deletion hook; live PostHog project, dashboards and alerts remain operator setup |
 | M2 — Private alpha | Onboarding, settings, usage/cost, error states, account deletion, 100-question eval, Fly + Neon deploy | 10–25 invited users complete real Quick, Deep and Deeper questions without key leakage | Partial: onboarding, settings, costs, errors and deletion are implemented; Fly config and deploy job are committed; the live deploy and 100-question eval remain |
-| M3 — Public launch | All launch adapters, welcome page, public docs and GitHub feedback repo, legal pages, open-source license page, CMP if needed, rate limits, status page | Public Google sign-in open, SLOs met for one week | Partial: killswitch, internal metrics and the generated license page are implemented; the remaining legal surface, status and watchdog remain |
+| M3 — Public launch | All launch adapters, welcome page, public docs and GitHub feedback repo, legal pages, open-source license page, key-safety explainer page (FR-60), CMP if needed, rate limits, status page | Public Google sign-in open, SLOs met for one week | Partial: killswitch, internal metrics and the generated license page are implemented; the remaining legal surface, status and watchdog remain |
 | M3.1 — Support (optional, post-public) | `/support`, outbound Tipeee/PayPal link, opt-in `/supporters`, footer link | Donation link works with no payment script; consent and removal process documented | Target |
 | M4 — v1 | PDF upload, share links, exports, optional public API, KMS-backed keys | Quality and security gates passed for both modes | Target |
 
