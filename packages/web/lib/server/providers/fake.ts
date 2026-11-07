@@ -1,7 +1,8 @@
 import { ApiError } from "../http";
-import type { SearchProvider } from "../../types";
+import type { CredentialProvider, SearchProvider } from "../../contracts";
+import { providerName } from "../../provider-catalog";
+import type { ChatMessage, ChatPurpose, ChatResult } from "./llm";
 import type { RetrievedSource } from "./shared";
-import type { ChatMessage, ChatPurpose, ChatResult } from "./openrouter";
 
 // Fixture switches for tests: put the marker in the question.
 const BROKEN_PLAN = "[fixture:broken-plan]";
@@ -21,7 +22,7 @@ function aborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
 }
 
-export async function fakeValidateKey(key: string, provider: "openrouter" | SearchProvider): Promise<void> {
+export async function fakeValidateKey(key: string, provider: CredentialProvider): Promise<void> {
   await sleep(20);
   if (!key.startsWith("test-")) {
     throw new ApiError("CREDENTIAL_INVALID", "Fixture providers accept keys that start with test-.", 400, provider);
@@ -32,7 +33,7 @@ export async function fakeSearch(query: string, count: number, signal?: AbortSig
   await sleep(30);
   aborted(signal);
   if (query.includes(FAILING_QUERY)) {
-    throw new ApiError("PROVIDER_UNAVAILABLE", `${provider === "brave" ? "Brave Search" : provider === "tavily" ? "Tavily" : "Exa"} is temporarily unavailable.`, 502, provider);
+    throw new ApiError("PROVIDER_UNAVAILABLE", `${providerName(provider)} is temporarily unavailable.`, 502, provider);
   }
   if (/\bno sources\b/i.test(query)) return [];
   const base = [

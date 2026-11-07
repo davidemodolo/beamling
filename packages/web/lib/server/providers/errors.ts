@@ -1,19 +1,16 @@
+import type { CredentialProvider } from "../../contracts";
+import { providerName } from "../../provider-catalog";
 import type { CredentialStatus } from "../../types";
 import { ApiError } from "../http";
 
-export type ProviderName = "openrouter" | "brave" | "tavily" | "exa";
+export type ProviderName = CredentialProvider;
 
-const LABEL: Record<ProviderName, string> = {
-  openrouter: "OpenRouter",
-  brave: "Brave Search",
-  tavily: "Tavily",
-  exa: "Exa",
-};
+const label = (provider: ProviderName) => providerName(provider);
 
 export function unavailable(provider: ProviderName, message?: string): ApiError {
   return new ApiError(
     "PROVIDER_UNAVAILABLE",
-    message ?? `${LABEL[provider]} is temporarily unavailable. Try again shortly.`,
+    message ?? `${label(provider)} is temporarily unavailable. Try again shortly.`,
     502,
     provider,
   );
@@ -27,7 +24,7 @@ export function unavailable(provider: ProviderName, message?: string): ApiError 
 export function transportError(provider: ProviderName, error: unknown, callerSignal?: AbortSignal): unknown {
   if (error instanceof ApiError) return error;
   if (callerSignal?.aborted) return error;
-  return unavailable(provider, `${LABEL[provider]} could not be reached. Try again shortly.`);
+  return unavailable(provider, `${label(provider)} could not be reached. Try again shortly.`);
 }
 
 export async function providerFetch(

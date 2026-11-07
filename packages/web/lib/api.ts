@@ -59,7 +59,7 @@ export function describeAnswerError(code: string | undefined, message?: string):
     case "UNAUTHENTICATED":
       return { title: "Session expired", message: SESSION_EXPIRED, action: "reload" };
     case "CREDENTIAL_MISSING":
-      return settings("Key needed", "Add your OpenRouter key and a key for the selected search provider in Settings.");
+      return settings("Key needed", "Add a key for the selected model and search provider in Settings.");
     case "CREDENTIAL_INVALID":
       return settings("Key rejected", "A provider rejected your key. Replace it in Settings, then retry.");
     case "CREDENTIAL_UNREADABLE":
@@ -71,7 +71,7 @@ export function describeAnswerError(code: string | undefined, message?: string):
     case "QUOTA_EXCEEDED":
       return retry("Search limit reached", "The selected search provider has reached its plan limit.");
     case "MODEL_NOT_FOUND":
-      return settings("Model unavailable", "OpenRouter does not offer this model right now. Pick another in Settings.");
+      return settings("Model unavailable", "The provider does not offer this model right now. Pick another in Settings.");
     case "INSUFFICIENT_CREDITS":
       return retry("Out of credits", "A provider account has run out of credits. Top it up, then retry.");
     case "PROVIDER_RATE_LIMITED":

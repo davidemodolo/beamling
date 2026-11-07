@@ -2,7 +2,7 @@ import { analytics } from "@/lib/server/analytics";
 import { isDecryptIntegrityError } from "@/lib/server/crypto";
 import { log, summarizeError } from "@/lib/server/log";
 import { ApiError, idParam, json, notFound } from "@/lib/server/http";
-import { isSearchProvider } from "@/lib/provider-catalog";
+import { isCredentialProvider } from "@/lib/contracts";
 import { validateProviderKey } from "@/lib/server/providers";
 import { credentialStatusFor } from "@/lib/server/providers/errors";
 import {
@@ -23,7 +23,10 @@ export const POST = apiRoute<{ params: Promise<{ id: string }> }>(async ({ reque
   await consumeValidation(user.id, request.headers);
   const row = await getCredentialById(user.id, id);
   if (!row) throw notFound("Credential not found.");
-  const provider = row.kind === "search" && isSearchProvider(row.provider) ? row.provider : "openrouter";
+  if (!isCredentialProvider(row.provider)) {
+    throw new ApiError("INVALID_PROVIDER", "This provider is no longer supported. Delete the key.", 400);
+  }
+  const provider = row.provider;
 
   let key: string;
   try {

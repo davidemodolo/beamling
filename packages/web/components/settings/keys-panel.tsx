@@ -5,41 +5,12 @@ import { SecretKeyInput } from "@/components/secret-key-input";
 import { Icon } from "@/components/ui/icon";
 import { errorMessage } from "@/lib/api";
 import { useToast } from "@/lib/hooks/use-toast";
-import { SEARCH_PROVIDERS } from "@/lib/provider-catalog";
+import { isCredentialProvider } from "@/lib/contracts";
+import { ALL_PROVIDERS, providerUses, type ProviderInfo } from "@/lib/provider-catalog";
 import { useAccount } from "@/lib/store";
 import { credentialInput, DEFAULT_BUDGET_PERIOD } from "@/lib/credential-form";
-import type { Credential, CredentialKind, CredentialProvider } from "@/lib/types";
+import type { Credential } from "@/lib/types";
 import { CredentialRow } from "./credential-row";
-
-const PROVIDERS: {
-  kind: CredentialKind;
-  provider: CredentialProvider;
-  name: string;
-  description: string;
-  inputId: string;
-  placeholder: string;
-  /** Checking the key spends a provider request, so saving without the check is offered. */
-  paidValidation: boolean;
-}[] = [
-  {
-    kind: "llm",
-    provider: "openrouter",
-    name: "OpenRouter",
-    description: "Used for every answer.",
-    inputId: "openrouter-key",
-    placeholder: "sk-or-v1-...",
-    paidValidation: false,
-  },
-  ...SEARCH_PROVIDERS.map((provider) => ({
-    kind: "search" as const,
-    provider: provider.id,
-    name: provider.name,
-    description: `Used when ${provider.name} is selected for an answer.`,
-    inputId: `${provider.id}-key`,
-    placeholder: provider.placeholder,
-    paidValidation: !provider.freeValidation,
-  })),
-];
 
 function LimitsForm({
   plan,
@@ -98,12 +69,13 @@ export function KeysPanel() {
   const [limitsError, setLimitsError] = useState("");
   const [toast, showToast] = useToast();
 
-  const credentialFor = (provider: (typeof PROVIDERS)[number]) =>
-    credentials.find((item) => item.kind === provider.kind && item.provider === provider.provider);
+  const credentialFor = (provider: ProviderInfo) => credentials.find((item) => item.provider === provider.id);
+  // Keys for providers that were removed from the catalog: they can only be deleted.
+  const retired = credentials.filter((item) => !isCredentialProvider(item.provider));
 
-  const start = (provider: (typeof PROVIDERS)[number]) => {
+  const start = (provider: ProviderInfo) => {
     const existing = credentialFor(provider);
-    setEditing(provider.provider);
+    setEditing(provider.id);
     setKey("");
     setValidateNow(true);
     setPlan(existing?.plan ?? "free");
@@ -118,7 +90,7 @@ export function KeysPanel() {
     setError("");
   };
 
-  const save = async (provider: (typeof PROVIDERS)[number]) => {
+  const save = async (provider: ProviderInfo) => {
     if (pending) return;
     const value = key.trim();
     if (value.length < 8) {
@@ -130,8 +102,7 @@ export function KeysPanel() {
     try {
       await addCredential(
         credentialInput({
-          kind: provider.kind,
-          provider: provider.provider,
+          provider: provider.id,
           key: value,
           plan,
           expiresOn: expiry,
@@ -139,7 +110,7 @@ export function KeysPanel() {
           validateNow,
         }),
       );
-      showToast(provider.paidValidation && !validateNow ? `${provider.name} key saved, not validated` : `${provider.name} key saved`);
+      showToast(!provider.freeValidation && !validateNow ? `${provider.name} key saved, not validated` : `${provider.name} key saved`);
       cancel();
     } catch (cause) {
       setError(errorMessage(cause, `The provider rejected this ${provider.name} key.`));
@@ -198,14 +169,19 @@ export function KeysPanel() {
 
   return (
     <div className="settings-stack">
-      {PROVIDERS.map((provider) => {
+      {ALL_PROVIDERS.map((provider) => {
         const credential = credentialFor(provider);
         return (
-          <section className="settings-card" key={provider.provider}>
+          <section className="settings-card" key={provider.id}>
             <div className="settings-card-head">
               <div style={{ flex: 1 }}>
                 <h2>{provider.name}</h2>
-                <p>{provider.description}</p>
+                <p>
+                  {providerUses(provider.id)} ·{" "}
+                  <a href={provider.keyUrl} target="_blank" rel="noopener noreferrer">
+                    Get a key
+                  </a>
+                </p>
               </div>
               <button type="button" className="btn btn-secondary btn-sm" onClick={() => start(provider)}>
                 <Icon name={credential ? "refresh" : "plus"} size={13} /> {credential ? "Replace" : "Add key"}
@@ -220,7 +196,7 @@ export function KeysPanel() {
                   deleting={deleting === credential.id}
                   onValidate={() => void revalidate(credential)}
                   onDelete={() => void remove(credential)}
-                  onLimits={credential.provider === "brave" ? () => openLimits(credential) : undefined}
+                  onLimits={provider.keyLimits ? () => openLimits(credential) : undefined}
                 />
               ) : (
                 <p className="hint" style={{ padding: 18 }}>No {provider.name} key connected.</p>
@@ -238,9 +214,15 @@ export function KeysPanel() {
                   onSave={() => void saveLimits(credential)}
                 />
               ) : null}
-              {editing === provider.provider ? (
+              {provider.notice ? (
+                <div className="notice" style={{ margin: "0 18px 16px" }}>
+                  <Icon name="alert" size={16} />
+                  <div>{provider.notice}</div>
+                </div>
+              ) : null}
+              {editing === provider.id ? (
                 <KeyForm
-                  id={provider.inputId}
+                  id={`${provider.id}-key`}
                   label={`${provider.name} API key`}
                   placeholder={provider.placeholder}
                   value={key}
@@ -252,8 +234,8 @@ export function KeysPanel() {
                   plan={plan}
                   expiry={expiry}
                   budget={budget}
-                  showLimits={provider.provider === "brave"}
-                  validateNow={provider.paidValidation ? validateNow : undefined}
+                  showLimits={Boolean(provider.keyLimits)}
+                  validateNow={provider.freeValidation ? undefined : validateNow}
                   onValidateNow={setValidateNow}
                   onPlan={setPlan}
                   onExpiry={setExpiry}
@@ -264,6 +246,26 @@ export function KeysPanel() {
           </section>
         );
       })}
+
+      {retired.map((credential) => (
+        <section className="settings-card" key={credential.id}>
+          <div className="settings-card-head">
+            <div style={{ flex: 1 }}>
+              <h2>{credential.provider}</h2>
+              <p>Beamling no longer supports this provider. Delete the key.</p>
+            </div>
+          </div>
+          <div className="settings-card-body tight">
+            <CredentialRow
+              credential={credential}
+              label={credential.provider}
+              busy={false}
+              deleting={deleting === credential.id}
+              onDelete={() => void remove(credential)}
+            />
+          </div>
+        </section>
+      ))}
 
       <div className="notice">
         <Icon name="shield" size={16} />

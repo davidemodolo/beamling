@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { BUDGET_PERIODS, BRAVE_PLANS, CREDENTIAL_KINDS, CREDENTIAL_PROVIDER_IDS } from "@/lib/contracts";
+import { BUDGET_PERIODS, BRAVE_PLANS, CREDENTIAL_KINDS, CREDENTIAL_PROVIDER_IDS, credentialKind } from "@/lib/contracts";
+import { PROVIDERS } from "@/lib/provider-catalog";
 import { analytics } from "@/lib/server/analytics";
 import { audit } from "@/lib/server/audit";
 import { encryptCredential } from "@/lib/server/crypto";
@@ -14,7 +15,8 @@ export const dynamic = "force-dynamic";
 
 const schema = z
   .object({
-    kind: z.enum(CREDENTIAL_KINDS),
+    // Derived from the provider; still accepted from older clients, and must then agree.
+    kind: z.enum(CREDENTIAL_KINDS).optional(),
     provider: z.enum(CREDENTIAL_PROVIDER_IDS),
     key: z.string().trim().min(8).max(600),
     plan: z.enum(BRAVE_PLANS).optional(),
@@ -22,24 +24,28 @@ const schema = z
     budgetUsd: z.number().positive().max(1_000_000).optional().nullable(),
     budgetPeriod: z.enum(BUDGET_PERIODS).optional().nullable(),
     // false saves the key as unverified without calling the provider, for providers whose only
-    // check is a billable search (Brave, Exa). The key is checked later with the validate endpoint.
+    // check is a billable request. The key is checked later with the validate endpoint.
     validate: z.boolean().optional(),
   })
   .superRefine((value, ctx) => {
-    if (value.provider === "brave" && !value.plan) {
-      ctx.addIssue({ code: "custom", path: ["plan"], message: "Choose the Brave plan for this key." });
+    const info = PROVIDERS[value.provider];
+    if (value.kind && value.kind !== credentialKind(value.provider)) {
+      ctx.addIssue({ code: "custom", path: ["kind"], message: "Provider does not match credential kind." });
+    }
+    if (info.keyLimits && !value.plan) {
+      ctx.addIssue({ code: "custom", path: ["plan"], message: `Choose the ${info.name} plan for this key.` });
     }
     if (
-      value.provider !== "brave" &&
+      !info.keyLimits &&
       (value.plan !== undefined ||
         value.expiresOn !== undefined ||
         value.budgetUsd !== undefined ||
         value.budgetPeriod !== undefined)
     ) {
-      ctx.addIssue({ code: "custom", path: ["provider"], message: "Plan and limits apply only to Brave Search keys." });
+      ctx.addIssue({ code: "custom", path: ["provider"], message: `Plan and limits do not apply to ${info.name} keys.` });
     }
-    if (value.validate === false && value.provider !== "brave" && value.provider !== "exa") {
-      ctx.addIssue({ code: "custom", path: ["validate"], message: "Only Brave and Exa keys can be saved without a check." });
+    if (value.validate === false && info.freeValidation) {
+      ctx.addIssue({ code: "custom", path: ["validate"], message: `${info.name} keys are always checked; the check is free.` });
     }
     if (value.expiresOn) {
       const expiry = new Date(`${value.expiresOn}T23:59:59Z`);
@@ -53,9 +59,8 @@ export const POST = apiRoute(async ({ request, user }) => {
   const input = await parseBody(request, schema);
   await consumeRateLimit(`credentials:${user.id}`, 20, 3600);
   if (input.validate !== false) await consumeValidation(user.id, request.headers);
-  if ((input.kind === "llm") !== (input.provider === "openrouter")) {
-    throw new ApiError("INVALID_PROVIDER", "Provider does not match credential kind.", 400);
-  }
+  const kind = credentialKind(input.provider);
+  const limits = Boolean(PROVIDERS[input.provider].keyLimits);
 
   const validate = input.validate !== false;
   try {
@@ -64,7 +69,7 @@ export const POST = apiRoute(async ({ request, user }) => {
     const status = credentialStatusFor(error);
     if (status && error instanceof ApiError) {
       analytics.capture(user.id, "credential_validation_failed", {
-        kind: input.kind,
+        kind,
         provider: input.provider,
         error_code: error.code,
       });
@@ -72,17 +77,17 @@ export const POST = apiRoute(async ({ request, user }) => {
     throw error;
   }
 
-  const existing = await getCredentialRow(user.id, input.kind, input.provider);
+  const existing = await getCredentialRow(user.id, kind, input.provider);
   // Encrypt first, then update the existing row in place. A KMS/DB failure leaves the old credential
   // and its usage history intact, and concurrent replacements cannot rewrite the primary key.
-  const encrypted = await encryptCredential(user.id, input.kind, input.provider, input.key, existing?.id);
+  const encrypted = await encryptCredential(user.id, kind, input.provider, input.key, existing?.id);
   const credential = await saveCredential({
     userId: user.id,
-    kind: input.kind,
+    kind,
     provider: input.provider,
     encrypted,
     status: validate ? "active" : "unverified",
-    plan: input.provider === "brave" ? (input.plan ?? "free") : null,
+    plan: limits ? (input.plan ?? "free") : null,
     expiresOn: input.expiresOn ?? null,
     budgetUsd: input.budgetUsd ?? null,
     budgetPeriod: input.budgetPeriod ?? (input.budgetUsd == null ? null : "month"),

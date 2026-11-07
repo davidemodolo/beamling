@@ -4,16 +4,29 @@ import { ApiError } from "../../lib/server/http";
 import { searchBrave, validateBraveKey } from "../../lib/server/providers/brave";
 import { exaError, searchExa, validateExaKey } from "../../lib/server/providers/exa";
 import { searchTavily, tavilyError, validateTavilyKey } from "../../lib/server/providers/tavily";
-import { DEFAULT_LLM_MODEL, OPENROUTER_MODEL_IDS, isAllowedModel } from "../../lib/provider-catalog";
+import { DEFAULT_LLM_MODEL, MODELS, isAllowedModel } from "../../lib/provider-catalog";
+import { modelHttpError, streamChat } from "../../lib/server/providers/llm";
+import { openRouterModels } from "../../lib/server/providers/openrouter";
 import { configureUnitEnv, mockFetch, jsonResponse, isApiError } from "./helpers";
 
 configureUnitEnv();
+
+const openRouterChat = (options: { model?: string; maxTokens?: number; signal?: AbortSignal } = {}) =>
+  streamChat({
+    provider: "openrouter",
+    adapter: openRouterModels,
+    key: "sk",
+    apiModel: options.model ?? "m",
+    messages: [{ role: "user", content: "hi" }],
+    maxTokens: options.maxTokens ?? 1,
+    signal: options.signal,
+  });
 
 test("DeepSeek V4.1 Flash is the default and is allowlisted", () => {
   assert.equal(DEFAULT_LLM_MODEL, "deepseek/deepseek-v4.1-flash");
   assert.equal(isAllowedModel(DEFAULT_LLM_MODEL), true);
   assert.equal(isAllowedModel("openrouter/auto"), false);
-  assert.equal(OPENROUTER_MODEL_IDS.length, 5);
+  assert.equal(MODELS.filter((model) => model.provider === "openrouter").length, 5);
 });
 
 test("Brave validates and searches only the base Web Search endpoint", async (t) => {
@@ -207,17 +220,16 @@ test("a network failure is an outage, never a rejected key", async (t) => {
   mockFetch(t, () => {
     throw new TypeError("fetch failed");
   });
-  const { validateOpenRouterKey, openRouterChat } = await import("../../lib/server/providers/openrouter");
+  const { validateOpenRouterKey } = await import("../../lib/server/providers/openrouter");
   await assert.rejects(() => validateBraveKey("BSA-offline-unique"), isApiError("PROVIDER_UNAVAILABLE", "brave"));
   await assert.rejects(() => validateOpenRouterKey("sk-or-offline"), isApiError("PROVIDER_UNAVAILABLE", "openrouter"));
   await assert.rejects(
-    () => openRouterChat({ key: "sk", model: "m", messages: [], maxTokens: 1 }),
+    () => openRouterChat(),
     isApiError("PROVIDER_UNAVAILABLE", "openrouter"),
   );
 });
 
 test("a stop from the caller stays an abort", async (t) => {
-  const { openRouterChat } = await import("../../lib/server/providers/openrouter");
   mockFetch(t, (_url, init) => {
     if (init?.signal?.aborted) throw new DOMException("Aborted", "AbortError");
     throw new TypeError("fetch failed");
@@ -225,13 +237,13 @@ test("a stop from the caller stays an abort", async (t) => {
   const controller = new AbortController();
   controller.abort();
   await assert.rejects(
-    () => openRouterChat({ key: "sk", model: "m", messages: [], maxTokens: 1, signal: controller.signal }),
+    () => openRouterChat({ signal: controller.signal }),
     (error: unknown) => error instanceof DOMException && error.name === "AbortError",
   );
 });
 
-test("OpenRouter maps statuses and mid-stream errors to stable codes", async (t) => {
-  const { openRouterChat, openRouterError } = await import("../../lib/server/providers/openrouter");
+test("model providers map statuses and mid-stream errors to stable codes", async (t) => {
+  const openRouterError = (status: number, message?: string) => modelHttpError("openrouter", status, message);
   assert.equal(openRouterError(401).code, "CREDENTIAL_INVALID");
   assert.equal(openRouterError(402).code, "INSUFFICIENT_CREDITS");
   assert.equal(openRouterError(404).code, "MODEL_NOT_FOUND");
@@ -250,21 +262,20 @@ test("OpenRouter maps statuses and mid-stream errors to stable codes", async (t)
   ].join("\n\n");
   mockFetch(t, () => new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } }));
   await assert.rejects(
-    () => openRouterChat({ key: "sk", model: "m", messages: [], maxTokens: 1 }),
+    () => openRouterChat(),
     isApiError("PROVIDER_UNAVAILABLE", "openrouter"),
   );
 });
 
-test("OpenRouter reports the resolved model and upstream provider", async (t) => {
-  const { openRouterChat } = await import("../../lib/server/providers/openrouter");
+test("OpenRouter reports the resolved model, upstream provider and cost", async (t) => {
   const body = [
     'data: {"model":"deepseek/deepseek-v4.1-flash-0901","provider":"DeepInfra","choices":[{"delta":{"content":"Hello"}}]}',
-    'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":2,"cost":0.0001}}',
+    'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":2,"total_tokens":12,"cost":0.0001}}',
     "data: [DONE]",
     "",
   ].join("\n\n");
   mockFetch(t, () => new Response(body, { status: 200 }));
-  const result = await openRouterChat({ key: "sk", model: "deepseek/deepseek-v4.1-flash", messages: [], maxTokens: 5 });
+  const result = await openRouterChat({ model: "deepseek/deepseek-v4.1-flash", maxTokens: 5 });
   assert.equal(result.content, "Hello");
   assert.equal(result.model, "deepseek/deepseek-v4.1-flash-0901");
   assert.equal(result.provider, "DeepInfra");
@@ -307,11 +318,106 @@ test("malformed provider success bodies map to an outage, not a TypeError", asyn
 });
 
 test("OpenRouter rejects a stream that ends without a completion marker", async (t) => {
-  const { openRouterChat } = await import("../../lib/server/providers/openrouter");
   const body = 'data: {"choices":[{"delta":{"content":"partial"}}]}\n\n';
   mockFetch(t, () => new Response(body, { status: 200 }));
   await assert.rejects(
-    () => openRouterChat({ key: "sk", model: "m", messages: [], maxTokens: 1 }),
+    () => openRouterChat(),
     isApiError("PROVIDER_UNAVAILABLE", "openrouter"),
   );
+});
+
+test("DeepSeek search sends a query within 128 characters, with recency as an operator", async (t) => {
+  const { searchDeepSeek } = await import("../../lib/server/providers/deepseek");
+  const bodies: { query: string; count: number }[] = [];
+  mockFetch(t, (_url, init) => {
+    bodies.push(JSON.parse(String(init?.body)));
+    return jsonResponse({
+      results: [
+        { title: "Long read", url: "https://example.org/a", snippet: "Short.", summary: "A longer summary for models.", date: "2026-10-01T00:00:00Z" },
+        { title: "No summary", url: "https://example.org/b", snippet: "Only a snippet.", date: null },
+      ],
+    });
+  });
+  const sources = await searchDeepSeek("sk-ds", "word ".repeat(60), { count: 8, freshnessDays: 7 });
+  assert.ok(bodies[0].query.length <= 128);
+  assert.match(bodies[0].query, / after:\d{4}-\d{2}-\d{2}$/);
+  assert.equal(bodies[0].count, 8);
+  assert.deepEqual(
+    sources.map((source) => [source.url, source.snippet]),
+    [
+      ["https://example.org/a", "A longer summary for models."],
+      ["https://example.org/b", "Only a snippet."],
+    ],
+  );
+});
+
+test("DeepSeek keys are checked with the free balance endpoint", async (t) => {
+  const { validateDeepSeekKey, deepSeekError } = await import("../../lib/server/providers/deepseek");
+  const calls = mockFetch(t, () => jsonResponse({ is_available: true, balance_infos: [] }));
+  await validateDeepSeekKey("sk-ds");
+  assert.deepEqual(calls, ["https://api.deepseek.com/user/balance"]);
+
+  mockFetch(t, () => jsonResponse({ is_available: false, balance_infos: [] }));
+  await assert.rejects(() => validateDeepSeekKey("sk-ds"), isApiError("INSUFFICIENT_CREDITS", "deepseek"));
+  mockFetch(t, () => jsonResponse({ error: { message: "Authentication Fails" } }, 401));
+  await assert.rejects(() => validateDeepSeekKey("sk-ds"), isApiError("CREDENTIAL_INVALID", "deepseek"));
+  assert.equal(deepSeekError(429).code, "PROVIDER_RATE_LIMITED");
+  assert.equal(deepSeekError(503).code, "PROVIDER_UNAVAILABLE");
+});
+
+test("DeepSeek cost is estimated from tokens, at half price off-peak", async () => {
+  const { deepSeekCost, isDeepSeekPeak } = await import("../../lib/server/providers/deepseek");
+  const peak = new Date("2026-11-09T07:00:00Z"); // Monday
+  const weekend = new Date("2026-11-08T07:00:00Z"); // Sunday
+  assert.equal(isDeepSeekPeak(peak), true);
+  assert.equal(isDeepSeekPeak(new Date("2026-11-09T05:00:00Z")), false);
+  assert.equal(isDeepSeekPeak(weekend), false);
+  const step = {
+    response: { modelId: "deepseek-flash" },
+    usage: {
+      inputTokens: 1_000_000,
+      inputTokenDetails: { noCacheTokens: 500_000, cacheReadTokens: 500_000, cacheWriteTokens: undefined },
+      outputTokens: 1_000_000,
+      outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+      totalTokens: 2_000_000,
+    },
+  };
+  assert.ok(Math.abs(deepSeekCost(step, peak) - (0.003 + 0.15 + 1.2)) < 1e-9);
+  assert.ok(Math.abs(deepSeekCost(step, weekend) - (0.003 + 0.15 + 1.2) / 2) < 1e-9);
+});
+
+test("DeepSeek models stream through the shared layer with thinking off", async (t) => {
+  const { deepSeekModels } = await import("../../lib/server/providers/deepseek");
+  const requests: Record<string, unknown>[] = [];
+  const base = { id: "c1", object: "chat.completion.chunk", created: 1, model: "deepseek-flash" };
+  const body = [
+    { ...base, choices: [{ index: 0, delta: { role: "assistant", content: "Hello" }, finish_reason: null }] },
+    {
+      ...base,
+      choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+      usage: { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12, prompt_cache_hit_tokens: 0, prompt_cache_miss_tokens: 10 },
+    },
+  ]
+    .map((line) => `data: ${JSON.stringify(line)}\n\n`)
+    .join("");
+  mockFetch(t, (_url, init) => {
+    requests.push(JSON.parse(String(init?.body)));
+    return new Response(`${body}data: [DONE]\n\n`, { headers: { "Content-Type": "text/event-stream" } });
+  });
+  const result = await streamChat({
+    provider: "deepseek",
+    adapter: deepSeekModels,
+    key: "sk-ds",
+    apiModel: "deepseek-flash",
+    messages: [
+      { role: "system", content: "Be brief." },
+      { role: "user", content: "hi" },
+    ],
+    maxTokens: 5,
+  });
+  assert.equal(result.content, "Hello");
+  assert.equal(result.usage.promptTokens, 10);
+  assert.ok(result.usage.costUsd > 0);
+  assert.deepEqual(requests[0].thinking, { type: "disabled" });
+  assert.equal((requests[0].messages as { role: string }[])[0].role, "system");
 });

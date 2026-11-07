@@ -1,4 +1,5 @@
-import { DEFAULT_LLM_MODEL, isAllowedModel, isSearchProvider } from "../../provider-catalog";
+import { credentialKind, type CredentialProvider } from "../../contracts";
+import { DEFAULT_LLM_MODEL, isSearchProvider, modelInfo } from "../../provider-catalog";
 import type { Message, Mode, SearchProvider } from "../../types";
 import { ApiError } from "../http";
 import { log } from "../log";
@@ -16,12 +17,15 @@ import {
 } from "../repo";
 import { credentialMissing, type PreparedChat } from "./context";
 
-async function readKey(userId: string, row: Parameters<typeof readCredentialKey>[1], provider: "openrouter" | SearchProvider) {
+/** The provider's stored key, or a 400 that names the provider when it is missing or unreadable. */
+async function providerKey(userId: string, provider: CredentialProvider) {
+  const row = await getCredentialRow(userId, credentialKind(provider), provider);
+  if (!row) throw credentialMissing(provider);
   try {
-    return await readCredentialKey(userId, row);
+    return { row, key: await readCredentialKey(userId, row) };
   } catch (error) {
     log.error("Stored credential could not be decrypted", error, { provider });
-    return null;
+    throw new ApiError("CREDENTIAL_UNREADABLE", "Your saved key can no longer be read. Replace it in Settings.", 400, provider);
   }
 }
 
@@ -40,7 +44,7 @@ export async function prepareChat(input: {
 }): Promise<PreparedChat> {
   const startedAt = Date.now();
   const settings = await ensureSettings(input.userId);
-  const model = isAllowedModel(settings.llmModel) ? settings.llmModel : DEFAULT_LLM_MODEL;
+  const llm = modelInfo(settings.llmModel) ?? modelInfo(DEFAULT_LLM_MODEL)!;
   const searchProvider =
     input.searchProvider && isSearchProvider(input.searchProvider) ? input.searchProvider : settings.defaultSearchProvider;
 
@@ -56,25 +60,16 @@ export async function prepareChat(input: {
   }
 
   try {
-    const [llmCredential, searchCredential] = await Promise.all([
-      getCredentialRow(input.userId, "llm", "openrouter"),
-      getCredentialRow(input.userId, "search", searchProvider),
-    ]);
-    if (!llmCredential) throw credentialMissing("openrouter");
-    if (!searchCredential) throw credentialMissing(searchProvider);
-    const llmKey = await readKey(input.userId, llmCredential, "openrouter");
-    const searchKey = await readKey(input.userId, searchCredential, searchProvider);
-    for (const [key, provider] of [[llmKey, "openrouter"], [searchKey, searchProvider]] as const) {
-      if (key === null) {
-        throw new ApiError("CREDENTIAL_UNREADABLE", "Your saved key can no longer be read. Replace it in Settings.", 400, provider);
-      }
-    }
+    // One provider can serve both the model and search with the same key; it is read once.
+    const llmCredential = await providerKey(input.userId, llm.provider);
+    const searchCredential =
+      (searchProvider as CredentialProvider) === llm.provider ? llmCredential : await providerKey(input.userId, searchProvider);
 
     const { userMessage, assistantMessage, questionText } = await createExchange({
       userId: input.userId,
       conversationId,
       mode: input.mode,
-      llmModel: model,
+      llmModel: llm.id,
       searchProvider,
       question: input.question,
       retryOf: input.retryOf,
@@ -107,12 +102,13 @@ export async function prepareChat(input: {
       userMessageId: userMessage.id,
       question: questionText,
       mode: input.mode,
-      model,
-      llmKey: llmKey as string,
+      model: llm.id,
+      llm,
+      llmKey: llmCredential.key,
       searchProvider,
-      searchKey: searchKey as string,
-      searchCredentialId: searchCredential.id,
-      searchPlan: searchCredential.provider === "brave" && searchCredential.plan === "paid" ? "paid" : "free",
+      searchKey: searchCredential.key,
+      searchCredentialId: searchCredential.row.id,
+      searchPlan: searchCredential.row.plan === "paid" ? "paid" : "free",
       history,
       startedAt,
       removed,

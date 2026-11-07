@@ -8,7 +8,7 @@ import { log } from "./log";
 import { NO_SOURCES_ANSWER } from "./prompts";
 import { newRunState, type ChatEmit, type PreparedChat, type RunContext, type RunState } from "./answer/context";
 import { fillEvidenceGaps, planQueries } from "./answer/deep";
-import { runDeeperResearch } from "./answer/deeper";
+import { DEEPER_BUDGET, QUICK_BUDGET, runResearch } from "./answer/research";
 import { abortOutcome, RunRecorder } from "./answer/outcome";
 import { freshnessDays, retrieveSources } from "./answer/retrieval";
 import { streamSynthesis } from "./answer/synthesis";
@@ -22,12 +22,12 @@ const QUEUED_DETAIL = { quick: "Understanding the question", deep: "Planning a r
 /** Collects the answer's sources for its mode and returns the queries that were searched. */
 async function gatherSources(ctx: RunContext, state: RunState): Promise<string[]> {
   const { prepared } = ctx;
-  if (prepared.mode === "deeper") {
-    await runDeeperResearch(ctx, state);
+  if (prepared.mode !== "deep") {
+    await runResearch(ctx, state, prepared.mode === "quick" ? QUICK_BUDGET : DEEPER_BUDGET);
     return state.searches.map((trace) => trace.query);
   }
-  const queries = prepared.mode === "deep" ? await planQueries(ctx, state) : [prepared.question];
-  if (prepared.mode === "deep") ctx.emit("plan", { queries });
+  const queries = await planQueries(ctx, state);
+  ctx.emit("plan", { queries });
   await retrieveSources(ctx, state, queries);
   await fillEvidenceGaps(ctx, state, queries);
   return queries;

@@ -17,6 +17,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@ai-sdk/deepseek": "3.0.80",
     "@aws-sdk/client-kms": "3.1163.0",
     "@beamling/mascot": "workspace:*",
     "@google-cloud/kms": "6.3.0",

@@ -42,7 +42,7 @@ export function withEnv(t: TestContext, values: Record<string, string>) {
 export async function saveKey(
   userId: string,
   kind: "llm" | "search",
-  provider: "openrouter" | "brave" | "tavily" | "exa",
+  provider: import("../../lib/contracts").CredentialProvider,
   plaintext: string,
 ) {
   const { encryptCredential } = await import("../../lib/server/crypto");
@@ -93,7 +93,7 @@ export async function ask(
     retryOf?: string;
     conversationId?: string;
     mode: "quick" | "deep" | "deeper";
-    searchProvider?: "brave" | "tavily" | "exa";
+    searchProvider?: import("../../lib/contracts").SearchProvider;
   },
   signal = new AbortController().signal,
 ) {

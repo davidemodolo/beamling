@@ -82,7 +82,7 @@ function ChatPane({ conversationId }: ChatViewProps) {
   // Marks keyless providers in the picker only. Sending is not blocked here: the store can be stale
   // (a key added in another tab), and the server answers a missing key with a "Key needed" card.
   const keyedProviders = useMemo(
-    () => new Set(credentials.filter((credential) => credential.kind === "search").map((credential) => credential.provider)),
+    () => new Set(credentials.map((credential) => credential.provider)),
     [credentials],
   );
 

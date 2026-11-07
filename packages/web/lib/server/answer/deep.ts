@@ -67,7 +67,7 @@ export async function planQueries(ctx: RunContext, state: RunState): Promise<str
   ctx.emit("stage", { stage: "searching", detail: "Planning 3–5 sub-queries" });
   const messages = promptMessages(plannerPrompt(prepared.question));
   const plan = (conversation: typeof messages) =>
-    chat({ purpose: "plan", key: prepared.llmKey, model: prepared.model, messages: conversation, maxTokens: PLANNER_MAX_TOKENS, signal });
+    chat({ purpose: "plan", key: prepared.llmKey, model: prepared.llm, messages: conversation, maxTokens: PLANNER_MAX_TOKENS, signal });
   try {
     const first = await plan(messages);
     addUsage(state, first);
@@ -98,7 +98,7 @@ export async function fillEvidenceGaps(ctx: RunContext, state: RunState, queries
     const review = await chat({
       purpose: "gap",
       key: prepared.llmKey,
-      model: prepared.model,
+      model: prepared.llm,
       messages: promptMessages(gapPrompt({ question: prepared.question, subqueries: queries, sources: state.sources })),
       maxTokens: GAP_MAX_TOKENS,
       signal,

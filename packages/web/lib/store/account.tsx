@@ -3,11 +3,10 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { api, ApiRequestError } from "../api";
 import { DEFAULT_SETTINGS } from "../data";
-import type { AppState, BravePlan, BudgetPeriod, Credential, CredentialKind, Settings, User } from "../types";
+import type { AppState, BravePlan, BudgetPeriod, Credential, CredentialProvider, Settings, User } from "../types";
 
 export interface CredentialInput {
-  kind: CredentialKind;
-  provider: string;
+  provider: CredentialProvider;
   key: string;
   plan?: BravePlan;
   expiresOn?: string | null;
@@ -97,7 +96,7 @@ export function useAccountSlice({ resync }: { resync: () => void }) {
       timeoutMs: 45_000,
     });
     setCredentials((current) => [
-      ...current.filter((item) => !(item.kind === credential.kind && item.provider === credential.provider)),
+      ...current.filter((item) => item.provider !== credential.provider),
       credential,
     ]);
     return credential;
