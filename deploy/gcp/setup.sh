@@ -12,8 +12,8 @@
 #   - beamling-deploy   (GitHub Actions):    deploy Cloud Run + act as the two runtime accounts,
 #                                            reachable only from the production environment of
 #                                            this repository on main, via keyless OIDC.
-# No service-account keys are created. The account-wide budget and billing kill switch are set up
-# separately by billing-guard.sh.
+# No service-account keys are created. Budgets (Cloud Run spend cap, account email alert) are set
+# up separately by budgets.sh.
 set -euo pipefail
 
 PROJECT_ID="${PROJECT_ID:-beamling-prod}"
@@ -22,7 +22,7 @@ KMS_LOCATION="${KMS_LOCATION:-europe-west3}"
 GITHUB_REPO="${GITHUB_REPO:-davidemodolo/beamling}"
 GITHUB_REPO_ID="${GITHUB_REPO_ID:-1427513799}"       # immutable; survives a rename
 GITHUB_OWNER_ID="${GITHUB_OWNER_ID:-36373601}"
-BILLING_ACCOUNT="${BILLING_ACCOUNT:-}"                # optional: links billing (budget: billing-guard.sh)
+BILLING_ACCOUNT="${BILLING_ACCOUNT:-}"                # optional: links billing (budgets: budgets.sh)
 
 SECRETS=(DATABASE_URL DATABASE_URL_DIRECT AUTH_SECRET OIDC_CLIENT_SECRET KILL_SWITCH_SECRET METRICS_SECRET)
 
@@ -153,5 +153,5 @@ Done. GitHub environment "production" variables:
   GCP_DEPLOY_SERVICE_ACCOUNT=$DEPLOY_SA
   KMS_KEY_NAME=$KEY
 Add secret values with: gcloud secrets versions add NAME --data-file=- --project $PROJECT_ID
-Then run: BILLING_ACCOUNT=<id> deploy/gcp/billing-guard.sh
+Then run: BILLING_ACCOUNT=<id> deploy/gcp/budgets.sh
 EOF

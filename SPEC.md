@@ -1848,7 +1848,7 @@ Evaluation methodology: each golden question has a reference answer and expected
 - Better Stack: uptime check on `/api/health` and the welcome page, email plus Slack/Discord webhook.
 - Sentry: new issue, 5xx spike and release regression.
 - Neon: 80% and 100% spending notifications; monitor CU usage.
-- Google Cloud: a €5 account-wide budget whose notifications drive a workflow that detaches billing from every project on the account (a hard stop, hours behind real spend), plus the fixed instance count.
+- Google Cloud: a native spend cap that pauses Cloud Run at €5 of monthly list-price usage (nothing deleted, resets monthly), an account-wide €5 email alert, and the fixed instance count. Target: total spend under €10 a month.
 - GCP: budget alert for the KMS key.
 - PostHog: activation, error-rate and event-volume anomalies.
 - A daily cost check is enough at alpha scale; review before raising machine or CU caps.
