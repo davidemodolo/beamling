@@ -11,7 +11,8 @@
       "entry": [
         "scripts/*.mjs",
         "tests/**/*.test.ts",
-        "e2e/*.spec.ts"
+        "e2e/*.spec.ts",
+        "public/sw.js"
       ],
       "ignore": [
         "scripts/*.d.mts"

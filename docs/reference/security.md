@@ -11,6 +11,8 @@ style-src 'self' 'unsafe-inline'
 img-src 'self' data: blob: https://*.googleusercontent.com
 font-src 'self'
 connect-src 'self'
+worker-src 'self'
+manifest-src 'self'
 object-src 'none'
 base-uri 'self'
 form-action 'self'
@@ -19,7 +21,8 @@ frame-ancestors 'none'
 
 - Development adds `'unsafe-eval'` and `ws: wss:` for hot reload; production adds `upgrade-insecure-requests`.
 - Pages render dynamically so Next.js can attach the nonce.
-- The proxy skips `/api`, `/_next/static`, `/_next/image` and the static icons in `public/`.
+- The proxy skips `/api`, `/_next/static`, `/_next/image`, the static icons in `public/`, the manifest, `sw.js` and `offline.html`.
+- The service worker caches only `offline.html`, shown when a page fails to load. Pages, API responses and chat data are never cached.
 - API responses: `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`.
 - Global headers: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Resource-Policy: same-origin`, `Origin-Agent-Cluster: ?1`, `X-Permitted-Cross-Domain-Policies: none`, `Referrer-Policy: strict-origin-when-cross-origin`, restrictive `Permissions-Policy`, HSTS. `poweredByHeader` off.
 - Authenticated API responses are private and vary on Cookie.
