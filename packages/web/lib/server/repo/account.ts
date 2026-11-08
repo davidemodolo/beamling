@@ -18,6 +18,7 @@ import { listCredentials } from "./credentials";
 import { interruptStaleAnswers } from "./messages";
 import { ensureSettings } from "./settings";
 import { iso } from "./shared";
+import { questionLimitKeys } from "./usage";
 
 export async function getState(user: {
   id: string;
@@ -109,7 +110,7 @@ export async function deleteAccount(userId: string, analyticsDistinctId?: string
       .delete(rateLimits)
       .where(
         inArray(rateLimits.key, [
-          `chat:${userId}`,
+          ...Object.values(questionLimitKeys(userId)),
           `credentials:${userId}`,
           `conversations:${userId}`,
           `reads:${userId}`,
