@@ -10,6 +10,7 @@
 | `/onboarding` | Two steps (model key, search key) after picking a path; redirects to `/` once setup is complete |
 | `/chat/:id` | A conversation; signed-out visitors go to `/login`. The app loads workspace state, conversation list and threads. During a scheduled shutdown a banner shows the closing date and a "Download my data" button (Settings → Account) |
 | `/chat/[id]` | Conversation; newest 60 messages, then earlier pages |
+| `/limits` | Signed in only, not indexed, rendered per request. Storage, chats and hourly/daily question meters, the five largest chats (decrypted titles, size, questions) and the rules. Linked from the sidebar and from `STORAGE_FULL`/`CONVERSATION_FULL` answer errors |
 | `/privacy` | GDPR Art. 13/14 notice: controller, data and legal bases, retention (below), providers on the user's accounts (some in China), transfers (hosting in Belgium, database in Frankfurt), Art. 15–21 rights, Garante complaints |
 | `/terms` | Alpha terms: 18+, user owns keys, costs and provider choice, storage limits, acceptable use, MIT source (name and logo not licensed), liability limits, 24-month inactive deletion, closure with 14 days' notice, DSA contact, `LEGAL_GOVERNING_LAW` with consumer forum |
 | `/cookies` | Essential cookies only (session: 30 days idle, 90 days max); no analytics or ad cookies |
@@ -21,9 +22,9 @@
 | `/.well-known/security.txt` | RFC 9116 contact ([Endpoints](api.md#endpoints)) |
 | `/api/health` | Cached readiness: database, schema, KMS |
 | `/api/live` | DB-free liveness probe |
-| `/robots.txt` | Allows `/`; disallows `/chat/`, `/onboarding`, `/api/` |
+| `/robots.txt` | Allows `/`; disallows `/chat/`, `/limits`, `/onboarding`, `/api/` |
 
-Privacy-page retention: conversations 60 days after the last question, max 100 per account (least recently used unpinned go first); inactive accounts 24 months; unaccepted accounts 7 days; sessions 30 days idle / 90 max; hashed IPs and counters one hour; logs `LEGAL_LOG_RETENTION_DAYS`; backups `LEGAL_BACKUP_RETENTION_DAYS`; analytics until opt-out; everything on a closing date.
+Privacy-page retention: conversations 60 days after the last question, max 100 per account (least recently used unpinned go first), 10 MB per account; inactive accounts 24 months; unaccepted accounts 7 days; sessions 30 days idle / 90 max; hashed IPs and counters one hour; logs `LEGAL_LOG_RETENTION_DAYS`; backups `LEGAL_BACKUP_RETENTION_DAYS`; analytics until opt-out; everything on a closing date.
 
 - Metadata base and landing demo host come from `APP_URL`.
 - Legal pages read operator details from `legalDetails()` and dates from `LEGAL_LAST_UPDATED`. The source URL is `SOURCE_URL` in `lib/legal.ts`.
@@ -73,7 +74,7 @@ Setup is complete with a model key (OpenRouter or DeepSeek) and a search key (Br
 `components/chat-view.tsx` composes `components/chat/`: `ChatTopbar`, `useSourcesPanel` (selected source, panel or sheet), `useThreadScroll` (follows new text until the user scrolls up) and `useFollowStoredAnswer` (polls an answer written elsewhere).
 
 - **Header**: title, mode, model, search provider, source-count button, avatar.
-- **Sidebar**: title search over loaded pages, Pinned section, Today/Yesterday/Previous (UTC), pin/unpin, delete confirmation, "Show older conversations", Settings, email, sign-out. Retention note: "Chats are deleted 60 days after their last message." From 90 conversations it adds "N of 100 chats. New chats replace the oldest unpinned ones." as a highlighted status.
+- **Sidebar**: title search over loaded pages, Pinned section, Today/Yesterday/Previous (UTC), pin/unpin, delete confirmation, "Show older conversations", Limits, Settings, email, sign-out. Retention note: "Chats are deleted 60 days after their last message." From 90 conversations it adds "N of 100 chats. New chats replace the oldest unpinned ones." as a highlighted status.
 - **Thread**: user bubbles, answer cards, working card, earlier-messages button, empty, not-found and load-error states.
 - **Composer**: textarea growing to 190 px, Enter sends, Shift+Enter adds a newline, Quick/Deep/Deeper control, model badge, search-provider selector (unkeyed ones marked "· no key"), Stop while busy. Hint: "Answers are AI-generated with your keys and can be wrong. Check the sources." Sending is not blocked client-side; the server's `CREDENTIAL_MISSING` shows the "Key needed" card.
 - **Answer card**: streamed markdown, citation buttons, **Searches** and **Model reasoning** panels (collapsed, also live), an "Uncited" badge when no valid citation survives, stopped/error/truncated/degraded/partial-search notices, and retry on the latest failed or stopped answer. The no-sources answer is its fixed text, no extra notice. Footer: model, search provider, total cost and time, copy and sources buttons; tooltips show the actual model and host, tokens and cost split (generation from OpenRouter or DeepSeek token estimate, search from list price).
@@ -123,4 +124,4 @@ Rendered per request, so the CSP nonce is injected and CTAs follow the session (
 - The mascot is hidden from assistive tech; stage text carries the state.
 - Global focus-visible outlines; reduced motion respected in the mascot and demo.
 - Touch targets and 360 px layout via responsive CSS.
-- E2E runs axe-core on `/` (signed out and signed in), `/onboarding`, `/welcome`, `/privacy`, `/terms`, `/licenses`, `/cookies`, `/subprocessors`, `/security`, `/status` and `/contact`, failing on serious or critical violations.
+- E2E runs axe-core on `/` (signed out and signed in), `/limits`, `/onboarding`, `/welcome`, `/privacy`, `/terms`, `/licenses`, `/cookies`, `/subprocessors`, `/security`, `/status` and `/contact`, failing on serious or critical violations.

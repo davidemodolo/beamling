@@ -55,6 +55,7 @@ Configuration is environment variables only.
 | `COOKIE_SECURE` | Secure cookies. Default: on in production unless localhost; in dev only for HTTPS `APP_URL`. |
 | `MAX_CONCURRENT_CHATS` | `50` active streams database-wide. `deploy/gcp/service.yaml` sets `30` for headroom. |
 | `MAX_CONCURRENT_CHATS_PER_USER` | `2` active streams per account. |
+| `DATABASE_SIZE_LIMIT_MB` | `850`. New questions pause for everyone (`SERVICE_FULL`) once `pg_database_size` reaches it. |
 | `PLATFORM_CONNECTION_LIMIT` | Platform concurrency ceiling (`40` on Cloud Run). |
 | `LOGINS_PER_IP_PER_HOUR` | `60` sign-in starts per hashed IP per fixed hour. |
 | `AUTH_CALLBACKS_PER_IP_PER_HOUR` | `120` callbacks per hashed IP per fixed hour. |

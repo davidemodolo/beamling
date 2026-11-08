@@ -28,6 +28,7 @@ Error codes are stable strings. The UI maps each to a title, message and action.
 | `BRAVE_PLAN_MISSING_SEARCH` | Brave key without the Search plan | 400 |
 | `SEARCH_PLAN_MISSING` | Tavily key without Search access (`432`) | 400 |
 | `QUOTA_EXCEEDED` | Tavily plan limit (`433`) | 402 |
+| `MODEL_BUSY` | Provider `429` saying the model is rate-limited upstream (shared capacity, not the key) | 429 |
 | `PROVIDER_RATE_LIMITED` | Provider `429` | 429 |
 | `PROVIDER_UNAVAILABLE` | Timeout, network or provider `5xx` (502); KMS or transport failure reading a key for revalidation (503) | 502 / 503 |
 | `SERVICE_BUSY` | Kill switch on, or process shutting down (`Retry-After: 15`) | 503 |
@@ -39,6 +40,9 @@ Error codes are stable strings. The UI maps each to a title, message and action.
 | `SERVER_BUSY` | Global, Deeper or per-account stream cap, or lock timeout | 503 |
 | `RETRY_NOT_ALLOWED` | Retry of a non-latest or non-failed answer | 409 |
 | `RATE_LIMITED` | Beamling rate limit | 429 |
+| `SERVICE_FULL` | Database at `DATABASE_SIZE_LIMIT_MB`; new questions paused for everyone; the answer card links to `/limits` | 503 |
+| `STORAGE_FULL` | Account storage at its limit; the answer card links to `/limits` | 403 |
+| `CONVERSATION_FULL` | Conversation at its question cap; the answer card links to `/limits` | 409 |
 | `SIGNUPS_PAUSED` | Hourly new-account cap or `SIGNUP_MODE=paused`; callback redirects to `/login?error=signups_paused` | 429 |
 | `SIGNUP_NOT_INVITED` | Not on the allowlist with `SIGNUP_MODE=allowlist` | 403 |
 | `SERVICE_CLOSING` | New account during a scheduled shutdown; redirects to `/login?error=service_closing` | 403 |
@@ -56,6 +60,7 @@ UI actions (`describeAnswerError` in `lib/api.ts`):
 - **Settings**: `CREDENTIAL_MISSING`, `CREDENTIAL_INVALID`, `CREDENTIAL_UNREADABLE`, `BRAVE_PLAN_MISSING_SEARCH`, `SEARCH_PLAN_MISSING`, `MODEL_NOT_FOUND`, `MODEL_PRIVACY_SETTING`, `FREE_LIMIT_REACHED`.
 - **Reload** (leads to sign-in): `UNAUTHENTICATED`.
 - **`/welcome`**: `TERMS_REQUIRED`.
-- **Retry**: most provider and capacity failures.
+- **See limits** (`/limits`, no retry): `SERVICE_FULL`, `STORAGE_FULL`, `CONVERSATION_FULL`.
+- **Retry**: most provider and capacity failures, including `MODEL_BUSY` (which, unlike `PROVIDER_RATE_LIMITED`, does not mark the key as rate-limited).
 
 `GENERATION_TIMEOUT` and `INTERRUPTED` show on the stopped or failed answer card. The client also creates its own codes: `NETWORK`, `TIMEOUT`, `STREAM_ENDED`, `REQUEST_FAILED`, `INVALID_RESPONSE`.

@@ -212,6 +212,11 @@ export function maxConcurrentChatsPerUser(): number {
   return positiveInt("MAX_CONCURRENT_CHATS_PER_USER", 2);
 }
 
+/** Database size at which new questions pause for everyone, below the hosting plan's storage cap. */
+export function databaseSizeLimitBytes(): number {
+  return positiveInt("DATABASE_SIZE_LIMIT_MB", 850) * 1024 * 1024;
+}
+
 /** Optional platform connection ceiling, used only for a startup safety warning. */
 export function platformConnectionLimit(): number | undefined {
   const value = nonNegativeInt(process.env.PLATFORM_CONNECTION_LIMIT);

@@ -35,14 +35,15 @@ First end-to-end BYOK slice: OpenRouter or DeepSeek generation; Brave, Tavily, E
 
 - Auth: `Authorization: Bearer <user key>`.
 - Validation: `GET /api/v1/key` (no tokens spent).
-- Default model: `deepseek/deepseek-v4.1-flash`.
+- Default model: `nvidia/nemotron-3.5-super-vl:free` (also the free setup model; changed 2026-11-08).
 - Allowlist (verified 2026-10-20):
-  - `deepseek/deepseek-v4.1-flash` (default)
+  - `nvidia/nemotron-3.5-super-vl:free` (default and free setup path; added 2026-11-08)
+  - `deepseek/deepseek-v4.1-flash`
   - `anthropic/claude-sonnet-4.5`
   - `anthropic/claude-haiku-4.5`
   - `openai/gpt-5.2`
   - `google/gemini-3.8-flash`
-  - `google/gemma-4-31b-it:free` (free setup path; added 2026-11-07)
+  - `google/gemma-4-31b-it:free` (added 2026-11-07)
 - No auto-router (no silent model switch). IDs come from the allowlist, never free text; refresh from `GET /api/v1/models`, drop deprecated IDs.
 - Generation: `POST /api/v1/chat/completions`, `stream: true`.
 - Cost: `usage.prompt_tokens`, `usage.completion_tokens`, `usage.cost`; catalog pricing only without `usage.cost`.

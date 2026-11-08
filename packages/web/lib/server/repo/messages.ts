@@ -7,6 +7,7 @@ import { plural } from "../../utils";
 import { db } from "../db";
 import { maxConcurrentChats, maxConcurrentChatsPerUser } from "../env";
 import { ApiError, pgErrorCode, storableText } from "../http";
+import { SOURCE_SNIPPET_CHARS } from "../prompts";
 import { conversations, messages, sources } from "../schema";
 import { decryptText, encryptText } from "../workspace-key";
 import { interruptedFields, mapMessage, staleBefore, staleBeforeSql, type MessageRow } from "./shared";
@@ -293,7 +294,9 @@ export async function completeAssistant(input: AssistantOutcome): Promise<boolea
         url: await encryptText(input.userId, "sources", id, "url", storableText(source.url)),
         title: source.title ? await encryptText(input.userId, "sources", id, "title", storableText(source.title)) : null,
         domain: source.domain ? await encryptText(input.userId, "sources", id, "domain", storableText(source.domain)) : null,
-        snippet: source.snippet ? await encryptText(input.userId, "sources", id, "snippet", storableText(source.snippet)) : null,
+        snippet: source.snippet
+          ? await encryptText(input.userId, "sources", id, "snippet", storableText(source.snippet).slice(0, SOURCE_SNIPPET_CHARS))
+          : null,
         publishedAt: parseDate(source.publishedAt),
       };
     }),

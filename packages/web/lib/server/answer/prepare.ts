@@ -4,6 +4,7 @@ import type { Message, Mode, SearchProvider } from "../../types";
 import { ApiError } from "../http";
 import { log } from "../log";
 import {
+  assertCanAsk,
   completeAssistant,
   conversationExists,
   createConversation,
@@ -47,6 +48,9 @@ export async function prepareChat(input: {
   const llm = modelInfo(settings.llmModel) ?? modelInfo(DEFAULT_LLM_MODEL)!;
   const searchProvider =
     input.searchProvider && isSearchProvider(input.searchProvider) ? input.searchProvider : settings.defaultSearchProvider;
+
+  // Retries replace an answer, so only new questions count against storage and the per-chat cap.
+  if (!input.retryOf) await assertCanAsk(input.userId, input.conversationId);
 
   let conversationId = input.conversationId;
   let createdHere = false;

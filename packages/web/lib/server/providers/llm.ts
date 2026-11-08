@@ -2,6 +2,7 @@ import { APICallError, streamText, type LanguageModel, type LanguageModelUsage, 
 import type { LlmProvider } from "../../contracts";
 import { providerName } from "../../provider-catalog";
 import { ApiError } from "../http";
+import { log } from "../log";
 import { unavailable } from "./errors";
 
 /** Why a model call is made; fixture providers use it to pick their canned reply. */
@@ -48,11 +49,15 @@ const CONTEXT_TOO_LARGE_RE = /context (length|window)|maximum context|too many t
 // OpenRouter's wording for the daily cap on free models and for free models hidden by the account's data policy.
 const FREE_LIMIT_RE = /free-models-per-day/i;
 const DATA_POLICY_RE = /data policy/i;
+// A shared upstream (e.g. the free tier behind a `:free` model) is throttled for everyone, not this key.
+const UPSTREAM_LIMIT_RE = /rate-limited upstream/i;
 
 /** Maps a model provider's HTTP status (or a mid-stream error code) to a stable Beamling error. */
 export function modelHttpError(provider: LlmProvider, status: number, providerMessage = ""): ApiError {
   const name = providerName(provider);
   const detail = providerMessage.slice(0, 500);
+  // The provider's own wording is what tells a key limit from upstream capacity; it carries no key or prompt.
+  log.warn("Model provider error", { provider, status, detail: detail.slice(0, 300) });
   const error = (code: string, message: string, httpStatus: number) => new ApiError(code, message, httpStatus, provider);
   if (status === 400 && CONTEXT_TOO_LARGE_RE.test(detail)) {
     return error("CONTEXT_TOO_LARGE", "The question and sources are too long for this model.", 400);
@@ -73,6 +78,9 @@ export function modelHttpError(provider: LlmProvider, status: number, providerMe
       `You have used today's free requests on ${name}. They reset at midnight UTC, or pick a paid model in Settings.`,
       429,
     );
+  }
+  if (status === 429 && UPSTREAM_LIMIT_RE.test(detail)) {
+    return error("MODEL_BUSY", "This model is busy for everyone right now. Try again shortly, or pick another model in Settings.", 429);
   }
   if (status === 429) return error("PROVIDER_RATE_LIMITED", `${name} is rate-limiting this key. Try again shortly.`, 429);
   if (status === 408 || status >= 500) return unavailable(provider, `${name} has no capacity for this model right now.`);

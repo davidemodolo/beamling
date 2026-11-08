@@ -6,9 +6,11 @@ import {
   INACTIVE_ACCOUNT_MONTHS,
   legalDetails,
   MAX_CONVERSATIONS,
+  MAX_QUESTIONS_PER_CONVERSATION,
   MINIMUM_AGE,
   SHUTDOWN_NOTICE_DAYS,
   SOURCE_URL,
+  STORAGE_LIMIT_MB,
 } from "@/lib/legal";
 
 export const metadata: Metadata = { title: "Terms" };
@@ -58,8 +60,10 @@ export default function TermsPage() {
       <p>
         Because Beamling is free, it keeps conversations for a limited time. A conversation, pinned or not, is deleted{" "}
         {CONVERSATION_RETENTION_DAYS} days after its last question. Each account keeps at most {MAX_CONVERSATIONS}{" "}
-        conversations: starting a new one beyond that deletes the least recently used, unpinned ones first. The interface
-        shows these limits and warns you as you approach the maximum.
+        conversations: starting a new one beyond that deletes the least recently used, unpinned ones first. Each account
+        has {STORAGE_LIMIT_MB} MB of storage and each conversation up to {MAX_QUESTIONS_PER_CONVERSATION} questions; at
+        either limit new questions are refused until you delete chats or start a new one. The{" "}
+        <Link href="/limits">Limits</Link> page shows your usage.
       </p>
 
       <h2>Acceptable use</h2>

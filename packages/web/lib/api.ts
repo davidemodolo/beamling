@@ -40,7 +40,7 @@ export function errorMessage(cause: unknown, fallback: string): string {
   return fallback;
 }
 
-export type ErrorAction = "settings" | "reload" | "retry";
+export type ErrorAction = "settings" | "reload" | "retry" | "limits";
 
 export interface ErrorCopy {
   title: string;
@@ -79,6 +79,8 @@ export function describeAnswerError(code: string | undefined, message?: string):
       return settings("Free limit reached", "The provider reports the free quota is used up. Check your account or pick another model.");
     case "INSUFFICIENT_CREDITS":
       return retry("Out of credits", "A provider account has run out of credits. Top it up, then retry.");
+    case "MODEL_BUSY":
+      return retry("Model busy", "This model is busy for everyone right now. Try again shortly, or pick another model.");
     case "PROVIDER_RATE_LIMITED":
       return retry("Provider rate limit", "A provider is rate-limiting your key. Wait a moment, then retry.");
     case "PROVIDER_UNAVAILABLE":
@@ -89,6 +91,12 @@ export function describeAnswerError(code: string | undefined, message?: string):
       return retry("Too long for this model", "Try a shorter question.");
     case "RATE_LIMITED":
       return { title: "Slow down", message: GENERIC_COPY.RATE_LIMITED, action: "retry" };
+    case "SERVICE_FULL":
+      return { title: "Beamling is full", message: message || "New questions are paused for now.", action: "limits" };
+    case "STORAGE_FULL":
+      return { title: "Storage full", message: message || "Delete some chats to keep asking.", action: "limits" };
+    case "CONVERSATION_FULL":
+      return { title: "Chat full", message: message || "Start a new chat to keep asking.", action: "limits" };
     // SERVICE_BUSY is the operator kill switch or a restart; the user sees the same thing.
     case "SERVER_BUSY":
     case "SERVICE_BUSY":

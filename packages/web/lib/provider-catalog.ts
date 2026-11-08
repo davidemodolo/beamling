@@ -95,9 +95,17 @@ export interface ModelInfo {
   free?: true;
 }
 
+// The first model is the default, and the first free one is the free setup model.
 export const MODELS: readonly ModelInfo[] = [
-  { id: "deepseek/deepseek-v4.1-flash", name: "DeepSeek V4.1 Flash", provider: "openrouter", apiModel: "deepseek/deepseek-v4.1-flash" },
+  {
+    id: "nvidia/nemotron-3.5-super-vl:free",
+    name: "Nemotron 3.5 Super · free",
+    provider: "openrouter",
+    apiModel: "nvidia/nemotron-3.5-super-vl:free",
+    free: true,
+  },
   { id: "google/gemma-4-31b-it:free", name: "Gemma 4 31B · free", provider: "openrouter", apiModel: "google/gemma-4-31b-it:free", free: true },
+  { id: "deepseek/deepseek-v4.1-flash", name: "DeepSeek V4.1 Flash", provider: "openrouter", apiModel: "deepseek/deepseek-v4.1-flash" },
   { id: "anthropic/claude-sonnet-4.5", name: "Claude Sonnet 4.5", provider: "openrouter", apiModel: "anthropic/claude-sonnet-4.5" },
   { id: "anthropic/claude-haiku-4.5", name: "Claude Haiku 4.5", provider: "openrouter", apiModel: "anthropic/claude-haiku-4.5" },
   { id: "openai/gpt-5.2", name: "GPT-5.2", provider: "openrouter", apiModel: "openai/gpt-5.2" },

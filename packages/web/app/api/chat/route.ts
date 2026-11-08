@@ -4,7 +4,8 @@ import { ClientDisconnectError, watchChat } from "@/lib/server/active-chats";
 import { analytics } from "@/lib/server/analytics";
 import { prepareChat, publicError, runChat, TIMEOUT_MS, type ChatEmit } from "@/lib/server/answer-pipeline";
 import { cleanText, clientIpKey, json, parseBody } from "@/lib/server/http";
-import { acceptingNewStreams, consumeRateLimit } from "@/lib/server/repo";
+import { MAX_QUESTION_CHARS, QUESTIONS_PER_DAY, QUESTIONS_PER_HOUR } from "@/lib/legal";
+import { acceptingNewStreams, consumeRateLimit, questionLimitKeys } from "@/lib/server/repo";
 import { apiRoute } from "@/lib/server/route";
 import { isShuttingDown } from "@/lib/server/shutdown-state";
 
@@ -12,7 +13,6 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 360;
 
-const CHATS_PER_USER_PER_HOUR = 30;
 const CHATS_PER_IP_PER_HOUR = 120;
 
 const question = z
@@ -23,7 +23,7 @@ const question = z
       .string()
       .trim()
       .min(1, "Ask a question first.")
-      .max(4000, "Questions are limited to 4,000 characters."),
+      .max(MAX_QUESTION_CHARS, `Questions are limited to ${MAX_QUESTION_CHARS.toLocaleString("en")} characters.`),
   );
 
 // A new question, or a retry of the latest failed or stopped answer (the server reuses its question).
@@ -63,7 +63,9 @@ export const POST = apiRoute(async ({ request, user }) => {
     );
   }
   const input = await parseBody(request, schema);
-  await consumeRateLimit(`chat:${user.id}`, CHATS_PER_USER_PER_HOUR, 3600);
+  const keys = questionLimitKeys(user.id);
+  await consumeRateLimit(keys.hour, QUESTIONS_PER_HOUR, 3600);
+  await consumeRateLimit(keys.day, QUESTIONS_PER_DAY, 86_400);
   await consumeRateLimit(`chat-ip:${clientIpKey(request.headers)}`, CHATS_PER_IP_PER_HOUR, 3600);
   const prepared = await prepareChat({ userId: user.id, ...input });
   analytics.capture(user.id, "question_asked", {

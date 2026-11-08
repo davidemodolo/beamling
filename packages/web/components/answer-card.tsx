@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { memo, useCallback, type ReactNode } from "react";
 import { describeAnswerError } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
@@ -246,7 +247,12 @@ export const AnswerCard = memo(function AnswerCard({ message, onCitation, onOpen
                     <Icon name="refresh" size={13} /> Reload
                   </button>
                 ) : null}
-                {retry && error.action !== "reload" ? (
+                {error.action === "limits" ? (
+                  <Link href="/limits" className="btn btn-secondary btn-sm">
+                    <Icon name="chart" size={13} /> See limits
+                  </Link>
+                ) : null}
+                {retry && error.action !== "reload" && error.action !== "limits" ? (
                   <button type="button" className="btn btn-secondary btn-sm" onClick={retry}>
                     <Icon name="refresh" size={13} /> Retry
                   </button>
