@@ -29,7 +29,7 @@ test("the free setup connects OpenRouter and Brave, then setup is skipped", asyn
   await expect(page).toHaveURL(/\/$/);
   const state = await (await page.request.get("/api/state")).json();
   expect(state.settings).toEqual({
-    llmModel: "google/gemma-4-31b-it:free",
+    llmModel: "nvidia/nemotron-3.5-super-vl:free",
     defaultSearchProvider: "brave",
     defaultMode: "quick",
     analyticsOptOut: false,
@@ -106,6 +106,19 @@ test("/ is the landing page signed out and the app signed in", async ({ page }) 
   await expect(page.getByRole("navigation", { name: "Main" })).toHaveCount(0);
 });
 
+test("the limits page shows the account's own usage and is linked from the sidebar", async ({ page }) => {
+  await connectKeys(page.request);
+  await page.goto("/");
+  await ask(page, "How big is this chat?");
+  await expect(answers(page).last()).toContainText("fixture answer", { timeout: 20_000 });
+  await page.getByRole("link", { name: "Limits" }).click();
+  await expect(page).toHaveURL(/\/limits$/);
+  await expect(page.getByRole("meter", { name: "Questions this hour" })).toHaveAttribute("aria-valuenow", "1");
+  await expect(page.getByRole("meter", { name: "Chats" })).toHaveAttribute("aria-valuenow", "1");
+  await expect(page.locator("#main").getByRole("link", { name: "How big is this chat?" })).toBeVisible();
+  await page.screenshot({ path: test.info().outputPath("limits.png"), fullPage: true });
+});
+
 test("a Quick answer streams with citations, cost breakdown and sources", async ({ page }) => {
   const problems = watchConsole(page);
   await connectKeys(page.request);
@@ -116,7 +129,7 @@ test("a Quick answer streams with citations, cost breakdown and sources", async 
   const answer = answers(page).last();
   await expect(answer).toContainText("fixture answer", { timeout: 20_000 });
   const meta = answer.locator(".answer-footer .meta");
-  await expect(meta).toContainText("DeepSeek V4.1 Flash");
+  await expect(meta).toContainText("Nemotron 3.5 Super");
   await expect(meta.locator("[title*='1 search']")).toHaveCount(1);
   await expect(answer.locator("summary").filter({ hasText: "Searches" })).toBeVisible();
   await answer.locator("summary").filter({ hasText: "Searches" }).click();
@@ -396,10 +409,10 @@ test("/welcome has no CSP violations or serious accessibility issues", async ({ 
   expect(serious.map((violation) => violation.id)).toEqual([]);
 });
 
-for (const path of ["/", "/app", "/onboarding", "/privacy", "/terms", "/licenses", "/cookies", "/subprocessors", "/security", "/status", "/contact"]) {
+for (const path of ["/", "/app", "/limits", "/onboarding", "/privacy", "/terms", "/licenses", "/cookies", "/subprocessors", "/security", "/status", "/contact"]) {
   test(`${path} has no CSP violations or serious accessibility issues`, async ({ page }) => {
     const problems = watchConsole(page);
-    if (path === "/app") await connectKeys(page.request);
+    if (path === "/app" || path === "/limits") await connectKeys(page.request);
     if (path === "/onboarding") await signIn(page.request);
     // "/app" is `/` signed in.
     await page.goto(path === "/app" ? "/" : path);

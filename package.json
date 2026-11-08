@@ -1,7 +1,7 @@
 {
   "name": "beamling",
   "private": true,
-  "version": "0.5.4",
+  "version": "0.6.0",
   "license": "MIT",
   "packageManager": "pnpm@12.18.0",
   "scripts": {

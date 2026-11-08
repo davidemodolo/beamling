@@ -137,3 +137,13 @@ export interface DoneEvent {
   degraded?: boolean;
   searchFailures?: number;
 }
+
+/** An account's own usage, shown on the limits page. */
+export interface UsageReport {
+  storageBytes: number;
+  conversations: number;
+  questionsThisHour: number;
+  questionsToday: number;
+  /** The chats taking the most space, largest first, with decrypted titles for the owner only. */
+  largest: { id: string; title: string; bytes: number; questions: number }[];
+}

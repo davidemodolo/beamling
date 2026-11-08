@@ -150,3 +150,47 @@ test("conversations expire 60 days after their last activity, pinned or not", { 
   const left = (await db.select({ id: conversations.id }).from(conversations).where(eq(conversations.userId, userId))).map((row) => row.id);
   assert.deepEqual(left, [recent.id]);
 });
+
+test("a chat stops at its question cap and a full account stops asking", { skip }, async (t) => {
+  const userId = await createAccount(t);
+  const { randomBytes } = await import("node:crypto");
+  const { db } = await import("../../lib/server/db");
+  const { messages } = await import("../../lib/server/schema");
+  const { createConversation, usageReport } = await import("../../lib/server/repo");
+  const { MAX_QUESTIONS_PER_CONVERSATION, STORAGE_LIMIT_BYTES } = await import("../../lib/legal");
+
+  const full = await createConversation(userId, "quick");
+  await db.insert(messages).values(
+    Array.from({ length: MAX_QUESTIONS_PER_CONVERSATION }, () => ({
+      conversationId: full.id,
+      userId,
+      role: "user" as const,
+      content: "bm:x",
+    })),
+  );
+  await assert.rejects(ask(userId, { conversationId: full.id, question: "One more?", mode: "quick" }), { code: "CONVERSATION_FULL" });
+
+  // A new chat still works until the account's storage is full.
+  const { prepared } = await ask(userId, { question: "Fresh chat", mode: "quick" });
+  const before = await usageReport(userId);
+  assert.ok(before.storageBytes > 0 && before.storageBytes < STORAGE_LIMIT_BYTES);
+  assert.equal(before.conversations, 2);
+  assert.equal(before.largest[0].id, full.id);
+  assert.equal(before.largest[0].questions, MAX_QUESTIONS_PER_CONVERSATION);
+
+  // Base64 of random bytes does not compress, so its stored size is close to its length.
+  const filler = randomBytes(Math.ceil(STORAGE_LIMIT_BYTES * 0.8)).toString("base64");
+  await db.insert(messages).values({ conversationId: full.id, userId, role: "assistant", content: `bm:${filler}` });
+  assert.ok((await usageReport(userId)).storageBytes >= STORAGE_LIMIT_BYTES);
+  await assert.rejects(ask(userId, { conversationId: prepared.conversationId, question: "Still room?", mode: "quick" }), {
+    code: "STORAGE_FULL",
+  });
+  await assert.rejects(ask(userId, { question: "New chat?", mode: "quick" }), { code: "STORAGE_FULL" });
+});
+
+test("new questions pause for everyone when the database nears its cap", { skip }, async (t) => {
+  const { withEnv } = await import("../helpers");
+  const userId = await createAccount(t);
+  withEnv(t, { DATABASE_SIZE_LIMIT_MB: "1" });
+  await assert.rejects(ask(userId, { question: "Is there room?", mode: "quick" }), { code: "SERVICE_FULL" });
+});

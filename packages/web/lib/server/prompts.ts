@@ -1,6 +1,9 @@
 import type { Message, Source } from "../types";
 import { stripCitations } from "./citations";
 
+/** Characters of a source the prompt reads; snippets are also stored at this length. */
+export const SOURCE_SNIPPET_CHARS = 2200;
+
 export interface Prompt {
   system: string;
   user: string;
@@ -33,7 +36,7 @@ function attr(value: string): string {
 function sourceBlocks(sources: Source[]): string {
   return sources
     .map((source) => {
-      const content = source.snippet.replace(/<\/?source/gi, "").slice(0, 2200);
+      const content = source.snippet.replace(/<\/?source/gi, "").slice(0, SOURCE_SNIPPET_CHARS);
       const published = source.publishedAt ? ` published="${attr(source.publishedAt.slice(0, 10))}"` : "";
       return `<source id="${source.position}" url="${attr(source.url)}" domain="${attr(source.domain)}" title="${attr(source.title)}"${published}>\n${content}\n</source>`;
     })

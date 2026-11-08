@@ -37,7 +37,7 @@ export function legalDetails(): LegalDetails {
  * either document changes materially; every account is asked to accept again on its next visit.
  */
 export const LEGAL_VERSION = "2026-11-07.2";
-export const LEGAL_LAST_UPDATED = "7 November 2026";
+export const LEGAL_LAST_UPDATED = "8 November 2026";
 
 /** Minimum age to hold an account. */
 export const MINIMUM_AGE = 18;
@@ -47,6 +47,23 @@ export const CONVERSATION_RETENTION_DAYS = 60;
 
 /** Conversations kept per account; creating one more deletes the oldest, unpinned ones first. */
 export const MAX_CONVERSATIONS = 100;
+
+/** Questions per conversation; the next one must start a new chat. */
+export const MAX_QUESTIONS_PER_CONVERSATION = 100;
+
+/** Encrypted storage per account (chats, answers, sources). New questions are refused at the limit. */
+export const STORAGE_LIMIT_MB = 10;
+export const STORAGE_LIMIT_BYTES = STORAGE_LIMIT_MB * 1024 * 1024;
+
+/** From this share of the storage limit the limits page warns. */
+export const STORAGE_WARNING_RATIO = 0.8;
+
+/** Questions per account. */
+export const QUESTIONS_PER_HOUR = 60;
+export const QUESTIONS_PER_DAY = 500;
+
+/** Characters per question. */
+export const MAX_QUESTION_CHARS = 4000;
 
 /** From this many conversations the sidebar warns that the oldest will be deleted. */
 export const CONVERSATION_WARNING_THRESHOLD = 90;

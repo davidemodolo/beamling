@@ -51,6 +51,7 @@ Alpine security updates are applied; `HEALTHCHECK` hits `/api/health`.
 `scripts/migrate.mjs`:
 
 - `0000_init.sql` is the schema applied to production on 7 November 2026 (v0.3.0). Applied files are never edited; changes add a higher-numbered file.
+- `0001_default_model_nemotron.sql` (v0.6.0) changes the `settings.llm_model` default; existing rows keep their model.
 - Connects to `DATABASE_URL_DIRECT`, else `DATABASE_URL`. Not through a transaction-mode pooler: the advisory lock is session-scoped.
 - Clears its session timeouts, takes advisory lock `7314002917` so deploys serialize, creates `beamling_migrations` if absent.
 - Applies unapplied `drizzle/*.sql` files in name order, each in a transaction split on `--> statement-breakpoint`; records the filename after commit; rolls back on error.

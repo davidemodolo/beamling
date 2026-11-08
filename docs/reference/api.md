@@ -68,7 +68,8 @@ Provider keys, key ciphertext and session tokens are never included.
 
 | Route group | Limit |
 |---|---|
-| `POST /api/chat` | 30 per user/hour; 120 per hashed IP/hour |
+| `POST /api/chat` | 60 per user/hour; 500 per user/day; 120 per hashed IP/hour |
+| New questions | Refused when the database reaches `DATABASE_SIZE_LIMIT_MB` (`SERVICE_FULL`), at 10 MB stored per account (`STORAGE_FULL`) or 100 questions per conversation (`CONVERSATION_FULL`); retries exempt |
 | `POST /api/conversations` | 120 per user/hour |
 | `POST /api/credentials` and credential validation | 20 per user/hour |
 | Provider key checks (validated create, revalidate) | 50 per user/day; 120 per hashed IP/hour |
@@ -116,12 +117,13 @@ The response is an SSE stream ([Streaming](streaming.md)). Without `conversation
 
 `llmModel` must be one of:
 
-- `deepseek/deepseek-v4.1-flash` (default)
+- `nvidia/nemotron-3.5-super-vl:free` (default and free setup model; free on OpenRouter)
+- `deepseek/deepseek-v4.1-flash`
 - `anthropic/claude-sonnet-4.5`
 - `anthropic/claude-haiku-4.5`
 - `openai/gpt-5.2`
 - `google/gemini-3.8-flash`
-- `google/gemma-4-31b-it:free` (free on OpenRouter; the free setup model)
+- `google/gemma-4-31b-it:free` (free on OpenRouter)
 - `deepseek:deepseek-flash` (DeepSeek direct, needs a DeepSeek key)
 
 Unknown model: `MODEL_NOT_ALLOWED`. Unknown search provider: `INVALID_INPUT`. `defaultMode` is `quick`, `deep` or `deeper`.

@@ -143,7 +143,7 @@ Trademark: no exact BEAMLING filing found. Formal clearance in classes 9 and 42 
 | A12 | Prompts are original adaptations, not copies of leaked prompts | Confirmed |
 | A13 | Google sign-in required; no guest or other IdP | Confirmed |
 | A14 | Launch on Cloud Run + Neon from the Docker image (moved from Fly.io on 2026-11-07: free allowance, keyless credentials) | Confirmed |
-| A15 | Default model `deepseek/deepseek-v4.1-flash` via OpenRouter | Confirmed |
+| A15 | Default model `nvidia/nemotron-3.5-super-vl:free` via OpenRouter (was `deepseek/deepseek-v4.1-flash` until 2026-11-08) | Confirmed |
 | A16 | PostHog Cloud EU free tier, server-side metadata events | Confirmed |
 | A17 | Docs and source public under MIT; feedback via GitHub issues | Confirmed |
 | A18 | Reviewed legal pages, generated license page, CMP only for non-essential scripts | Confirmed |

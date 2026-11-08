@@ -18,7 +18,7 @@ const LABELS: Record<string, string> = {
   queued: "Understanding the question",
   searching: "Searching with Brave",
   reading: "Reading 3 sources",
-  writing: "Writing with Gemma 4 31B",
+  writing: "Writing with Nemotron 3.5 Super",
   done: "Done · 2.4 s",
 };
 

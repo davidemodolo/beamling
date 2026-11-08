@@ -23,17 +23,19 @@ const openRouterChat = (options: { model?: string; maxTokens?: number; signal?: 
     signal: options.signal,
   });
 
-test("DeepSeek V4.1 Flash is the default and is allowlisted", () => {
-  assert.equal(DEFAULT_LLM_MODEL, "deepseek/deepseek-v4.1-flash");
+test("Nemotron 3.5 Super (free) is the default and is allowlisted", () => {
+  assert.equal(DEFAULT_LLM_MODEL, "nvidia/nemotron-3.5-super-vl:free");
   assert.equal(isAllowedModel(DEFAULT_LLM_MODEL), true);
   assert.equal(isAllowedModel("openrouter/auto"), false);
-  assert.equal(MODELS.filter((model) => model.provider === "openrouter").length, 6);
+  assert.equal(MODELS.filter((model) => model.provider === "openrouter").length, 7);
 });
 
-test("one free model is allowlisted and is not the default", () => {
-  assert.equal(isAllowedModel(FREE_LLM_MODEL), true);
-  assert.notEqual(FREE_LLM_MODEL, DEFAULT_LLM_MODEL);
-  assert.equal(MODELS.filter((model) => model.free).length, 1);
+test("the default model is also the free setup model", () => {
+  assert.equal(FREE_LLM_MODEL, DEFAULT_LLM_MODEL);
+  assert.deepEqual(
+    MODELS.filter((model) => model.free).map((model) => model.id),
+    ["nvidia/nemotron-3.5-super-vl:free", "google/gemma-4-31b-it:free"],
+  );
 });
 
 test("setup needs a model key and a search key; one DeepSeek key is both", () => {
@@ -279,6 +281,10 @@ test("model providers map statuses and mid-stream errors to stable codes", async
   assert.equal(openRouterError(404).code, "MODEL_NOT_FOUND");
   assert.equal(openRouterError(429).code, "PROVIDER_RATE_LIMITED");
   assert.equal(openRouterError(429, "Rate limit exceeded: free-models-per-day.").code, "FREE_LIMIT_REACHED");
+  assert.equal(
+    openRouterError(429, "[Google AI Studio] google/gemma-4-31b-it:free is temporarily rate-limited upstream. Please retry shortly").code,
+    "MODEL_BUSY",
+  );
   assert.equal(openRouterError(404, "No endpoints found matching your data policy (Free model training)").code, "MODEL_PRIVACY_SETTING");
   assert.equal(openRouterError(502).code, "PROVIDER_UNAVAILABLE");
   assert.equal(openRouterError(503).code, "PROVIDER_UNAVAILABLE");

@@ -1,0 +1,1 @@
+ALTER TABLE "settings" ALTER COLUMN "llm_model" SET DEFAULT 'nvidia/nemotron-3.5-super-vl:free';

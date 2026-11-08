@@ -200,6 +200,9 @@ function SidebarContent({ mobile, onNavigate }: SidebarProps) {
       </div>
 
       <div className="sidebar-foot">
+        <Link href="/limits" className="side-link" onClick={close}>
+          <Icon name="chart" size={15} /> Limits
+        </Link>
         <button
           type="button"
           className="side-link"

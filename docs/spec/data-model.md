@@ -76,7 +76,7 @@ create table credential_usage (
 
 create table settings (
   user_id uuid primary key references users(id) on delete cascade,
-  llm_model text not null default 'deepseek/deepseek-v4.1-flash',
+  llm_model text not null default 'nvidia/nemotron-3.5-super-vl:free',
   search_provider text not null default 'brave' check (search_provider in ('brave','tavily','exa')),
   default_mode text not null default 'quick',
   updated_at timestamptz not null default now()
