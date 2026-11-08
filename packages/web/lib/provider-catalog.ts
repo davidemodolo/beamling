@@ -141,15 +141,6 @@ export const searchProviderInfo = (id: string): ProviderInfo =>
   isSearchProvider(id) ? PROVIDERS[id] : PROVIDERS[DEFAULT_SEARCH_PROVIDER];
 export const searchProviderName = (id: string): string => searchProviderInfo(id).name;
 
-/** What a provider's key is used for, for the key list. */
-export function providerUses(id: CredentialProvider): string {
-  const models = MODELS.filter((model) => model.provider === id).length;
-  const search = isSearchProvider(id);
-  if (models && search) return "Language models and web search";
-  if (models) return "Language models";
-  return "Web search";
-}
-
 /** Providers whose saved key can be used; a key the provider rejected does not count. */
 export const usableProviders = (credentials: readonly { provider: string; status: string }[]): Set<string> =>
   new Set(credentials.filter((credential) => credential.status !== "invalid").map((credential) => credential.provider));
