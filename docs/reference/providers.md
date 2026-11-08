@@ -125,7 +125,7 @@ Content-Type: application/json
 
 ## Provider notices
 
-Catalog notices show on the key card in Settings → Keys, under the onboarding key field, and in Defaults when the provider is selected:
+Catalog notices show on the provider's card in Settings → Models and under the onboarding key field:
 
 - DeepSeek: "DeepSeek is based in China and may process your questions there. Beamling does not control DeepSeek or how it handles your data."
 - OpenRouter: "Some OpenRouter hosts are in China; you can exclude them in OpenRouter's settings. Beamling does not control these hosts or how they handle your data."

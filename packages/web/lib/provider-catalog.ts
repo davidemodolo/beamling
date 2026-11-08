@@ -106,10 +106,9 @@ export const MODELS: readonly ModelInfo[] = [
   },
   { id: "google/gemma-4-31b-it:free", name: "Gemma 4 31B · free", provider: "openrouter", apiModel: "google/gemma-4-31b-it:free", free: true },
   { id: "deepseek/deepseek-v4.1-flash", name: "DeepSeek V4.1 Flash", provider: "openrouter", apiModel: "deepseek/deepseek-v4.1-flash" },
-  { id: "anthropic/claude-sonnet-4.5", name: "Claude Sonnet 4.5", provider: "openrouter", apiModel: "anthropic/claude-sonnet-4.5" },
-  { id: "anthropic/claude-haiku-4.5", name: "Claude Haiku 4.5", provider: "openrouter", apiModel: "anthropic/claude-haiku-4.5" },
-  { id: "openai/gpt-5.2", name: "GPT-5.2", provider: "openrouter", apiModel: "openai/gpt-5.2" },
-  { id: "google/gemini-3.8-flash", name: "Gemini 3.8 Flash", provider: "openrouter", apiModel: "google/gemini-3.8-flash" },
+  { id: "google/gemini-3.5-flash-lite", name: "Gemini 3.5 Flash Lite", provider: "openrouter", apiModel: "google/gemini-3.5-flash-lite" },
+  { id: "openai/gpt-6-luna", name: "GPT-6 Luna", provider: "openrouter", apiModel: "openai/gpt-6-luna" },
+  { id: "anthropic/claude-haiku-5.5", name: "Claude Haiku 5.5", provider: "openrouter", apiModel: "anthropic/claude-haiku-5.5" },
   { id: "deepseek:deepseek-flash", name: "DeepSeek V4.1 Flash · direct", provider: "deepseek", apiModel: "deepseek-flash" },
 ];
 
@@ -127,7 +126,14 @@ export const SEARCH_PROVIDERS = SEARCH_PROVIDER_IDS.map((id) => PROVIDERS[id]);
 
 export const modelInfo = (id: string): ModelInfo | undefined => MODELS.find((model) => model.id === id);
 export const isAllowedModel = (id: string): boolean => Boolean(modelInfo(id));
-export const llmModelName = (id: string): string => modelInfo(id)?.name ?? id;
+/** Names of models removed from the catalog, so older answers keep a readable label. */
+const RETIRED_MODEL_NAMES: Readonly<Record<string, string>> = {
+  "anthropic/claude-sonnet-4.5": "Claude Sonnet 4.5",
+  "anthropic/claude-haiku-4.5": "Claude Haiku 4.5",
+  "openai/gpt-5.2": "GPT-5.2",
+  "google/gemini-3.8-flash": "Gemini 3.8 Flash",
+};
+export const llmModelName = (id: string): string => modelInfo(id)?.name ?? RETIRED_MODEL_NAMES[id] ?? id;
 /** The provider whose key runs this model; unknown ids fall back to the default model's provider. */
 export const modelProvider = (id: string): LlmProvider => (modelInfo(id) ?? MODELS[0]).provider;
 
@@ -163,9 +169,11 @@ export function usableDefaults(
   defaults: { llmModel: string; defaultSearchProvider: SearchProvider },
   keyed: ReadonlySet<string>,
 ): { llmModel: string; defaultSearchProvider: SearchProvider } {
-  const llmModel = keyed.has(modelProvider(defaults.llmModel))
+  // A model removed from the catalog counts as unusable, so it is replaced like a model without a key.
+  const llmModel = isAllowedModel(defaults.llmModel) && keyed.has(modelProvider(defaults.llmModel))
     ? defaults.llmModel
-    : (MODELS.find((model) => keyed.has(model.provider))?.id ?? defaults.llmModel);
+    : (MODELS.find((model) => keyed.has(model.provider))?.id ??
+      (isAllowedModel(defaults.llmModel) ? defaults.llmModel : DEFAULT_LLM_MODEL));
   const defaultSearchProvider = keyed.has(defaults.defaultSearchProvider)
     ? defaults.defaultSearchProvider
     : (SEARCH_PROVIDER_IDS.find((id) => keyed.has(id)) ?? defaults.defaultSearchProvider);

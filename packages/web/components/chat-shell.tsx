@@ -13,7 +13,7 @@ function Frame({ children, notice }: { children: ReactNode; notice?: string }) {
   const { user, error } = useAccount();
   const [open, setOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<SettingsTab>("keys");
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("models");
   const drawerRef = useRef<HTMLElement>(null);
   const closeDrawer = useCallback(() => setOpen(false), []);
   useFocusTrap(drawerRef, open, closeDrawer);

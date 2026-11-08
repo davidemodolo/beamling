@@ -398,6 +398,41 @@ test("a new account accepts the terms before reaching the app", async ({ page })
   await expect(page).toHaveURL(/\/onboarding$/);
 });
 
+test("settings pick a model under its key and a search provider by card", async ({ page }) => {
+  const problems = watchConsole(page);
+  await connectKeys(page.request);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open settings" }).first().click();
+  const dialog = page.getByRole("dialog", { name: "Settings" });
+  await expect(dialog.getByRole("tab", { name: "Models" })).toHaveAttribute("aria-selected", "true");
+
+  // OpenRouter is keyed, so its models can be picked; DeepSeek has no key, so its model cannot.
+  await dialog.getByRole("radio", { name: "Claude Haiku 5.5" }).check();
+  await expect(page.getByText("Claude Haiku 5.5 is now the default")).toBeVisible();
+  await expect(dialog.getByRole("radio", { name: "DeepSeek V4.1 Flash · direct" })).toBeDisabled();
+  expect((await (await page.request.get("/api/state")).json()).settings.llmModel).toBe("anthropic/claude-haiku-5.5");
+
+  // Adding a DeepSeek key unlocks its model here and its search on the Search tab.
+  const deepseek = dialog.getByRole("region", { name: "DeepSeek" });
+  await deepseek.getByRole("button", { name: "Add key" }).click();
+  await deepseek.getByLabel("DeepSeek API key").fill("test-deepseek-key");
+  await deepseek.getByRole("button", { name: "Save key" }).click();
+  await expect(page.getByText("DeepSeek key saved")).toBeVisible();
+  await expect(dialog.getByRole("radio", { name: "DeepSeek V4.1 Flash · direct" })).toBeEnabled();
+
+  await dialog.getByRole("tab", { name: "Search" }).click();
+  await expect(dialog.getByRole("radio", { name: /Brave Search/ })).toBeChecked();
+  await expect(dialog.getByRole("radio", { name: /Tavily/ })).toBeDisabled();
+  await dialog.getByRole("radio", { name: /DeepSeek/ }).check();
+  await expect(page.getByText("DeepSeek is now the default")).toBeVisible();
+  expect((await (await page.request.get("/api/state")).json()).settings.defaultSearchProvider).toBe("deepseek");
+
+  const results = await new AxeBuilder({ page }).include("[role=dialog]").analyze();
+  const serious = results.violations.filter((violation) => violation.impact === "serious" || violation.impact === "critical");
+  expect(serious.map((violation) => violation.id)).toEqual([]);
+  expect(problems).toEqual([]);
+});
+
 test("/welcome has no CSP violations or serious accessibility issues", async ({ page }) => {
   const problems = watchConsole(page);
   await signIn(page.request, { pendingTerms: true });

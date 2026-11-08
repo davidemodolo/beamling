@@ -20,6 +20,7 @@ export function CredentialRow({
   onValidate,
   onDelete,
   onLimits,
+  onReplace,
 }: {
   credential: Credential;
   label: string;
@@ -29,6 +30,7 @@ export function CredentialRow({
   onValidate?: () => void;
   onDelete: () => void;
   onLimits?: () => void;
+  onReplace?: () => void;
 }) {
   const [confirming, setConfirming] = useState(false);
 
@@ -77,6 +79,11 @@ export function CredentialRow({
               <button type="button" className="btn btn-secondary btn-sm" onClick={onValidate} disabled={busy}>
                 {busy ? <Icon name="loader" size={13} className="spin" /> : <Icon name="check" size={13} />}
                 Validate
+              </button>
+            ) : null}
+            {onReplace ? (
+              <button type="button" className="btn btn-ghost btn-sm" onClick={onReplace}>
+                Replace
               </button>
             ) : null}
             {onLimits ? (

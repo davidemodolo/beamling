@@ -112,21 +112,20 @@ The response is an SSE stream ([Streaming](streaming.md)). Without `conversation
 `PATCH /api/settings` accepts:
 
 ```json
-{ "llmModel": "anthropic/claude-haiku-4.5", "defaultSearchProvider": "tavily", "defaultMode": "deep" }
+{ "llmModel": "anthropic/claude-haiku-5.5", "defaultSearchProvider": "tavily", "defaultMode": "deep" }
 ```
 
 `llmModel` must be one of:
 
 - `nvidia/nemotron-3.5-super-vl:free` (default and free setup model; free on OpenRouter)
-- `deepseek/deepseek-v4.1-flash`
-- `anthropic/claude-sonnet-4.5`
-- `anthropic/claude-haiku-4.5`
-- `openai/gpt-5.2`
-- `google/gemini-3.8-flash`
 - `google/gemma-4-31b-it:free` (free on OpenRouter)
+- `deepseek/deepseek-v4.1-flash`
+- `google/gemini-3.5-flash-lite`
+- `openai/gpt-6-luna`
+- `anthropic/claude-haiku-5.5`
 - `deepseek:deepseek-flash` (DeepSeek direct, needs a DeepSeek key)
 
-Unknown model: `MODEL_NOT_ALLOWED`. Unknown search provider: `INVALID_INPUT`. `defaultMode` is `quick`, `deep` or `deeper`.
+Unknown model: `MODEL_NOT_ALLOWED`. A stored default that left the catalog moves to the first keyed model (or the default) when the app opens. Unknown search provider: `INVALID_INPUT`. `defaultMode` is `quick`, `deep` or `deeper`.
 
 `analyticsOptOut` (boolean) goes through `setAnalyticsOptOut`:
 

@@ -12,7 +12,7 @@
 | `packages/web/tests/integration/streams.test.ts` | 10 | Per-conversation, global and per-account limits, lock timeout, stop, mid-answer delete, stale repair, cleanup, terminal race, new-stream flag |
 | `packages/web/tests/integration/conversations.test.ts` | 5 | Pinned ordering, pagination, 100-conversation cap, 60-day expiry, per-chat and storage caps |
 | `packages/web/tests/integration/accounts.test.ts` | 12 | Sessions, account cleanup, export, analytics opt-out and erasure, sign-up cap, rate limits, Brave spacing, keys, shutdown |
-| `packages/web/e2e/*.spec.ts` | 50 | 15 API checks, 23 UI flows, 12 route CSP/axe variants (below) |
+| `packages/web/e2e/*.spec.ts` | 51 | 15 API checks, 24 UI flows, 12 route CSP/axe variants (below) |
 
 ## Running
 
@@ -49,6 +49,7 @@ UI:
 - Onboarding: free setup (OpenRouter, Brave, free model), DeepSeek with one key, resuming at the search step, defaults following saved keys; landing CTAs follow the session.
 - Quick answers show citations, costs, sources, search details, reasoning and tables; Deeper works.
 - Per-question Tavily selection keeps its badge after reload; providers without a key are marked; an Exa key is saved unvalidated and checked later.
+- Settings: a model is picked under its keyed provider, an unkeyed provider's models stay disabled until its key is added, a search provider is picked by card, and the dialog has no serious axe violations.
 - Sidebar pinning and title search; older conversations load on demand.
 - Streams stay isolated per conversation and survive client-side navigation.
 - Stop keeps partial text; “Ask again” replaces the answer; reload mid-answer shows a stopped answer.

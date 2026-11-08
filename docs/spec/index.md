@@ -35,7 +35,7 @@ Verified against the code on 2026-11-07.
 |---|---|---|
 | Runtime | Next.js 16.4.5, React 19.3.1, TypeScript 6.0.3, Node 26 LTS, one web app plus the mascot workspace package | Same, deployed on Google Cloud Run |
 | Auth | Google-only OIDC accounts, opaque session cookie, 30-day sliding expiry capped at 90 days, previous session revoked on sign-in, hashed token at rest; versioned terms acceptance with 18+ confirmation at `/welcome` before the app or API can be used | Same; no guest workspaces |
-| LLM | OpenRouter (seven allowlisted models including two free models, Nemotron 3.5 Super free default) and DeepSeek direct (V4.1 Flash), behind a provider registry with one AI SDK model layer | Same |
+| LLM | OpenRouter (six allowlisted models including two free models, Nemotron 3.5 Super free default) and DeepSeek direct (V4.1 Flash), behind a provider registry with one AI SDK model layer | Same |
 | Search | Brave, Tavily, Exa and DeepSeek selected per answer; Brave free/paid spacing and key metadata; Tavily and Exa use their basic search contracts | Same, plus provider-specific plan metadata and cost ceilings |
 | Modes | Quick, Deep and Deeper. Quick and Deeper are the same AI SDK `ToolLoopAgent` research loop over the selected search provider with different budgets (Quick: one query; Deeper: up to 60 searches). Deep is a planner, bounded concurrent searches and an optional gap pass. | Same |
 | Streaming | SSE with meta/stage/plan/search/progress/sources/delta/reasoning/citation/usage/done/error, stop and retry | Same contract, extra provider metadata |

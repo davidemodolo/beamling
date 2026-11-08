@@ -242,7 +242,7 @@ function ChatPane({ conversationId }: ChatViewProps) {
                 onRetry={() => activeId && void loadThread(activeId).catch(() => {})}
               />
             ) : messages.length === 0 && !live ? (
-              <EmptyState onFinishSetup={setupMissing ? () => openSettings("keys") : undefined} />
+              <EmptyState onFinishSetup={setupMissing ? () => openSettings(setupState(usableProviders(credentials)).hasModelKey ? "search" : "models") : undefined} />
             ) : (
               <>
                 {thread?.hasMore ? (
