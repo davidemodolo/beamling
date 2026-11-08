@@ -226,15 +226,18 @@ function escapeXml(value: string): string {
  * flat fill, with no blur or glow.
  */
 export function sceneMarkup(id: string, f: Frame, o: SceneOptions): string {
-  const g = scenePaths(f, o.beams);
+  // Library input: coerce flags so only "true"/"false" reach the markup.
+  const beams = o.beams === true;
+  const showRoom = beams && o.room === true;
+  const g = scenePaths(f, beams);
   const paths = (part: string) => `<path data-part="${part}-l" d="${g.left}"/><path data-part="${part}-r" d="${g.right}"/>`;
   const title = o.label ? `<title>${escapeXml(o.label)}</title>` : "";
   const room =
-    o.beams && o.room
+    showRoom
       ? `<path d="${roomEdges()}" style="stroke:var(--beamling-room,rgba(244,241,234,.08));stroke-width:.6;fill:none"/>`
       : "";
   return (
-    `<svg data-beamling data-beams="${o.beams}" data-room="${o.beams && o.room}" xmlns="http://www.w3.org/2000/svg" viewBox="${o.beams ? VIEWBOX_FULL : VIEWBOX_MARK}" ` +
+    `<svg data-beamling data-beams="${beams}" data-room="${showRoom}" xmlns="http://www.w3.org/2000/svg" viewBox="${beams ? VIEWBOX_FULL : VIEWBOX_MARK}" ` +
     `role="img"${o.label ? "" : ' aria-hidden="true"'} style="display:block;width:100%;height:auto;overflow:hidden">` +
     title +
     room +
