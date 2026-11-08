@@ -9,6 +9,8 @@ import { llmAdapter } from "../providers";
 import { modelError, type LlmAdapter } from "../providers/llm";
 import {
   appendSources,
+  askedQuestion,
+  imageParts,
   DEEP_RESULTS_PER_QUERY,
   DEEPER_SOURCE_LIMIT,
   everySearchFailed,
@@ -19,6 +21,7 @@ import {
   SEARCH_CONCURRENCY,
   type RunContext,
   type RunState,
+  userMessage,
 } from "./context";
 import { plural } from "../../utils";
 import { retrieveSources, type RetrievalLimits } from "./retrieval";
@@ -181,7 +184,7 @@ export async function runResearch(ctx: RunContext, state: RunState, budget: Rese
   if (isFakeProviders()) {
     const fixtureQueries =
       budget.steps === 1
-        ? [prepared.question]
+        ? [prepared.question || "fixture image question"]
         : ["fixture deeper overview", "fixture deeper developments", "fixture deeper limitations"];
     await retrieveSources(ctx, state, fixtureQueries, budget);
     return;
@@ -229,7 +232,8 @@ export async function runResearch(ctx: RunContext, state: RunState, budget: Rese
   });
   let result;
   try {
-    result = await agent.generate({ prompt: researchRequest(prepared.question, prepared.history), abortSignal: signal });
+    const request = researchRequest(askedQuestion(prepared), prepared.history, prepared.imageIds);
+    result = await agent.generate({ prompt: [userMessage(request, imageParts(prepared))], abortSignal: signal });
   } catch (error) {
     throw modelError(prepared.llm.provider, error, signal);
   }

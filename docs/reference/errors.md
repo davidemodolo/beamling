@@ -23,6 +23,7 @@ Error codes are stable strings. The UI maps each to a title, message and action.
 | `CREDENTIAL_UNREADABLE` | Stored key cannot be decrypted | 400 |
 | `INSUFFICIENT_CREDITS` | Provider `402`; DeepSeek key without balance at validation | 402 |
 | `MODEL_NOT_FOUND` | Model provider `404` | 400 |
+| `MODEL_NO_VISION` | Images sent to a model without `vision` | 400 |
 | `MODEL_PRIVACY_SETTING` | OpenRouter `404` naming the data policy (free models blocked) | 400 |
 | `FREE_LIMIT_REACHED` | OpenRouter `429` `free-models-per-day` | 429 |
 | `BRAVE_PLAN_MISSING_SEARCH` | Brave key without the Search plan | 400 |
@@ -57,7 +58,7 @@ Error codes are stable strings. The UI maps each to a title, message and action.
 
 UI actions (`describeAnswerError` in `lib/api.ts`):
 
-- **Settings**: `CREDENTIAL_MISSING`, `CREDENTIAL_INVALID`, `CREDENTIAL_UNREADABLE`, `BRAVE_PLAN_MISSING_SEARCH`, `SEARCH_PLAN_MISSING`, `MODEL_NOT_FOUND`, `MODEL_PRIVACY_SETTING`, `FREE_LIMIT_REACHED`.
+- **Settings**: `CREDENTIAL_MISSING`, `CREDENTIAL_INVALID`, `CREDENTIAL_UNREADABLE`, `BRAVE_PLAN_MISSING_SEARCH`, `SEARCH_PLAN_MISSING`, `MODEL_NOT_FOUND`, `MODEL_NO_VISION`, `MODEL_PRIVACY_SETTING`, `FREE_LIMIT_REACHED`.
 - **Reload** (leads to sign-in): `UNAUTHENTICATED`.
 - **`/welcome`**: `TERMS_REQUIRED`.
 - **See limits** (`/limits`, no retry): `SERVICE_FULL`, `STORAGE_FULL`, `CONVERSATION_FULL`.

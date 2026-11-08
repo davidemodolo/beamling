@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
+import type { Attachment, ImageUpload } from "../../attachments";
 import type { BravePlan, CredentialProvider } from "../../contracts";
 import { providerName, PROVIDERS, type ModelInfo } from "../../provider-catalog";
 import type { Message, Mode, SearchProvider, SearchTrace, Source, Usage } from "../../types";
 import { ApiError } from "../http";
-import type { Prompt } from "../prompts";
+import { promptQuestion, type Prompt, type VisibleImages } from "../prompts";
 import { search } from "../providers";
-import type { ChatMessage, ChatResult } from "../providers/llm";
+import type { ChatMessage, ChatPart, ChatResult } from "../providers/llm";
 import { rankSources } from "../ranking";
 import { recordCredentialUsage } from "../repo";
 
@@ -28,7 +29,17 @@ export interface PreparedChat {
   conversationId: string;
   messageId: string;
   userMessageId: string;
+  /** The question as typed; empty when it is only images. */
   question: string;
+  /** The question's images, as stored (id and type). */
+  attachments: Attachment[];
+  /**
+   * Image bytes the model will see: the question's and those of earlier questions in the history
+   * window that the browser still has. Empty when the model does not read images.
+   */
+  images: ImageUpload[];
+  /** Ids of `images`, for prompts that say whether an image is included. */
+  imageIds: VisibleImages;
   mode: Mode;
   llm: ModelInfo;
   llmKey: string;
@@ -104,11 +115,36 @@ export function finalUsage(state: RunState, startedAt: number, searchProvider: S
   };
 }
 
-export function promptMessages(prompt: Prompt): ChatMessage[] {
-  return [
-    { role: "system", content: prompt.system },
-    { role: "user", content: prompt.user },
-  ];
+/** A user message; images go before the text. */
+export function userMessage(text: string, images: ChatPart[] = []) {
+  return { role: "user" as const, content: images.length ? [...images, { type: "text" as const, text }] : text };
+}
+
+/** The prompt as messages. */
+export function promptMessages(prompt: Prompt, images: ChatPart[] = []): ChatMessage[] {
+  return [{ role: "system", content: prompt.system }, userMessage(prompt.user, images)];
+}
+
+/** The question as prompts state it: what was typed, with a marker per attached image. */
+export function askedQuestion(prepared: PreparedChat): string {
+  return promptQuestion(prepared.question, prepared.attachments, prepared.imageIds);
+}
+
+/**
+ * The images as message parts, labelled: the question's first, then earlier ones from the history
+ * window. Empty when there are none or the model does not read images.
+ */
+export function imageParts(prepared: PreparedChat): ChatPart[] {
+  const position = new Map(prepared.attachments.map((item, index) => [item.id, index + 1]));
+  const part = (image: ImageUpload): ChatPart => ({ type: "image", image: image.data, mediaType: image.mediaType });
+  const current = prepared.images.filter((image) => position.has(image.id));
+  const earlier = prepared.images.filter((image) => !position.has(image.id));
+  const parts: ChatPart[] = current.flatMap((image): ChatPart[] => [
+    { type: "text", text: `Image ${position.get(image.id)} of the question:` },
+    part(image),
+  ]);
+  if (earlier.length) parts.push({ type: "text", text: "Images from earlier in the conversation:" }, ...earlier.map(part));
+  return parts;
 }
 
 export function normalizeQuery(query: string): string {

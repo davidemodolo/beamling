@@ -921,3 +921,52 @@
 @media (prefers-reduced-motion: reduce) {
   .sidebar-skeleton span { animation: none; }
 }
+
+/* ---------- selecting chats ---------- */
+
+.history-select-toggle {
+  margin-top: 6px;
+  width: 100%;
+  justify-content: flex-start;
+  color: var(--muted);
+}
+.history-select-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.history-select-all {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.history-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.history-check span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.history-check input,
+.history-select-all input {
+  flex: none;
+  accent-color: var(--beam);
+}
+.history-item.is-selected {
+  background: var(--active);
+  color: var(--text);
+}
+.history-actions[hidden] {
+  display: none !important;
+}

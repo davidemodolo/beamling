@@ -1,7 +1,7 @@
 import { ApiError } from "../http";
 import type { CredentialProvider, SearchProvider } from "../../contracts";
 import { providerName } from "../../provider-catalog";
-import type { ChatMessage, ChatPurpose, ChatResult } from "./llm";
+import { messageText, type ChatMessage, type ChatPurpose, type ChatResult } from "./llm";
 import type { RetrievedSource } from "./shared";
 
 // Fixture switches for tests: put the marker in the question.
@@ -88,7 +88,8 @@ export async function fakeChat(options: {
 }): Promise<ChatResult> {
   await sleep(20);
   aborted(options.signal);
-  const question = options.messages.find((message) => message.role === "user")?.content ?? "";
+  const user = options.messages.find((message) => message.role === "user");
+  const question = user ? messageText(user) : "";
 
   if (options.purpose === "plan") {
     const isRepair = options.messages.some((message) => message.role === "assistant");
@@ -113,7 +114,9 @@ export async function fakeChat(options: {
     options.onReasoning?.(`${word} `);
     await sleep(4);
   }
+  const images = typeof user?.content === "string" ? 0 : (user?.content.filter((part) => part.type === "image").length ?? 0);
   const content =
+    (images ? `The model saw ${images === 1 ? "1 image" : `${images} images`}. ` : "") +
     "This is a fixture answer for local testing. It demonstrates the streaming pipeline, source numbering and citations [1]. The second source adds a recent development [2], while the third records a limitation [3].\n\n| Source | Finding |\n| --- | --- |\n| Overview | Fixture baseline |\n| Recent | Newer detail |";
   for (const word of content.split(" ")) {
     aborted(options.signal);

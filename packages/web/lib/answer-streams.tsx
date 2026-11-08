@@ -1,7 +1,11 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import type { Attachment } from "./attachments";
 import { streamAnswer, type StreamError, type StreamHandle } from "./api";
+import { chatImages, historyImageIds } from "./chat-images";
+import { IMAGE_QUESTION_TITLE } from "./data";
+import type { PreparedImage } from "./images";
 import { useAccount, useConversations, withoutKey, type ThreadMessage } from "./store";
 import type { ChatStage, DoneEvent, Mode, SearchProvider, SearchTrace, Source } from "./types";
 import { createId } from "./utils";
@@ -18,14 +22,20 @@ export const STAGE_LABEL: Record<ChatStage, string> = {
   error: "The provider returned an error",
 };
 
+/** A new question: its text (empty when it is only images) and its images. */
+export interface Ask {
+  text: string;
+  attachments: Attachment[];
+}
+
 /** An answer being streamed into a conversation. */
 export interface LiveAnswer {
   conversationId: string;
   /** Stored ids, known once the server sends "meta". */
   messageId: string | null;
   userMessageId: string | null;
-  /** A new question, shown in the thread while it is answered. */
-  question?: string;
+  /** A new question, shown in the thread while it is answered; absent for a retry. */
+  ask?: Ask;
   /** The failed or stopped answer this run replaces. */
   replaces?: string;
   mode: Mode;
@@ -44,7 +54,10 @@ export interface StartAnswer {
   conversationId: string;
   mode: Mode;
   searchProvider?: SearchProvider;
-  question?: string;
+  /** A new question; absent when retrying a stored answer, whose question the server reuses. */
+  ask?: Ask;
+  /** Images just picked for `ask`, to keep on this device for follow-ups. */
+  picked?: PreparedImage[];
   retryOf?: string;
 }
 
@@ -96,10 +109,11 @@ export function AnswerStreamsProvider({ children }: { children: ReactNode }) {
 
   const start = useCallback(
     (input: StartAnswer): boolean => {
-      const { conversationId, mode } = input;
+      const { conversationId, mode, ask } = input;
       const searchProvider = input.searchProvider ?? latest.current.settings.defaultSearchProvider;
       if (!alive.current || handles.current.has(conversationId)) return false;
       const llmModel = latest.current.settings.llmModel;
+      const attachments = ask?.attachments.length ? ask.attachments : undefined;
 
       const patch = (update: (answer: LiveAnswer) => LiveAnswer) =>
         setLive((current) => (current[conversationId] ? { ...current, [conversationId]: update(current[conversationId]) } : current));
@@ -149,7 +163,7 @@ export function AnswerStreamsProvider({ children }: { children: ReactNode }) {
           conversationId,
           messageId: null,
           userMessageId: null,
-          question: input.question,
+          ask,
           replaces: input.retryOf,
           mode,
           searchProvider,
@@ -165,7 +179,7 @@ export function AnswerStreamsProvider({ children }: { children: ReactNode }) {
       }));
       announce(`Beamling is ${STAGE_LABEL.queued.toLowerCase()}.`);
 
-      if (input.question) titleFromFirstQuestion(conversationId, input.question);
+      if (ask) titleFromFirstQuestion(conversationId, ask.text || IMAGE_QUESTION_TITLE);
       // An earlier question that never reached the server would otherwise end up below this answer.
       dropFailedMessages(conversationId);
 
@@ -184,9 +198,9 @@ export function AnswerStreamsProvider({ children }: { children: ReactNode }) {
           if (uncertain) {
             const stored = await loadThread(conversationId).catch(() => null);
             const asked = stored?.messages.some(
-              (message) => !knownIds.has(message.id) && message.role === "user" && message.content === input.question,
+              (message) => !knownIds.has(message.id) && message.role === "user" && message.content === ask?.text,
             );
-            if (stored && (asked || !input.question)) {
+            if (stored && (asked || !ask)) {
               removeLive();
               return;
             }
@@ -205,8 +219,8 @@ export function AnswerStreamsProvider({ children }: { children: ReactNode }) {
           }
           // Nothing was stored: keep the question and the error locally, so the user can retry.
           const local: ThreadMessage[] = [];
-          if (input.question) {
-            local.push({ id: createId("local"), role: "user", content: input.question, status: "complete", createdAt: now, local: "failed" });
+          if (ask) {
+            local.push({ id: createId("local"), role: "user", content: ask.text, attachments, status: "complete", createdAt: now, local: "failed" });
           }
           if (error) {
             local.push({
@@ -238,8 +252,8 @@ export function AnswerStreamsProvider({ children }: { children: ReactNode }) {
             // Keep what was streamed on screen until the conversation can be loaded again.
             const status = stage === "stopped" ? "stopped" : error ? "error" : "complete";
             const provisional: ThreadMessage[] = [];
-            if (input.question && userMessageId) {
-              provisional.push({ id: userMessageId, role: "user", content: input.question, status: "complete", createdAt: now, local: "provisional" });
+            if (ask && userMessageId) {
+              provisional.push({ id: userMessageId, role: "user", content: ask.text, attachments, status: "complete", createdAt: now, local: "provisional" });
             }
             provisional.push({
               id: messageId,
@@ -265,8 +279,12 @@ export function AnswerStreamsProvider({ children }: { children: ReactNode }) {
         removeLive();
       };
 
+      const contextIds = historyImageIds(latest.current.threads[conversationId]?.messages ?? [], input.retryOf);
+      const request = { conversationId, mode, searchProvider, question: ask?.text, retryOf: input.retryOf };
       const handle = streamAnswer(
-        { conversationId, mode, searchProvider, question: input.question, retryOf: input.retryOf },
+        attachments || contextIds.length
+          ? chatImages(conversationId, ask?.attachments ?? [], input.picked ?? [], contextIds).then((uploads) => ({ ...request, ...uploads }))
+          : request,
         {
           onMeta: (meta) => {
             messageId = meta.messageId;

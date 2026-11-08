@@ -102,3 +102,123 @@
   color: var(--text);
   border-color: var(--line-strong);
 }
+
+/* ---------- attached images ---------- */
+
+.composer.dragging {
+  border-color: var(--beam);
+  border-style: dashed;
+}
+.attach {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+}
+.attach:hover:not(:disabled) {
+  background: var(--raised);
+  color: var(--text);
+}
+.attach:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.composer-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 14px 0;
+  list-style: none;
+}
+.composer-image {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--raised);
+  color: var(--muted);
+}
+.composer-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 9px;
+}
+.composer-image button {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--text);
+}
+.composer-note {
+  margin: 0;
+  padding: 8px 14px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.composer-warning {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 14px 0;
+  color: var(--warning);
+  font-size: 12.5px;
+}
+.composer-warning-action {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--beam);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* ---------- images on a question ---------- */
+
+.message-images {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: 82%;
+}
+.message-image {
+  display: grid;
+  place-items: center;
+  width: 120px;
+  height: 120px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--raised);
+  color: var(--muted);
+  overflow: hidden;
+}
+.message-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.message-image-missing {
+  width: 56px;
+  height: 56px;
+  cursor: help;
+}

@@ -1,6 +1,7 @@
 "use client";
 
 import { createParser } from "eventsource-parser";
+import type { ImageUpload } from "./attachments";
 import type { ChatStage, DoneEvent, Mode, SearchProvider, SearchTrace, Source, Usage } from "./types";
 import { parseStreamEvent, type StreamError, type StreamMeta } from "./stream-events";
 
@@ -73,6 +74,8 @@ export function describeAnswerError(code: string | undefined, message?: string):
       return retry("Search limit reached", "The selected search provider has reached its plan limit.");
     case "MODEL_NOT_FOUND":
       return settings("Model unavailable", "The provider does not offer this model right now. Pick another in Settings.");
+    case "MODEL_NO_VISION":
+      return settings("Model cannot read images", "Pick a model that reads images in Settings, or remove the images.");
     case "MODEL_PRIVACY_SETTING":
       return settings("Free models blocked", "Allow free models in OpenRouter's privacy settings, or pick a paid model.");
     case "FREE_LIMIT_REACHED":
@@ -197,10 +200,15 @@ export interface StreamInput {
   mode: Mode;
   searchProvider?: SearchProvider;
   question?: string;
+  /** The new question's images. */
+  attachments?: ImageUpload[];
+  /** Earlier images still on this device, for questions in the history window. */
+  context?: ImageUpload[];
   retryOf?: string;
 }
 
-export function streamAnswer(input: StreamInput, events: StreamEvents): StreamHandle {
+/** `input` can still be loading (images are read from the device); the request starts once it is ready. */
+export function streamAnswer(input: StreamInput | Promise<StreamInput>, events: StreamEvents): StreamHandle {
   const controller = new AbortController();
   // Set once a terminal event (done, error, or the server's "stopped" stage) has been delivered.
   let settled = false;
@@ -221,7 +229,7 @@ export function streamAnswer(input: StreamInput, events: StreamEvents): StreamHa
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
+        body: JSON.stringify(await input),
         signal: controller.signal,
         cache: "no-store",
       });

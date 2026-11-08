@@ -43,8 +43,13 @@ test("cross-origin mutations are rejected", async ({ request }) => {
 
 test("oversized and malformed bodies are refused before they reach the database", async ({ request }) => {
   await connectKeys(request);
-  const big = await request.post("/api/chat", { data: { question: "x".repeat(70_000), mode: "quick" } });
+  // The chat route allows image-sized bodies, but not more, and still caps the question.
+  const big = await request.post("/api/chat", { data: { question: "x".repeat(18_000_000), mode: "quick" } });
   expect(big.status()).toBe(413);
+  const long = await request.post("/api/chat", { data: { question: "x".repeat(70_000), mode: "quick" } });
+  expect(long.status()).toBe(400);
+  const bigSettings = await request.patch("/api/settings", { data: { defaultMode: "x".repeat(70_000) } });
+  expect(bigSettings.status()).toBe(413);
   const nul = await request.post("/api/chat", { data: { question: "\u0000\u0000", mode: "quick" } });
   expect(nul.status()).toBe(400);
   expect((await nul.json()).error.code).toBe("INVALID_INPUT");
@@ -68,7 +73,7 @@ test("authenticated responses are private and pages carry a nonce-based CSP", as
   expect(csp).not.toContain("script-src 'self' 'unsafe-inline'");
   expect(csp).toContain("'strict-dynamic'");
   const html = await page.text();
-  const scripts = html.match(/<script\b[^>]*>/g) ?? [];
+  const scripts = html.match(/<script\b[^>]*>/gi) ?? [];
   expect(scripts.length).toBeGreaterThan(0);
   for (const tag of scripts) expect(tag).toContain(`nonce="${nonce}"`);
   expect(page.headers()["x-frame-options"]).toBe("DENY");

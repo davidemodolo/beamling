@@ -13,6 +13,7 @@ export {
   countConversations,
   createConversation,
   deleteConversation,
+  deleteConversations,
   deleteConversationIfEmpty,
   deleteExpiredConversations,
   getConversation,

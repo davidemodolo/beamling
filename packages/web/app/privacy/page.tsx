@@ -53,7 +53,9 @@ export default function PrivacyPage() {
         </li>
         <li>
           <strong>Content:</strong> conversations, messages and retrieved sources, encrypted at rest with a key specific to
-          your workspace. Used to provide the answer service. Legal basis: contract.
+          your workspace. Images you attach are not stored on the server, only the fact that a message had them. The
+          images stay in your browser for 7 days, or until you delete the chat or sign out, so follow-up questions can
+          use them. Used to provide the answer service. Legal basis: contract.
         </li>
         <li>
           <strong>Credentials:</strong> your provider keys, encrypted with a managed key-management service, a keyed
@@ -89,7 +91,7 @@ export default function PrivacyPage() {
 
       <h2>Your keys and provider traffic</h2>
       <p>
-        When you ask a question, Beamling sends it, with the search query, retrieved snippets and your key, to the providers
+        When you ask a question, Beamling sends it, with any images you attach, the search query, retrieved snippets and your key, to the providers
         you chose: OpenRouter or DeepSeek for the model (OpenRouter may route the request to an upstream model provider),
         and Brave, Tavily, Exa or DeepSeek for search. These requests run under your own account with those providers, at
         your instruction, and those providers process the data under their own terms and privacy policies, linked on the{" "}

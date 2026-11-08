@@ -8,9 +8,9 @@ import { useAccount, useConversations } from "@/lib/store";
 import type { ConversationSummary } from "@/lib/types";
 import { dayGroup } from "@/lib/utils";
 import { versionLabel } from "@/lib/version";
+import { DeleteChatsDialog, SelectBar, useChatSelection } from "./history-selection";
 import { useSidebar } from "./sidebar-context";
 import { Icon } from "./ui/icon";
-import { Modal } from "./ui/modal";
 import { Wordmark } from "./wordmark";
 
 interface SidebarProps {
@@ -20,11 +20,13 @@ interface SidebarProps {
 
 function SidebarContent({ mobile, onNavigate }: SidebarProps) {
   const { user, signOut, ready, error, refresh } = useAccount();
-  const { conversations, conversationCount, hasMoreConversations, loadMoreConversations, deleteConversation, setConversationPinned } = useConversations();
+  const { conversations, conversationCount, hasMoreConversations, loadMoreConversations, deleteConversations, setConversationPinned } = useConversations();
   const { openSettings } = useSidebar();
   const pathname = usePathname();
   const router = useRouter();
-  const [deleting, setDeleting] = useState<ConversationSummary | null>(null);
+  // Conversations waiting for delete confirmation: one from its row, or the selection.
+  const [deleting, setDeleting] = useState<ConversationSummary[] | null>(null);
+  const [deleteFailed, setDeleteFailed] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreFailed, setLoadMoreFailed] = useState(false);
   const [search, setSearch] = useState("");
@@ -70,6 +72,27 @@ function SidebarContent({ mobile, onNavigate }: SidebarProps) {
   }, [conversations, term]);
 
   const close = () => onNavigate?.();
+  const visible = useMemo(() => groups.flatMap((group) => group.items), [groups]);
+  const selection = useChatSelection(visible);
+
+  const askDelete = (chats: ConversationSummary[]) => {
+    setDeleteFailed(false);
+    setDeleting(chats);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleting) return;
+    const ids = deleting.map((conversation) => conversation.id);
+    const wasActive = !!activeId && ids.includes(activeId);
+    setDeleting(null);
+    selection.stop();
+    if (wasActive) router.push("/");
+    try {
+      await deleteConversations(ids);
+    } catch {
+      setDeleteFailed(true);
+    }
+  };
 
   return (
     <>
@@ -107,6 +130,18 @@ function SidebarContent({ mobile, onNavigate }: SidebarProps) {
             </button>
           ) : null}
         </div>
+        {selection.active ? (
+          <SelectBar selection={selection} onDelete={askDelete} />
+        ) : conversations.length ? (
+          <button type="button" className="btn btn-ghost btn-sm history-select-toggle" onClick={selection.start}>
+            <Icon name="check-circle" size={13} /> Select chats
+          </button>
+        ) : null}
+        {deleteFailed ? (
+          <p className="sidebar-search-note" role="alert">
+            Could not delete those chats. Try again.
+          </p>
+        ) : null}
         {term && hasMoreConversations ? (
           <p className="sidebar-search-note">Searching loaded chats. Load older chats to widen the search.</p>
         ) : null}
@@ -134,18 +169,27 @@ function SidebarContent({ mobile, onNavigate }: SidebarProps) {
               {group.items.map((conversation) => (
                 <div
                   key={conversation.id}
-                  className={`history-item${conversation.pinned ? " is-pinned" : ""}`}
+                  className={`history-item${conversation.pinned ? " is-pinned" : ""}${selection.isChosen(conversation.id) ? " is-selected" : ""}`}
                   aria-current={activeId === conversation.id ? "page" : undefined}
                 >
-                  {conversation.pinned ? (
-                    <span className="history-pin-mark" title="Pinned" aria-hidden="true">
-                      <Icon name="pin" size={11} />
-                    </span>
-                  ) : null}
-                  <Link href={`/chat/${conversation.id}`} className="history-title" onClick={close}>
-                    {conversation.title}
-                  </Link>
-                  <div className="history-actions">
+                  {selection.active ? (
+                    <label className="history-title history-check">
+                      <input type="checkbox" checked={selection.isChosen(conversation.id)} onChange={() => selection.toggle(conversation.id)} />
+                      <span>{conversation.title}</span>
+                    </label>
+                  ) : (
+                    <>
+                      {conversation.pinned ? (
+                        <span className="history-pin-mark" title="Pinned" aria-hidden="true">
+                          <Icon name="pin" size={11} />
+                        </span>
+                      ) : null}
+                      <Link href={`/chat/${conversation.id}`} className="history-title" onClick={close}>
+                        {conversation.title}
+                      </Link>
+                    </>
+                  )}
+                  <div className="history-actions" hidden={selection.active}>
                     <button
                       type="button"
                       aria-label={`${conversation.pinned ? "Unpin" : "Pin"} ${conversation.title}`}
@@ -157,7 +201,7 @@ function SidebarContent({ mobile, onNavigate }: SidebarProps) {
                     <button
                       type="button"
                       aria-label={`Delete ${conversation.title}`}
-                      onClick={() => setDeleting(conversation)}
+                      onClick={() => askDelete([conversation])}
                     >
                       <Icon name="trash" size={12} />
                     </button>
@@ -229,36 +273,14 @@ function SidebarContent({ mobile, onNavigate }: SidebarProps) {
         <div className="sidebar-version">{versionLabel()}</div>
       </div>
 
-      <Modal
-        open={!!deleting}
+      <DeleteChatsDialog
+        chats={deleting}
         onClose={() => setDeleting(null)}
-        title="Delete conversation"
-        footer={
-          <>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setDeleting(null)}>
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="btn btn-danger btn-sm"
-              onClick={() => {
-                if (!deleting) return;
-                const wasActive = activeId === deleting.id;
-                deleteConversation(deleting.id);
-                setDeleting(null);
-                close();
-                if (wasActive) router.push("/");
-              }}
-            >
-              <Icon name="trash" size={13} /> Delete
-            </button>
-          </>
-        }
-      >
-        <p style={{ fontSize: 13.5, color: "var(--muted)" }}>
-          “{deleting?.title}” and all of its messages and sources will be deleted. This cannot be undone.
-        </p>
-      </Modal>
+        onConfirm={() => {
+          close();
+          void confirmDelete();
+        }}
+      />
     </>
   );
 }

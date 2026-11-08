@@ -3,11 +3,13 @@
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { SecretKeyInput } from "@/components/secret-key-input";
+import { DeleteAccount } from "@/components/settings/delete-account";
 import { KeyLimitFields, ValidateNowField } from "@/components/settings/key-fields";
 import { Icon } from "@/components/ui/icon";
 import { Wordmark } from "@/components/wordmark";
 import { WorkspaceError } from "@/components/workspace-error";
 import { errorMessage } from "@/lib/api";
+import { useToast } from "@/lib/hooks/use-toast";
 import { isSearchProvider } from "@/lib/contracts";
 import { credentialInput, EMPTY_LIMITS, type CredentialLimitDraft } from "@/lib/credential-form";
 import {
@@ -99,7 +101,8 @@ function StepHeader({ index, title, lead }: { index: 1 | 2; title: string; lead:
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const { addCredential, credentials, ready, settings, updateSettings, error, user } = useAccount();
+  const { addCredential, credentials, ready, settings, updateSettings, error, user, signOut } = useAccount();
+  const [toast, showToast] = useToast();
   const keyed = usableProviders(credentials);
   const hasModelKey = MODEL_GROUPS.some(({ provider }) => keyed.has(provider.id));
 
@@ -207,6 +210,9 @@ export default function OnboardingPage() {
     <div className="onboard-shell">
       <header className="onboard-top">
         <Wordmark href="/" />
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => void signOut()}>
+          Sign out
+        </button>
       </header>
 
       <main className="onboard-main">
@@ -395,7 +401,14 @@ export default function OnboardingPage() {
             </div>
           </form>
         )}
+        {user ? (
+          <details className="onboard-more onboard-leave">
+            <summary>Not continuing? Delete your account</summary>
+            <DeleteAccount onError={showToast} />
+          </details>
+        ) : null}
       </main>
+      {toast}
     </div>
   );
 }

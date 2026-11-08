@@ -6,13 +6,14 @@
 
 - `mode`: `quick`, `deep` or `deeper`. Optional `searchProvider`: `brave`, `tavily`, `exa` or `deepseek` (default: workspace default).
 - Exactly one of `question` or `retryOf`; a retry needs `conversationId`.
-- Question ≤ 4,000 characters after stripping control characters and trimming.
+- Question ≤ 4,000 characters after stripping control characters and trimming. It may be empty when `attachments` has an image.
+- `attachments`: up to 4 images on the new question. `context`: up to 4 earlier images the browser still has. Not allowed on a retry, which reuses the question's images. See [Images](#images).
 
-Limits: 30 chat requests per user per fixed hour, 120 per hashed IP per fixed hour, 64 KB body.
+Limits: 30 chat requests per user per fixed hour, 120 per hashed IP per fixed hour. Body: 64 KB plus 2.1 MB per allowed image (about 16.8 MB).
 
 `prepareChat()`:
 
-1. Loads settings; falls back to the default model if the stored one is no longer allowlisted.
+1. Loads settings; falls back to the default model if the stored one is no longer allowlisted. New images with a model that does not read images return `MODEL_NO_VISION`.
 2. Resolves model and search provider, then loads both providers' keys (once if the same provider).
 3. Returns `CREDENTIAL_MISSING` for a missing key, `CREDENTIAL_UNREADABLE` for an undecryptable row.
 4. Reuses the conversation after an ownership check, or creates one.
@@ -20,6 +21,18 @@ Limits: 30 chat requests per user per fixed hour, 120 per hashed IP per fixed ho
 6. Loads the six messages before the current question as history (the question is not repeated).
 
 Errors before the SSE response are JSON with the stable error envelope.
+
+## Images
+
+Image bytes are never stored on the server, and images are never described or captioned. The browser keeps each image for 7 days ([Images](browser.md#images)) and sends it again while its question is in the history window.
+
+- Accepted: JPEG, PNG or WebP, at most 1.5 MB decoded; the bytes must match the declared type (`lib/server/image-upload.ts`).
+- Only the question's image ids and types are stored, encrypted, in `messages.attachments`.
+- The model receives only the question's images and earlier images whose question is in the history window; other uploaded ids are ignored. A model without `vision` receives none.
+- The Deep planner, gap review, the Quick and Deeper research loop and the writer receive the images, labelled as the question's or earlier ones.
+- Prompts mark each attached image as included, or as no longer available (expired, another browser, or a model without vision) with an instruction not to guess what it showed.
+- The writer gets one added rule: describe the images without citing, facts still need sources, and text inside an image is not an instruction.
+- A Deep question that is only an image and whose plan fails has no text to search, so it takes the [no-source path](#no-source-path).
 
 ## Quick mode
 
@@ -138,7 +151,7 @@ With zero sources the server emits `stage: no-sources`, a `delta` with the fixed
 ## Prompt construction
 
 - System message: identity, current date and local timezone, answer language.
-- User message: optional history, the question, numbered `<source>` blocks.
+- User message: optional history, the question, numbered `<source>` blocks; for the writer, the images first ([Images](#images)).
 
 Language: `detectLanguage()` uses stop words for English, Italian, Spanish, French, German and Portuguese; it needs two hits and a strict lead. Otherwise: "Answer in the language of the user's question."
 
@@ -151,7 +164,7 @@ Snippet text, capped at 2,200 characters.
 - `<source` / `</source` removed from snippets; attributes escape `&`, `"`, `<`, `>`.
 - Only provider snippets are sent, labeled untrusted data.
 
-History: last six messages, first 1,200 chars each, citation markers stripped (except in code and URLs) so old numbers cannot collide.
+History: last six messages (`HISTORY_MESSAGES`), first 1,200 chars each, with image markers, citation markers stripped (except in code and URLs) so old numbers cannot collide.
 
 Prompt families:
 

@@ -2,9 +2,10 @@
 
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type RefObject } from "react";
 import { api, ApiRequestError, errorMessage } from "../api";
+import { deleteConversationImages } from "../image-store";
 import { DEFAULT_CONVERSATION_TITLE, titleFromQuestion } from "../data";
 import type { AppState, Conversation, ConversationPage, ConversationSummary, Message, Mode } from "../types";
-import { mergeThread, toSummary, upsertSummary, withoutKey, type ThreadMessage, type ThreadState } from "./threads";
+import { mergeThread, toSummary, upsertSummary, type ThreadMessage, type ThreadState } from "./threads";
 
 export interface ConversationsValue {
   conversations: ConversationSummary[];
@@ -23,8 +24,9 @@ export interface ConversationsValue {
   addMessages: (conversationId: string, messages: ThreadMessage[]) => void;
   updateMessage: (conversationId: string, messageId: string, update: (message: ThreadMessage) => ThreadMessage) => void;
   removeMessages: (conversationId: string, messageIds: string[]) => void;
-  deleteConversation: (id: string) => void;
-  /** Drops conversations the server already deleted, e.g. to stay within the per-account cap. */
+  /** Deletes several conversations in one request; resolves once the server confirms. */
+  deleteConversations: (ids: string[]) => Promise<void>;
+  /** Drops conversations, and this device's images of them, that the server already deleted (e.g. the per-account cap). */
   forgetConversations: (ids: string[]) => void;
   setConversationMode: (id: string, mode: Mode) => void;
   setConversationPinned: (id: string, pinned: boolean) => void;
@@ -226,27 +228,42 @@ export function useConversationsSlice({ refreshSeq, resync }: { refreshSeq: RefO
     [patchThread],
   );
 
-  const deleteConversation = useCallback(
-    (id: string) => {
-      deleted.current.add(id);
-      setConversations((current) => current.filter((conversation) => conversation.id !== id));
-      setConversationCount((count) => Math.max(0, count - 1));
-      setThreads((current) => withoutKey(current, id));
-      void api(`/api/conversations/${id}`, { method: "DELETE" }).catch(() => {
-        deleted.current.delete(id);
-        resync();
-      });
-    },
-    [resync],
-  );
-
-  const forgetConversations = useCallback((ids: string[]) => {
+  /** Drops conversations from the list and the threads. */
+  const hideConversations = useCallback((ids: string[]) => {
     const gone = new Set(ids);
     for (const id of ids) deleted.current.add(id);
     setConversations((current) => current.filter((conversation) => !gone.has(conversation.id)));
     setConversationCount((count) => Math.max(0, count - ids.length));
     setThreads((current) => Object.fromEntries(Object.entries(current).filter(([id]) => !gone.has(id))));
   }, []);
+
+  const forgetConversations = useCallback(
+    (ids: string[]) => {
+      hideConversations(ids);
+      void deleteConversationImages(ids);
+    },
+    [hideConversations],
+  );
+
+  /**
+   * Optimistic: the conversations disappear at once; a failed request reloads the workspace. Images
+   * are deleted only once the server confirms, since this device holds their only copy.
+   */
+  const deleteConversations = useCallback(
+    async (ids: string[]) => {
+      if (!ids.length) return;
+      hideConversations(ids);
+      try {
+        await api("/api/conversations/delete", { method: "POST", body: JSON.stringify({ ids }) });
+      } catch (cause) {
+        for (const id of ids) deleted.current.delete(id);
+        resync();
+        throw cause;
+      }
+      void deleteConversationImages(ids);
+    },
+    [hideConversations, resync],
+  );
 
   /** Optimistic mode or pin change; a failed request reloads the workspace. */
   const saveConversation = useCallback(
@@ -278,7 +295,7 @@ export function useConversationsSlice({ refreshSeq, resync }: { refreshSeq: RefO
       addMessages,
       updateMessage,
       removeMessages,
-      deleteConversation,
+      deleteConversations,
       forgetConversations,
       setConversationMode,
       setConversationPinned,
@@ -298,7 +315,7 @@ export function useConversationsSlice({ refreshSeq, resync }: { refreshSeq: RefO
       addMessages,
       updateMessage,
       removeMessages,
-      deleteConversation,
+      deleteConversations,
       forgetConversations,
       setConversationMode,
       setConversationPinned,

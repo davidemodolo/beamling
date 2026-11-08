@@ -28,9 +28,10 @@ Errors use one envelope ([Error model](errors.md)):
 | `GET` | `/api/auth/callback/google` | OIDC transaction cookie | `code`, `state` | 307 to the stored return path (default `/`) |
 | `POST` | `/api/auth/logout` | Optional, terms not required | `?scope=all` signs out every session | `{ ok: true }` and cleared cookie |
 | `GET` | `/api/state` | Required | None | `{ user, conversations, nextCursor, conversationCount, credentials, settings }` |
-| `POST` | `/api/chat` | Required | `{ conversationId?, question?, retryOf?, mode, searchProvider? }` | SSE stream |
+| `POST` | `/api/chat` | Required | `{ conversationId?, question?, attachments?, context?, retryOf?, mode, searchProvider? }`; images are `{ id, mediaType, data }` (base64) | SSE stream |
 | `POST` | `/api/chat/stop` | Required | `{ messageId }` | `{ stopped: boolean }` |
 | `GET` | `/api/conversations` | Required | `?cursor=` | `{ conversations, nextCursor }` |
+| `POST` | `/api/conversations/delete` | Required | `{ ids: uuid[] }` (1–100) | `{ deleted: uuid[] }` |
 | `POST` | `/api/conversations` | Required | `{ mode?: "quick" \| "deep" \| "deeper" }` | `201 { conversation }`; the 100-conversation cap applies when its first question is stored ([Pagination and deletion](conversations.md#pagination-and-deletion)) |
 | `GET` | `/api/conversations/:id` | Required | UUID id | `{ conversation }` with newest 60 messages |
 | `GET` | `/api/conversations/:id/messages` | Required | `?before=<messageId>` | `{ messages, hasMore }` |
@@ -79,7 +80,7 @@ Provider keys, key ciphertext and session tokens are never included.
 | Login start | `LOGINS_PER_IP_PER_HOUR` per hashed IP, default 60/hour |
 | OIDC callback | `AUTH_CALLBACKS_PER_IP_PER_HOUR` per hashed IP, default 120/hour |
 | New accounts | `NEW_ACCOUNTS_PER_HOUR` per deployment, default 200/hour; `SIGNUPS_PER_IP_PER_HOUR` per hashed IP, default 10/hour |
-| Request body | 64 KB |
+| Request body | 64 KB; `/api/chat` with images up to about 16.8 MB ([Images](answer-pipeline.md#images)) |
 | Question | 4,000 characters after control-character cleanup |
 | Global active streams | `MAX_CONCURRENT_CHATS`, default 50; at most half (at least 1) in Deeper |
 | Active streams per account | `MAX_CONCURRENT_CHATS_PER_USER`, default 2 |

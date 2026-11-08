@@ -31,7 +31,8 @@ frame-ancestors 'none'
 
 ## Input and output
 
-- JSON bodies: 64 KB cap (streamed, plus `Content-Length` pre-check), Zod-validated.
+- JSON bodies: 64 KB cap (streamed, plus `Content-Length` pre-check), Zod-validated. `/api/chat` allows more for images, each checked for type, size and file signature.
+- Image bytes are never stored on the server; images live in the browser for 7 days ([Images](answer-pipeline.md#images)).
 - Route ids must be UUIDs; Drizzle parameterizes queries.
 - Control characters stripped from questions and stored text; NUL removed from provider output.
 - Markdown uses a custom React renderer; raw HTML is never parsed.
@@ -82,7 +83,7 @@ frame-ancestors 'none'
 
 ## Supply chain and release checks
 
-- CI on every push and PR: `pnpm audit --audit-level moderate`, Gitleaks history scan, `pnpm check:unused` (knip) and `pnpm check:dupes` (jscpd, 0% threshold, 8+ lines).
+- CI on every push and PR: `pnpm audit --audit-level low` (any advisory fails), Gitleaks history scan, `pnpm check:unused` (knip) and `pnpm check:dupes` (jscpd, 0% threshold, 8+ lines).
 - Actions pinned to commit SHAs; CI Postgres and runtime base images pinned to digests. `actions/checkout` uses `persist-credentials: false` in test and deploy jobs. Installs use `--ignore-scripts`.
 - Release records the GHCR digest; deploy uses it and checks `/api/health`.
 - Dependabot: npm, Actions and Docker, weekly. The image is scanned separately (Trivy: no known vulnerabilities).
@@ -94,6 +95,7 @@ frame-ancestors 'none'
 - Automatic deletion: [Cleanup](conversations.md#cleanup), the [100-conversation cap](conversations.md#pagination-and-deletion) and [Scheduled shutdown](conversations.md#scheduled-shutdown).
 - `GET /api/account/export` returns all stored data as JSON (GDPR Art. 15/20), without keys or session tokens.
 - No soft delete or recovery.
+- Images kept in the browser are deleted with their conversation, on sign-out and on account deletion ([Images](browser.md#images)).
 - PostHog erasure (when deletion is configured, independent of `ANALYTICS_ENABLED`):
   - An `analytics_erasures` row (HMAC distinct id only) commits with the account deletion.
   - First attempt in the request, then by cleanup; rows claimed with `FOR UPDATE SKIP LOCKED`, hidden 5 minutes.

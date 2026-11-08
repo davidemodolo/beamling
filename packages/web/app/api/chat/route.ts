@@ -3,7 +3,9 @@ import { MODES, SEARCH_PROVIDER_IDS } from "@/lib/contracts";
 import { ClientDisconnectError, watchChat } from "@/lib/server/active-chats";
 import { analytics } from "@/lib/server/analytics";
 import { prepareChat, publicError, runChat, TIMEOUT_MS, type ChatEmit } from "@/lib/server/answer-pipeline";
-import { cleanText, clientIpKey, json, parseBody } from "@/lib/server/http";
+import { MAX_CONTEXT_IMAGES, MAX_IMAGES_PER_QUESTION } from "@/lib/attachments";
+import { cleanText, clientIpKey, json, MAX_BODY_BYTES, parseBody } from "@/lib/server/http";
+import { imageUpload, MAX_BASE64_CHARS } from "@/lib/server/image-upload";
 import { MAX_QUESTION_CHARS, QUESTIONS_PER_DAY, QUESTIONS_PER_HOUR } from "@/lib/legal";
 import { acceptingNewStreams, consumeRateLimit, questionLimitKeys } from "@/lib/server/repo";
 import { apiRoute } from "@/lib/server/route";
@@ -22,21 +24,35 @@ const question = z
     z
       .string()
       .trim()
-      .min(1, "Ask a question first.")
       .max(MAX_QUESTION_CHARS, `Questions are limited to ${MAX_QUESTION_CHARS.toLocaleString("en")} characters.`),
   );
 
+const images = (max: number, message: string) => z.array(imageUpload).max(max, message).optional();
+
+// Images make the body larger than other routes allow; this is the most a valid request can carry
+// (each image's base64 plus room for its id and type).
+const CHAT_BODY_BYTES = MAX_BODY_BYTES + (MAX_IMAGES_PER_QUESTION + MAX_CONTEXT_IMAGES) * (MAX_BASE64_CHARS + 200);
+
 // A new question, or a retry of the latest failed or stopped answer (the server reuses its question).
+// `attachments` are the new question's images; `context` re-sends earlier images the browser still has.
 const schema = z
   .object({
     conversationId: z.string().uuid().optional(),
     question: question.optional(),
+    attachments: images(MAX_IMAGES_PER_QUESTION, `Attach at most ${MAX_IMAGES_PER_QUESTION} images.`),
+    context: images(MAX_CONTEXT_IMAGES, "Too many earlier images."),
     retryOf: z.string().uuid().optional(),
     mode: z.enum(MODES),
     searchProvider: z.enum(SEARCH_PROVIDER_IDS).optional(),
   })
   .refine((input) => (input.question === undefined) !== (input.retryOf === undefined), {
     message: "Send either a question or the answer to retry.",
+  })
+  .refine((input) => input.retryOf || input.question || input.attachments?.length, {
+    message: "Ask a question first.",
+  })
+  .refine((input) => !input.retryOf || !input.attachments?.length, {
+    message: "A retry reuses the question's images.",
   })
   .refine((input) => !input.retryOf || input.conversationId, {
     message: "A retry needs its conversation.",
@@ -62,7 +78,7 @@ export const POST = apiRoute(async ({ request, user }) => {
       { status: 503, headers: { "Retry-After": "60" } },
     );
   }
-  const input = await parseBody(request, schema);
+  const input = await parseBody(request, schema, CHAT_BODY_BYTES);
   const keys = questionLimitKeys(user.id);
   await consumeRateLimit(keys.hour, QUESTIONS_PER_HOUR, 3600);
   await consumeRateLimit(keys.day, QUESTIONS_PER_DAY, 86_400);
@@ -72,6 +88,7 @@ export const POST = apiRoute(async ({ request, user }) => {
     mode: prepared.mode,
     search_provider: prepared.searchProvider,
     llm_model: prepared.llm.id,
+    images: prepared.attachments.length,
   });
 
   const internal = new AbortController();

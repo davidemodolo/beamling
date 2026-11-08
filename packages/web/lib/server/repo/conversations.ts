@@ -240,12 +240,18 @@ export async function cleanupEmptyConversations(): Promise<void> {
   `);
 }
 
-export async function deleteConversation(userId: string, id: string): Promise<boolean> {
+/** Deletes the account's conversations among `ids` (messages and sources cascade); returns the deleted ids. */
+export async function deleteConversations(userId: string, ids: string[]): Promise<string[]> {
+  if (!ids.length) return [];
   const result = await db
     .delete(conversations)
-    .where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
+    .where(and(inArray(conversations.id, ids), eq(conversations.userId, userId)))
     .returning({ id: conversations.id });
-  return result.length > 0;
+  return result.map((row) => row.id);
+}
+
+export async function deleteConversation(userId: string, id: string): Promise<boolean> {
+  return (await deleteConversations(userId, [id])).length > 0;
 }
 
 // Messages whose sources are read in one query during export.

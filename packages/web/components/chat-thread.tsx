@@ -4,17 +4,20 @@ import Link from "next/link";
 import { useEffect, useRef } from "react";
 import type { BeamlingHandle } from "@beamling/mascot/react";
 import { STAGE_LABEL, type LiveAnswer } from "@/lib/answer-streams";
+import type { Attachment } from "@/lib/attachments";
 import type { ThreadMessage } from "@/lib/store";
 import type { ChatStage, Source } from "@/lib/types";
 import { AnswerCard, ReasoningDetails, SearchTraceDetails } from "./answer-card";
 import { Markdown } from "./markdown";
+import { MessageImages } from "./message-images";
 import { Mascot } from "./mascot";
 import { Icon } from "./ui/icon";
 
-export function UserBubble({ content }: { content: string }) {
+export function UserBubble({ content, attachments }: { content: string; attachments?: Attachment[] }) {
   return (
     <div className="message message-user">
-      <div className="bubble">{content}</div>
+      {attachments?.length ? <MessageImages attachments={attachments} /> : null}
+      {content ? <div className="bubble">{content}</div> : null}
     </div>
   );
 }
@@ -35,7 +38,7 @@ export function Thread({
 }) {
   return messages.map((message) =>
     message.role === "user" ? (
-      <UserBubble key={message.id} content={message.content} />
+      <UserBubble key={message.id} content={message.content} attachments={message.attachments} />
     ) : (
       <AnswerCard
         key={message.id}

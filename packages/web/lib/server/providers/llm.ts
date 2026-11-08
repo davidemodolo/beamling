@@ -1,4 +1,4 @@
-import { APICallError, streamText, type LanguageModel, type LanguageModelUsage, type ProviderMetadata } from "ai";
+import { APICallError, streamText, type LanguageModel, type LanguageModelUsage, type ModelMessage, type ProviderMetadata } from "ai";
 import type { LlmProvider } from "../../contracts";
 import { providerName } from "../../provider-catalog";
 import { ApiError } from "../http";
@@ -8,9 +8,17 @@ import { unavailable } from "./errors";
 /** Why a model call is made; fixture providers use it to pick their canned reply. */
 export type ChatPurpose = "plan" | "gap" | "answer";
 
-export interface ChatMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
+/** A user message part: text, or an image as base64 for models that read images. */
+export type ChatPart = { type: "text"; text: string } | { type: "image"; image: string; mediaType: string };
+
+export type ChatMessage =
+  | { role: "system" | "assistant"; content: string }
+  | { role: "user"; content: string | ChatPart[] };
+
+/** The text of a message, without its images. */
+export function messageText(message: ChatMessage): string {
+  if (typeof message.content === "string") return message.content;
+  return message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n");
 }
 
 interface ChatUsage {
@@ -102,6 +110,15 @@ export function modelError(provider: LlmProvider, error: unknown, signal?: Abort
   return unavailable(provider, `${providerName(provider)} could not be reached. Try again shortly.`);
 }
 
+/** The non-system messages, in the AI SDK's shape. */
+function conversation(messages: ChatMessage[]): ModelMessage[] {
+  return messages.flatMap((message): ModelMessage[] => {
+    if (message.role === "user") return [{ role: "user", content: message.content }];
+    if (message.role === "assistant") return [{ role: "assistant", content: message.content }];
+    return [];
+  });
+}
+
 export interface StreamChatOptions {
   provider: LlmProvider;
   adapter: LlmAdapter;
@@ -118,11 +135,11 @@ export interface StreamChatOptions {
 export async function streamChat(options: StreamChatOptions): Promise<ChatResult> {
   const { provider, adapter, signal } = options;
   // The AI SDK takes system prompts as instructions, separate from the conversation.
-  const instructions = options.messages.filter((message) => message.role === "system").map((message) => message.content);
+  const instructions = options.messages.filter((message) => message.role === "system").map(messageText);
   const result = streamText({
     model: adapter.model(options.key, options.apiModel),
     instructions: instructions.length ? instructions.join("\n\n") : undefined,
-    messages: options.messages.filter((message) => message.role !== "system") as { role: "user" | "assistant"; content: string }[],
+    messages: conversation(options.messages),
     maxOutputTokens: options.maxTokens,
     temperature: 0.2,
     abortSignal: signal,

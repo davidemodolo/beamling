@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { isImageMediaType, type Attachment } from "../../attachments";
 import { DEFAULT_SETTINGS } from "../../data";
 import { isSearchProvider } from "../../contracts";
 import { DEFAULT_SEARCH_PROVIDER } from "../../provider-catalog";
@@ -134,7 +135,30 @@ export async function mapMessage(userId: string, row: MessageRow, sourceRows: So
     reasoning: row.reasoning
       ? await decryptText(userId, "messages", row.id, "reasoning", row.reasoning)
       : undefined,
+    attachments: await readAttachments(userId, row),
   };
+}
+
+/** A question's image metadata; malformed entries are dropped. */
+export async function readAttachments(userId: string, row: MessageRow): Promise<Attachment[] | undefined> {
+  if (!row.attachments) return undefined;
+  try {
+    const value = JSON.parse(await decryptText(userId, "messages", row.id, "attachments", row.attachments)) as unknown;
+    if (!Array.isArray(value)) return undefined;
+    return value.flatMap((item: Partial<Attachment> | null) =>
+      item && typeof item.id === "string" && item.kind === "image" && isImageMediaType(String(item.mediaType))
+        ? [
+            {
+              id: item.id,
+              kind: "image" as const,
+              mediaType: item.mediaType!,
+            },
+          ]
+        : [],
+    );
+  } catch {
+    return undefined;
+  }
 }
 
 async function readSearches(userId: string, row: MessageRow): Promise<SearchTrace[] | undefined> {

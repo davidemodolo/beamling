@@ -56,7 +56,7 @@ GET /api/auth/callback/google
 
 ## Terms acceptance
 
-- `lib/legal.ts` defines `LEGAL_VERSION` (now `2026-11-07.2`), plus `MINIMUM_AGE = 18`, `INACTIVE_ACCOUNT_MONTHS = 24`, `UNACCEPTED_ACCOUNT_DAYS = 7`, `CONVERSATION_RETENTION_DAYS = 60`, `MAX_CONVERSATIONS = 100`, `CONVERSATION_WARNING_THRESHOLD = 90` and `SHUTDOWN_NOTICE_DAYS = 14`.
+- `lib/legal.ts` defines `LEGAL_VERSION` (now `2026-11-08`), plus `MINIMUM_AGE = 18`, `INACTIVE_ACCOUNT_MONTHS = 24`, `UNACCEPTED_ACCOUNT_DAYS = 7`, `CONVERSATION_RETENTION_DAYS = 60`, `MAX_CONVERSATIONS = 100`, `CONVERSATION_WARNING_THRESHOLD = 90` and `SHUTDOWN_NOTICE_DAYS = 14`.
 - `users.terms_version` and `users.terms_accepted_at` record acceptance. While `terms_version` ≠ `LEGAL_VERSION`, `requirePageUser` redirects pages to `/welcome?next=<path>`. `/welcome` accepts only `/`, `/chat/<uuid>` or `/onboarding` as `next`.
 - `apiRoute` answers `TERMS_REQUIRED` (403), except routes with `requireTerms: false`: `POST /api/account/terms`, `GET /api/account/export`, `POST /api/auth/logout`, `DELETE /api/account`. The browser client then redirects to `/welcome`.
 - `POST /api/account/terms` takes `{ version, confirmAge: true }`. A stale version returns `TERMS_OUTDATED` (409). Success audits `terms_accepted`.

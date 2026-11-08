@@ -186,6 +186,8 @@ export const messages = pgTable(
     // Encrypted JSON search trace and model-provided reasoning.
     searches: text("searches"),
     reasoning: text("reasoning"),
+    // Encrypted JSON ids and types of a question's images. Image bytes are never stored.
+    attachments: text("attachments"),
     // The model and search provider the user selected for this answer.
     llmModel: text("llm_model"),
     searchProvider: text("search_provider").$type<SearchProvider>().notNull().default(DEFAULT_SEARCH_PROVIDER),

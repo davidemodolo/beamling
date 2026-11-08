@@ -4,20 +4,22 @@ import { detectLanguage } from "../language";
 import { deepPrompt, deeperPrompt, quickPrompt, type Prompt } from "../prompts";
 import { chat } from "../providers";
 import type { ChatResult } from "../providers/llm";
-import { addUsage, promptMessages, type PreparedChat, type RunContext, type RunState } from "./context";
+import { addUsage, askedQuestion, imageParts, promptMessages, type PreparedChat, type RunContext, type RunState } from "./context";
 
 const SYNTHESIS_MAX_TOKENS: Record<Mode, number> = { quick: 8192, deep: 16384, deeper: 24576 };
 
 function synthesisPrompt(prepared: PreparedChat, state: RunState, queries: string[]): Prompt {
-  const { question, history } = prepared;
-  const language = detectLanguage(question);
+  const { history } = prepared;
+  const question = askedQuestion(prepared);
+  const language = prepared.question ? detectLanguage(prepared.question) : undefined;
+  const common = { question, sources: state.sources, history, language, images: prepared.imageIds };
   switch (prepared.mode) {
     case "deeper":
-      return deeperPrompt({ question, sources: state.sources, queries, history, language });
+      return deeperPrompt({ ...common, queries });
     case "deep":
-      return deepPrompt({ question, sources: state.sources, subqueries: queries, history, language });
+      return deepPrompt({ ...common, subqueries: queries });
     case "quick":
-      return quickPrompt({ question, sources: state.sources, history, language });
+      return quickPrompt(common);
   }
 }
 
@@ -30,7 +32,7 @@ export async function streamSynthesis(ctx: RunContext, state: RunState, queries:
     purpose: "answer",
     key: prepared.llmKey,
     model: prepared.llm,
-    messages: promptMessages(synthesisPrompt(prepared, state, queries)),
+    messages: promptMessages(synthesisPrompt(prepared, state, queries), imageParts(prepared)),
     maxTokens: SYNTHESIS_MAX_TOKENS[prepared.mode],
     signal,
     onReasoning: (text) => {

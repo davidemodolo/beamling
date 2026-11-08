@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, count, desc, eq, gt, inArray, lt, lte, sql } from "drizzle-orm";
-import { DEFAULT_CONVERSATION_TITLE, titleFromQuestion } from "../../data";
+import type { Attachment } from "../../attachments";
+import { DEFAULT_CONVERSATION_TITLE, HISTORY_MESSAGES, IMAGE_QUESTION_TITLE, titleFromQuestion } from "../../data";
 import { DEFAULT_SEARCH_PROVIDER } from "../../provider-catalog";
 import type { Message, Mode, SearchProvider, SearchTrace, Source, Usage } from "../../types";
 import { plural } from "../../utils";
@@ -10,11 +11,10 @@ import { ApiError, pgErrorCode, storableText } from "../http";
 import { SOURCE_SNIPPET_CHARS } from "../prompts";
 import { conversations, messages, sources } from "../schema";
 import { decryptText, encryptText } from "../workspace-key";
-import { interruptedFields, mapMessage, staleBefore, staleBeforeSql, type MessageRow } from "./shared";
+import { interruptedFields, mapMessage, readAttachments, staleBefore, staleBeforeSql, type MessageRow } from "./shared";
 
 const UNIQUE_VIOLATION = "23505";
 const LOCK_NOT_AVAILABLE = "55P03";
-const HISTORY_MESSAGES = 6;
 // Serializes the global concurrency check across instances (transaction-scoped advisory lock).
 const CHAT_SLOT_LOCK_ID = 7_314_002_918;
 
@@ -97,8 +97,10 @@ export async function createExchange(input: {
   llmModel: string;
   searchProvider?: SearchProvider;
   question?: string;
+  /** Images on a new question; a retry reuses the stored question's. */
+  attachments?: Attachment[];
   retryOf?: string;
-}): Promise<{ userMessage: MessageRow; assistantMessage: MessageRow; questionText: string }> {
+}): Promise<{ userMessage: MessageRow; assistantMessage: MessageRow; questionText: string; attachments: Attachment[] }> {
   try {
     return await db.transaction(async (tx) => {
       // Taken first so every exchange acquires its locks in the same order.
@@ -168,6 +170,7 @@ export async function createExchange(input: {
       const now = new Date();
       let userMessage: MessageRow;
       let questionText: string;
+      let attachments: Attachment[];
       if (input.retryOf) {
         const { target, question, questionText: storedQuestion } = await retryTarget(tx, {
           userId: input.userId,
@@ -177,8 +180,10 @@ export async function createExchange(input: {
         await tx.delete(messages).where(eq(messages.id, target.id));
         userMessage = question;
         questionText = storedQuestion;
+        attachments = (await readAttachments(input.userId, question)) ?? [];
       } else {
         questionText = storableText(input.question ?? "");
+        attachments = input.attachments ?? [];
         const id = randomUUID();
         [userMessage] = await tx
           .insert(messages)
@@ -188,6 +193,9 @@ export async function createExchange(input: {
             userId: input.userId,
             role: "user",
             content: await encryptText(input.userId, "messages", id, "content", questionText),
+            attachments: attachments.length
+              ? await encryptText(input.userId, "messages", id, "attachments", JSON.stringify(attachments))
+              : null,
             status: "complete",
             mode: input.mode,
             createdAt: now,
@@ -215,7 +223,9 @@ export async function createExchange(input: {
 
       const currentTitle = await decryptText(input.userId, "conversations", conversation.id, "title", conversation.title);
       const nextTitle =
-        currentTitle === DEFAULT_CONVERSATION_TITLE ? titleFromQuestion(questionText) : currentTitle;
+        currentTitle === DEFAULT_CONVERSATION_TITLE
+          ? titleFromQuestion(questionText || (attachments.length ? IMAGE_QUESTION_TITLE : ""))
+          : currentTitle;
       await tx
         .update(conversations)
         .set({
@@ -227,7 +237,7 @@ export async function createExchange(input: {
         })
         .where(eq(conversations.id, conversation.id));
 
-      return { userMessage, assistantMessage, questionText };
+      return { userMessage, assistantMessage, questionText, attachments };
     });
   } catch (error) {
     // Waiting too long for the concurrency lock means a burst of answers is starting.

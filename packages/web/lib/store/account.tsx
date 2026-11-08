@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { clearImages } from "../image-store";
 import { api, ApiRequestError } from "../api";
 import { DEFAULT_SETTINGS } from "../data";
 import type { AppState, BravePlan, Credential, CredentialProvider, Settings, User } from "../types";
@@ -146,6 +147,8 @@ export function useAccountSlice({ resync }: { resync: () => void }) {
 
   const signOut = useCallback(async (everywhere = false) => {
     await api(everywhere ? "/api/auth/logout?scope=all" : "/api/auth/logout", { method: "POST" });
+    // Images live only in this browser; the next person to sign in here must not find them.
+    await clearImages();
     window.location.replace("/");
   }, []);
 

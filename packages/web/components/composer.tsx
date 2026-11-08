@@ -1,10 +1,25 @@
 "use client";
 
-import { useEffect, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
+import { ComposerImages } from "./composer-images";
 import { Icon } from "./ui/icon";
+import { IMAGE_RETENTION_DAYS } from "@/lib/attachments";
+import type { PreparedImage } from "@/lib/images";
 import { MODE_ICONS, MODE_LABELS, MODES } from "@/lib/modes";
 import { SEARCH_PROVIDERS } from "@/lib/provider-catalog";
 import type { Mode, SearchProvider } from "@/lib/types";
+
+/** Images for the next question. */
+export interface ComposerAttach {
+  images: PreparedImage[];
+  adding: boolean;
+  full: boolean;
+  add: (files: File[]) => void;
+  remove: (id: string) => void;
+  /** The selected model reads images; when it does not, attaching is off and sending images is blocked. */
+  modelReadsImages: boolean;
+  onChangeModel: () => void;
+}
 
 interface ComposerProps {
   value: string;
@@ -24,7 +39,10 @@ interface ComposerProps {
   onSearchProviderChange: (provider: SearchProvider) => void;
   modelLabel: string;
   inputRef: RefObject<HTMLTextAreaElement | null>;
+  attach: ComposerAttach;
 }
+
+const files = (list: FileList | null | undefined): File[] => Array.from(list ?? []);
 
 export function Composer({
   value,
@@ -41,8 +59,14 @@ export function Composer({
   onSearchProviderChange,
   modelLabel,
   inputRef,
+  attach,
 }: ComposerProps) {
-  const canSubmit = !busy && !disabled && !!value.trim();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const hasImages = attach.images.length > 0;
+  const blockedByModel = hasImages && !attach.modelReadsImages;
+  const canSubmit = !busy && !disabled && !attach.adding && !blockedByModel && (!!value.trim() || hasImages);
+  const canAttach = !disabled && attach.modelReadsImages && !attach.full;
   useEffect(() => {
     const el = inputRef.current;
     if (!el) return;
@@ -53,18 +77,73 @@ export function Composer({
   return (
     <div className="composer-wrap">
       <form
-        className="composer"
+        className={`composer${dragging ? " dragging" : ""}`}
         onSubmit={(event) => {
           event.preventDefault();
           if (canSubmit) onSubmit();
         }}
+        onDragOver={(event) => {
+          if (!canAttach || !event.dataTransfer.types.includes("Files")) return;
+          event.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
+        }}
+        onDrop={(event) => {
+          setDragging(false);
+          if (!canAttach) return;
+          event.preventDefault();
+          attach.add(files(event.dataTransfer.files));
+        }}
         aria-label="Ask a question"
       >
+        <ComposerImages images={attach.images} adding={attach.adding} onRemove={attach.remove} />
+        {hasImages && !blockedByModel ? (
+          <p className="composer-note">
+            Images stay only in this browser, for {IMAGE_RETENTION_DAYS} days. Follow-ups can use them until then.
+          </p>
+        ) : null}
+        {blockedByModel ? (
+          <p className="composer-warning" role="alert">
+            <Icon name="alert" size={12} /> {modelLabel} cannot read images.{" "}
+            <button type="button" className="composer-warning-action" onClick={attach.onChangeModel}>
+              Change model
+            </button>
+          </p>
+        ) : null}
         <div className="composer-row">
+          <button
+            type="button"
+            className="attach"
+            onClick={() => fileRef.current?.click()}
+            disabled={!canAttach}
+            aria-label="Attach images"
+            title={attach.modelReadsImages ? "Attach images" : `${modelLabel} cannot read images`}
+          >
+            <Icon name="image" size={16} />
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            multiple
+            hidden
+            onChange={(event) => {
+              attach.add(files(event.target.files));
+              event.target.value = "";
+            }}
+          />
           <textarea
             ref={inputRef}
             value={value}
             onChange={(event) => onChange(event.target.value)}
+            onPaste={(event) => {
+              const pasted = files(event.clipboardData.files);
+              if (!pasted.length || !canAttach) return;
+              event.preventDefault();
+              attach.add(pasted);
+            }}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                 event.preventDefault();
