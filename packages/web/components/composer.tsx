@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { ComposerImages } from "./composer-images";
 import { Icon } from "./ui/icon";
-import { IMAGE_RETENTION_DAYS } from "@/lib/attachments";
 import type { PreparedImage } from "@/lib/images";
 import { MODE_ICONS, MODE_LABELS, MODES } from "@/lib/modes";
 import { SEARCH_PROVIDERS } from "@/lib/provider-catalog";
@@ -99,11 +98,6 @@ export function Composer({
         aria-label="Ask a question"
       >
         <ComposerImages images={attach.images} adding={attach.adding} onRemove={attach.remove} />
-        {hasImages && !blockedByModel ? (
-          <p className="composer-note">
-            Images stay only in this browser, for {IMAGE_RETENTION_DAYS} days. Follow-ups can use them until then.
-          </p>
-        ) : null}
         {blockedByModel ? (
           <p className="composer-warning" role="alert">
             <Icon name="alert" size={12} /> {modelLabel} cannot read images.{" "}
@@ -150,7 +144,7 @@ export function Composer({
                 if (canSubmit) onSubmit();
               }
             }}
-            placeholder="Ask anything. Beamling will show you where the answer comes from."
+            placeholder="Ask anything"
             rows={1}
             aria-label="Your question"
             enterKeyHint="send"
