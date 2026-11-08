@@ -14,6 +14,9 @@ import { Markdown } from "./markdown";
 import { Mascot } from "./mascot";
 import { Icon } from "./ui/icon";
 
+/** Errors about a search key; every other key error opens the Models tab. */
+const SEARCH_KEY_ERRORS = new Set(["BRAVE_PLAN_MISSING_SEARCH", "SEARCH_PLAN_MISSING"]);
+
 interface AnswerCardProps {
   message: ThreadMessage;
   // Callbacks take the message id so the parent can pass stable functions and memo can skip re-renders.
@@ -238,7 +241,7 @@ export const AnswerCard = memo(function AnswerCard({ message, onCitation, onOpen
               {error.message}
               <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {error.action === "settings" ? (
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => openSettings("keys")}>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => openSettings(SEARCH_KEY_ERRORS.has(message.errorCode ?? "") ? "search" : "models")}>
                     <Icon name="key" size={13} /> Open settings
                   </button>
                 ) : null}

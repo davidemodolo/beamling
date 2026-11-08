@@ -4,14 +4,14 @@ import { useRef, type KeyboardEvent } from "react";
 import { Icon } from "@/components/ui/icon";
 import { Modal } from "@/components/ui/modal";
 import { AccountPanel } from "./settings/account-panel";
-import { DefaultsPanel } from "./settings/defaults-panel";
-import { KeysPanel } from "./settings/keys-panel";
+import { ModelsPanel } from "./settings/models-panel";
+import { SearchPanel } from "./settings/search-panel";
 
-export type SettingsTab = "keys" | "defaults" | "account";
+export type SettingsTab = "models" | "search" | "account";
 
-const TABS: { id: SettingsTab; label: string; icon: "key" | "settings" | "user" }[] = [
-  { id: "keys", label: "Keys", icon: "key" },
-  { id: "defaults", label: "Defaults", icon: "settings" },
+const TABS: { id: SettingsTab; label: string; icon: "sparkles" | "search" | "user" }[] = [
+  { id: "models", label: "Models", icon: "sparkles" },
+  { id: "search", label: "Search", icon: "search" },
   { id: "account", label: "Account", icon: "user" },
 ];
 
@@ -81,8 +81,8 @@ export function SettingsModal({
         ))}
       </div>
       <div role="tabpanel" id={`settings-panel-${tab}`} aria-labelledby={`settings-tab-${tab}`} tabIndex={0}>
-        {tab === "keys" ? <KeysPanel /> : null}
-        {tab === "defaults" ? <DefaultsPanel /> : null}
+        {tab === "models" ? <ModelsPanel /> : null}
+        {tab === "search" ? <SearchPanel /> : null}
         {tab === "account" ? <AccountPanel /> : null}
       </div>
     </Modal>

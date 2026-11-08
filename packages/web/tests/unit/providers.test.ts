@@ -27,7 +27,7 @@ test("Nemotron 3.5 Super (free) is the default and is allowlisted", () => {
   assert.equal(DEFAULT_LLM_MODEL, "nvidia/nemotron-3.5-super-vl:free");
   assert.equal(isAllowedModel(DEFAULT_LLM_MODEL), true);
   assert.equal(isAllowedModel("openrouter/auto"), false);
-  assert.equal(MODELS.filter((model) => model.provider === "openrouter").length, 7);
+  assert.equal(MODELS.filter((model) => model.provider === "openrouter").length, 6);
 });
 
 test("the default model is also the free setup model", () => {
@@ -58,7 +58,11 @@ test("defaults move onto keyed providers and keep keyed choices", () => {
     defaultSearchProvider: "deepseek",
   });
   // Nothing keyed: nothing to move to.
-  assert.deepEqual(usableDefaults(defaults, new Set()), defaults);
+  assert.deepEqual(usableDefaults(defaults, new Set()), defaults);  // A model removed from the catalog moves to a keyed model, or the default without a key.
+  const retired = { llmModel: "anthropic/claude-sonnet-4.5", defaultSearchProvider: "brave" as const };
+  assert.equal(usableDefaults(retired, new Set(["openrouter"])).llmModel, DEFAULT_LLM_MODEL);
+  assert.equal(usableDefaults(retired, new Set(["deepseek"])).llmModel, "deepseek:deepseek-flash");
+  assert.equal(usableDefaults(retired, new Set()).llmModel, DEFAULT_LLM_MODEL);
 });
 
 test("Brave validates and searches only the base Web Search endpoint", async (t) => {

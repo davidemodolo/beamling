@@ -60,7 +60,7 @@ Behavior:
 
 Setup is complete with a model key (OpenRouter or DeepSeek) and a search key (Brave, Tavily, Exa or DeepSeek) not marked `invalid`. One DeepSeek key counts for both (`setupState` in `lib/provider-catalog.ts`).
 
-- Signed in, `/` redirects to `/onboarding` until setup is complete, and back once it is. Later changes happen in Settings → Keys.
+- Signed in, `/` redirects to `/onboarding` until setup is complete, and back once it is. Later changes happen in Settings → Models and Search.
 - Opening `/`, saving a key and deleting one run `alignDefaults`: a default model or search provider without a key moves to the first keyed option. `POST /api/credentials` and `DELETE /api/credentials/{id}` return the resulting `settings`.
 - Two paths: **Quick setup** ("An OpenRouter free model and Brave Search.") uses `FREE_LLM_MODEL` and Brave, and notes that limits and data use follow OpenRouter's terms. **Use my own providers** offers every allowlisted model and search provider.
 - Step 1 saves the model key and model; step 2 saves the search key, writes the defaults and routes to `/`. If one provider serves both, step 1 finishes setup.
@@ -99,9 +99,11 @@ Settings is a modal with three keyboard-navigable tabs:
 
 | Tab | Behavior |
 |---|---|
-| Keys | One card per catalog provider (use, key link, notice): add, replace, validate, delete; save without validation for Brave and Exa; masked last four, status, plan, declared expiry/budget, estimated spend, warnings; limits editing for Brave. Keys of removed providers are listed as unsupported, delete only |
-| Defaults | Default mode, model grouped by provider and default search provider (both marked `· no key` when unkeyed), and the selected providers' notices |
+| Models | Default mode, then one card per model provider (OpenRouter, DeepSeek): its key, then its models as radio buttons that set the default model, disabled until the key is saved (a rejected key counts as none), and its notice. Keys of removed providers are listed as unsupported, delete only |
+| Search | One card per search provider; the card's radio button sets the default search provider and is disabled without a key. Brave, Tavily and Exa carry their key; DeepSeek uses the key from Models |
 | Account | Google name/email, conversation and key counts, session lifetime (30 days idle, 90 days max), sign out, sign out everywhere; "Your data" with **Download my data** (`GET /api/account/export`) and **Exclude me from product analytics** (`PATCH /api/settings { analyticsOptOut }`); delete account by typing `DELETE`; links to terms and privacy |
+
+Each key block shows "No key yet" with a link to get one and **Add key**, or the masked last four, status, plan, declared expiry/budget, estimated spend and warnings with **Replace**, **Validate**, **Delete** and, for Brave, **Limits**. Brave and Exa keys can be saved without validation. Credential errors on an answer open Models, or Search for search-plan errors.
 
 Deleting the account hard-deletes server data and the wrapped workspace key, clears the store and cookie, and routes to `/`.
 

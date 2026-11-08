@@ -235,3 +235,104 @@
   color: var(--muted);
   font-size: 12px;
 }
+
+/* Settings: a provider's key and its choices */
+.provider-key {
+  border-bottom: 1px solid var(--line);
+}
+.provider-key .key-main a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-sans);
+}
+.key-form {
+  display: grid;
+  gap: 10px;
+  padding: 16px 18px;
+}
+.key-card + .key-form {
+  border-top: 1px solid var(--line);
+}
+.key-form-actions {
+  display: flex;
+  gap: 8px;
+}
+.choice-list {
+  border: 0;
+  margin: 0;
+  padding: 10px 10px 12px;
+  display: grid;
+  gap: 2px;
+}
+.choice-list legend,
+.choice-cards > legend {
+  padding: 4px 8px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.choice-cards {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.choice-cards > legend {
+  padding: 0 0 2px;
+}
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.choice:hover {
+  background: var(--surface-2);
+}
+.choice input {
+  accent-color: var(--beam);
+  margin: 0;
+}
+.choice:has(input:disabled) {
+  cursor: default;
+  color: var(--muted);
+}
+.choice:has(input:disabled):hover {
+  background: none;
+}
+.choice:has(input:checked) {
+  font-weight: 600;
+}
+.choice-head {
+  flex: 1;
+  padding: 0;
+}
+.choice-head:hover {
+  background: none;
+}
+.choice-head span {
+  display: grid;
+  gap: 2px;
+}
+.choice-head strong {
+  font-size: 13.5px;
+  font-weight: 650;
+}
+.choice-head small {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.provider-notice {
+  margin: 0;
+  padding: 0 18px 16px;
+}
+.settings-card-head:last-child {
+  border-bottom: 0;
+}
