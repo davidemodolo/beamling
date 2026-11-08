@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { connection } from "next/server";
+import { ServiceWorker } from "@/components/service-worker";
 import { appUrl } from "@/lib/server/env";
 import "./globals.css";
 // Split by surface; the order is the cascade order, keep it.
@@ -54,6 +55,8 @@ export async function generateMetadata(): Promise<Metadata> {
       ],
       apple: "/apple-touch-icon.png",
     },
+    appleWebApp: { capable: true, title: "Beamling", statusBarStyle: "black" },
+    formatDetection: { telephone: false },
   };
 }
 
@@ -69,7 +72,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   await connection();
   return (
     <html lang="en" className={`${inter.variable} ${jetbrains.variable}`}>
-      <body>{children}</body>
+      <body>
+        {children}
+        <ServiceWorker />
+      </body>
     </html>
   );
 }

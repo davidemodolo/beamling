@@ -16,6 +16,9 @@ export function proxy(request: NextRequest) {
     "img-src 'self' data: blob: https://*.googleusercontent.com",
     "font-src 'self'",
     `connect-src 'self'${isDev ? " ws: wss:" : ""}`,
+    // 'strict-dynamic' would otherwise decide which service worker may register.
+    "worker-src 'self'",
+    "manifest-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
@@ -34,7 +37,7 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     {
-      source: "/((?!api|_next/static|_next/image|favicon.ico|icon.svg|apple-touch-icon.png).*)",
+      source: "/((?!api|_next/static|_next/image|favicon.ico|icon.svg|icon-.*\\.png|apple-touch-icon.png|manifest.webmanifest|sw.js|offline.html).*)",
       missing: [
         { type: "header", key: "next-router-prefetch" },
         { type: "header", key: "purpose", value: "prefetch" },

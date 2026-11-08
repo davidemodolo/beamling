@@ -118,6 +118,14 @@ Rendered per request, so the CSP nonce is injected and CTAs follow the session (
 - Nav: Setup, How it works, FAQ; "Sign in" and "Get started". Footer: product links, source repository, Privacy, Terms, Cookies, Data processors, Security, Status, Contact, Licenses.
 - `prefers-reduced-motion` skips the demo animation.
 
+## Installable app
+
+Beamling can be installed to a phone or desktop home screen and opens without browser chrome.
+
+- `app/manifest.ts` serves `/manifest.webmanifest`: standalone display, start URL `/`, dark theme and background, 192 and 512 px icons plus a maskable 512 px icon.
+- iOS uses `apple-touch-icon.png` and the `apple-mobile-web-app-*` tags from the root layout metadata.
+- `components/service-worker.tsx` registers `public/sw.js` in production builds. Offline, a page load shows `public/offline.html`; nothing else works offline.
+
 ## Accessibility and responsive behavior
 
 - Mobile sidebar and source panel are focus-trapped dialogs.

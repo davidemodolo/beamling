@@ -106,6 +106,24 @@ test("/ is the landing page signed out and the app signed in", async ({ page }) 
   await expect(page.getByRole("navigation", { name: "Main" })).toHaveCount(0);
 });
 
+test("the app is installable and shows an offline page without a connection", async ({ page, context }) => {
+  await page.goto("/");
+  const href = await page.locator('link[rel="manifest"]').getAttribute("href");
+  expect(href).toBeTruthy();
+  const manifest = await (await page.request.get(href!)).json();
+  expect(manifest).toMatchObject({ display: "standalone", start_url: "/", name: "Beamling" });
+  expect(manifest.icons.some((icon: { purpose?: string }) => icon.purpose === "maskable")).toBe(true);
+  for (const icon of manifest.icons) expect((await page.request.get(icon.src)).ok()).toBe(true);
+  await expect(page.locator('meta[name="mobile-web-app-capable"], meta[name="apple-mobile-web-app-capable"]').first()).toHaveAttribute("content", "yes");
+
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.reload();
+  await context.setOffline(true);
+  await page.goto("/privacy").catch(() => {});
+  await expect(page.getByRole("heading", { name: "You are offline" })).toBeVisible();
+  await context.setOffline(false);
+});
+
 test("the limits page shows the account's own usage and is linked from the sidebar", async ({ page }) => {
   await connectKeys(page.request);
   await page.goto("/");
