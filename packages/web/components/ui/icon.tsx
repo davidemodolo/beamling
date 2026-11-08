@@ -31,10 +31,18 @@ export type IconName =
   | "eye-off"
   | "check-circle"
   | "pin"
-  | "search";
+  | "search"
+  | "image";
 
 const paths: Record<IconName, ReactNode> = {
   plus: <path d="M12 5v14M5 12h14" />,
+  image: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <circle cx="9" cy="10" r="1.8" />
+      <path d="m21 16-5-5-9 9" />
+    </>
+  ),
   stop: <rect x="6" y="6" width="12" height="12" rx="2" />,
   x: <path d="M6 6l12 12M18 6 6 18" />,
   menu: <path d="M4 7h16M4 12h16M4 17h16" />,

@@ -5,6 +5,8 @@ import { chat } from "../providers";
 import {
   addUsage,
   appendSources,
+  askedQuestion,
+  imageParts,
   DEEP_RESULTS_PER_QUERY,
   DEEP_SOURCE_LIMIT,
   isSearchOutage,
@@ -65,7 +67,7 @@ function parseGapQueries(text: string): string[] {
 export async function planQueries(ctx: RunContext, state: RunState): Promise<string[]> {
   const { prepared, signal } = ctx;
   ctx.emit("stage", { stage: "searching", detail: "Planning 3–5 sub-queries" });
-  const messages = promptMessages(plannerPrompt(prepared.question));
+  const messages = promptMessages(plannerPrompt(askedQuestion(prepared)), imageParts(prepared));
   const plan = (conversation: typeof messages) =>
     chat({ purpose: "plan", key: prepared.llmKey, model: prepared.llm, messages: conversation, maxTokens: PLANNER_MAX_TOKENS, signal });
   try {
@@ -83,7 +85,8 @@ export async function planQueries(ctx: RunContext, state: RunState): Promise<str
     log.warn("Deep planner failed", { code: error instanceof ApiError ? error.code : "INTERNAL" });
   }
   state.degraded = true;
-  return [prepared.question];
+  // A question that is only an image has no text to search; it takes the no-source path.
+  return prepared.question ? [prepared.question] : [];
 }
 
 /**
@@ -99,7 +102,7 @@ export async function fillEvidenceGaps(ctx: RunContext, state: RunState, queries
       purpose: "gap",
       key: prepared.llmKey,
       model: prepared.llm,
-      messages: promptMessages(gapPrompt({ question: prepared.question, subqueries: queries, sources: state.sources })),
+      messages: promptMessages(gapPrompt({ question: askedQuestion(prepared), subqueries: queries, sources: state.sources }), imageParts(prepared)),
       maxTokens: GAP_MAX_TOKENS,
       signal,
     });

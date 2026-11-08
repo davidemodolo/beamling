@@ -368,6 +368,146 @@ test("deleting the conversation that is answering returns to a new question", as
   await expect(sidebarItem(page, "Delete me while answering")).toHaveCount(0);
 });
 
+const PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64",
+);
+
+async function attachImage(page: import("@playwright/test").Page, name = "photo.png") {
+  await page.locator('input[type="file"]').setInputFiles({ name, mimeType: "image/png", buffer: PNG });
+  await expect(page.getByRole("list", { name: "Attached images" }).locator("img")).toHaveCount(1);
+  await expect(page.getByText("Images stay only in this browser, for 7 days.")).toBeVisible();
+}
+
+test("an image stays on the device and is sent again with a follow-up", async ({ page, browser }) => {
+  const problems = watchConsole(page);
+  await connectKeys(page.request);
+  await page.goto("/");
+  await attachImage(page);
+  await ask(page, "What is in this photo?");
+  await expect(answers(page).last()).toContainText("The model saw 1 image", { timeout: 20_000 });
+  await expect(page.locator(".message-user .message-image img")).toHaveCount(1);
+
+  await expect(page.getByText("Images stay only in this browser")).toHaveCount(0);
+  // The server stores only that the question had an image: no bytes, no description.
+  const id = page.url().split("/").at(-1)!;
+  const { conversation } = await (await page.request.get(`/api/conversations/${id}`)).json();
+  const [question] = conversation.messages;
+  expect(question.attachments).toEqual([{ id: expect.any(String), kind: "image", mediaType: "image/webp" }]);
+
+  // A follow-up re-sends the image from this device.
+  await ask(page, "What colour is it?");
+  await expect(answers(page).last()).toContainText("The model saw 1 image", { timeout: 20_000 });
+  await page.reload();
+  await expect(page.locator(".message-user .message-image img")).toHaveCount(1);
+
+  // After 7 days the browser no longer uses the image: a placeholder, and the model does not get it.
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        const open = indexedDB.open("beamling-images");
+        open.onsuccess = () => {
+          const store = open.result.transaction("images", "readwrite").objectStore("images");
+          const all = store.getAll();
+          all.onsuccess = () => {
+            for (const image of all.result) store.put({ ...image, savedAt: Date.now() - 8 * 86_400_000 });
+            store.transaction.oncomplete = () => resolve();
+          };
+        };
+      }),
+  );
+  await page.reload();
+  await expect(page.locator(".message-image-missing")).toHaveCount(1);
+  await ask(page, "Is it still there?");
+  await expect(answers(page).last()).toContainText("fixture answer", { timeout: 20_000 });
+  await expect(answers(page).last()).not.toContainText("The model saw");
+
+  // Another browser never had a copy: a placeholder, and the model does not get the image.
+  const other = await browser.newContext({ storageState: await page.context().storageState() });
+  const otherPage = await other.newPage();
+  await otherPage.goto(`/chat/${id}`);
+  await expect(otherPage.locator(".message-image-missing")).toHaveCount(1);
+  await ask(otherPage, "Where was it taken?");
+  await expect(answers(otherPage).last()).toContainText("fixture answer", { timeout: 20_000 });
+  await expect(answers(otherPage).last()).not.toContainText("The model saw");
+  await other.close();
+  expect(problems).toEqual([]);
+});
+
+test("a question can be only an image, and deleting the chat removes it from the device", async ({ page }) => {
+  await connectKeys(page.request);
+  await page.goto("/");
+  await attachImage(page);
+  await page.getByRole("button", { name: "Send question" }).click();
+  await expect(answers(page).last()).toContainText("The model saw 1 image", { timeout: 20_000 });
+  await expect(page.locator(".message-user .bubble")).toHaveCount(0);
+  const item = sidebarItem(page, "Image question");
+  await expect(item).toBeVisible();
+
+  await item.hover();
+  await item.getByRole("button", { name: "Delete Image question" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  const left = await page.evaluate(
+    () =>
+      new Promise<number>((resolve) => {
+        const open = indexedDB.open("beamling-images");
+        open.onsuccess = () => {
+          const count = open.result.transaction("images").objectStore("images").count();
+          count.onsuccess = () => resolve(count.result);
+        };
+      }),
+  );
+  expect(left).toBe(0);
+});
+
+test("several chats can be selected and deleted at once, in a dialog that fits the window", async ({ page }) => {
+  await connectKeys(page.request);
+  await page.goto("/");
+  for (const question of ["First to delete", "Second to delete"]) {
+    await page.goto("/");
+    await ask(page, question);
+    await expect(answers(page).last()).toContainText("fixture answer", { timeout: 20_000 });
+  }
+  await page.getByRole("button", { name: "Select chats" }).click();
+  await page.locator(".sidebar .history-check", { hasText: "First to delete" }).click();
+  await page.locator(".sidebar .history-check", { hasText: "Second to delete" }).click();
+  await expect(page.getByRole("toolbar", { name: "Selected chats" })).toContainText("2 selected");
+  await page.getByRole("toolbar", { name: "Selected chats" }).getByRole("button", { name: "Delete" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Delete 2 chats" });
+  await expect(dialog).toBeVisible();
+  const box = (await dialog.boundingBox())!;
+  const viewport = page.viewportSize()!;
+  expect(Math.abs(box.x + box.width / 2 - viewport.width / 2)).toBeLessThan(24);
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+
+  const saved = page.waitForResponse((response) => response.url().endsWith("/api/conversations/delete") && response.ok());
+  await dialog.getByRole("button", { name: "Delete" }).click();
+  await saved;
+  await expect(page).toHaveURL(/\/$/);
+  await page.reload();
+  await expect(sidebarItem(page, "First to delete")).toHaveCount(0);
+  await expect(sidebarItem(page, "Second to delete")).toHaveCount(0);
+});
+
+test("setup offers sign-out and account deletion without any key", async ({ page }) => {
+  await signIn(page.request);
+  await page.goto("/onboarding");
+  await page.getByText("Not continuing? Delete your account").click();
+  await page.getByLabel("Type DELETE to confirm").fill("DELETE");
+  await page.getByRole("button", { name: "Delete my account" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  expect((await page.request.get("/api/state")).status()).toBe(401);
+
+  await signIn(page.request);
+  await page.goto("/onboarding");
+  await page.getByRole("banner").getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  expect((await page.request.get("/api/state")).status()).toBe(401);
+});
+
 test("older conversations load on demand", async ({ page }) => {
   await connectKeys(page.request);
   for (let i = 0; i < 51; i++) await createConversation(page.request);

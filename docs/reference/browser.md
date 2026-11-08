@@ -67,6 +67,7 @@ Setup is complete with a model key (OpenRouter or DeepSeek) and a search key (Br
 - An account with a model key starts at step 2. A saved key shows "Key saved." with placeholder "Saved · paste a new key to replace it"; leave it empty to keep it.
 - Brave's plan (default `Free · 1 request/second`), expiry and budget sit under "Plan, expiry and budget", all user-declared. Brave and Exa show "Validate the key now".
 - "Get a key" opens the provider dashboard in a new tab. Key inputs are masked with a show/hide toggle. A rejected key keeps the step open.
+- The header has **Sign out**, and "Not continuing? Delete your account" opens the same deletion form as Settings, so an account without keys can leave.
 - If keys are deleted mid-visit, the empty chat shows "A key is missing." with an "Add a key" button.
 
 ## Chat view
@@ -74,9 +75,9 @@ Setup is complete with a model key (OpenRouter or DeepSeek) and a search key (Br
 `components/chat-view.tsx` composes `components/chat/`: `ChatTopbar`, `useSourcesPanel` (selected source, panel or sheet), `useThreadScroll` (follows new text until the user scrolls up) and `useFollowStoredAnswer` (polls an answer written elsewhere).
 
 - **Header**: title, mode, model, search provider, source-count button, avatar.
-- **Sidebar**: title search over loaded pages, Pinned section, Today/Yesterday/Previous (UTC), pin/unpin, delete confirmation, "Show older conversations", Limits, Settings, email, sign-out. Retention note: "Chats are deleted 60 days after their last message." From 90 conversations it adds "N of 100 chats. New chats replace the oldest unpinned ones." as a highlighted status.
+- **Sidebar**: title search over loaded pages, Pinned section, Today/Yesterday/Previous (UTC), pin/unpin, delete confirmation, **Select chats** (checkboxes, select all, one confirmed delete for the selected chats on screen; a search hides and excludes the others), "Show older conversations", Limits, Settings, email, sign-out. Retention note: "Chats are deleted 60 days after their last message." From 90 conversations it adds "N of 100 chats. New chats replace the oldest unpinned ones." as a highlighted status.
 - **Thread**: user bubbles, answer cards, working card, earlier-messages button, empty, not-found and load-error states.
-- **Composer**: textarea growing to 190 px, Enter sends, Shift+Enter adds a newline, Quick/Deep/Deeper control, model badge, search-provider selector (unkeyed ones marked "· no key"), Stop while busy. Hint: "Answers are AI-generated with your keys and can be wrong. Check the sources." Sending is not blocked client-side; the server's `CREDENTIAL_MISSING` shows the "Key needed" card.
+- **Composer**: image button, paste or drop for up to 4 images ([Images](#images)), textarea growing to 190 px, Enter sends, Shift+Enter adds a newline, Quick/Deep/Deeper control, model badge, search-provider selector (unkeyed ones marked "· no key"), Stop while busy. Hint: "Answers are AI-generated with your keys and can be wrong. Check the sources." Sending is not blocked client-side; the server's `CREDENTIAL_MISSING` shows the "Key needed" card.
 - **Answer card**: streamed markdown, citation buttons, **Searches** and **Model reasoning** panels (collapsed, also live), an "Uncited" badge when no valid citation survives, stopped/error/truncated/degraded/partial-search notices, and retry on the latest failed or stopped answer. The no-sources answer is its fixed text, no extra notice. Footer: model, search provider, total cost and time, copy and sources buttons; tooltips show the actual model and host, tokens and cost split (generation from OpenRouter or DeepSeek token estimate, search from list price).
 - **Source panel**: right pane on desktop, focus-trapped bottom sheet on mobile; count, provider badge (from the stored answer), title, domain, date, snippet, link.
 - **Working card**: mascot, stage label, detail string, skeleton or streaming body, Stop.
@@ -92,6 +93,17 @@ Markdown is intentionally small:
 - Links must be `http:`/`https:` **and** match a retrieved source URL exactly; others render as plain text. This blocks model-authored phishing links.
 - `[n]` is a citation button only when `n` is within the source count.
 - Citation clicks use event delegation on `data-citation`.
+
+Dialogs render into `document.body`, so the sidebar's backdrop filter and the drawer's animation cannot clip them.
+
+## Images
+
+- The browser decodes the image, scales it to at most 1,568 px on the long side and re-encodes it as WebP (JPEG where WebP encoding is missing), at most 1.5 MB. Re-encoding drops metadata such as location.
+- Each image is kept in IndexedDB (`beamling-images`) with its conversation for 7 days (`IMAGE_RETENTION_DAYS`), and sent with follow-ups whose history window includes its question (at most 4, newest first; questions that never reached the server are skipped, as on the server). Expired images are never sent, and are deleted at the next app load.
+- With images attached, the composer says: "Images stay only in this browser, for 7 days. Follow-ups can use them until then."
+- Questions show thumbnails from this browser; once expired, or in another browser, an image placeholder ("No longer available").
+- Local images are also deleted with their conversation once the server confirms the delete (including when the cap removes it), on sign-out and on account deletion.
+- A model without `vision` (`lib/provider-catalog.ts`) disables the image button; attached images then show "<model> cannot read images. Change model" and block sending. Unknown model ids follow the default model, as on the server. Every current catalog model reads images.
 
 ## Settings and account
 

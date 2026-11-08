@@ -6,7 +6,7 @@ import { log } from "./log";
 
 export interface AnalyticsEventMap {
   account_created: Record<string, never>;
-  question_asked: { mode: Mode; search_provider: SearchProvider; llm_model: string };
+  question_asked: { mode: Mode; search_provider: SearchProvider; llm_model: string; images: number };
   answer_completed: {
     mode: Mode;
     search_provider: SearchProvider;
@@ -43,7 +43,7 @@ export type AnalyticsEvent = keyof AnalyticsEventMap;
 /** The allowlist is the contract: unknown keys are dropped before a payload leaves the server. */
 export const ANALYTICS_EVENT_PROPERTIES = {
   account_created: [],
-  question_asked: ["mode", "search_provider", "llm_model"],
+  question_asked: ["mode", "search_provider", "llm_model", "images"],
   answer_completed: [
     "mode",
     "search_provider",

@@ -6,17 +6,19 @@ import { useSidebar } from "./sidebar-context";
 import { ChatTopbar } from "./chat/chat-topbar";
 import { useFollowStoredAnswer } from "./chat/use-follow-stored-answer";
 import { useSourcesPanel } from "./chat/use-sources-panel";
+import { useImageDraft } from "./chat/use-image-draft";
 import { useThreadScroll } from "./chat/use-thread-scroll";
 import { EmptyState, LoadErrorState, NotFoundState, Thread, ThreadSkeleton, UserBubble, WorkingAnswer } from "./chat-thread";
 import { Composer } from "./composer";
 import { SourcesPanel, SourcesSheet } from "./sources";
 import { Icon } from "./ui/icon";
 import { useAnswerStreams, type LiveAnswer } from "@/lib/answer-streams";
+import { toAttachment } from "@/lib/attachments";
 import { api, errorMessage } from "@/lib/api";
 import { useIsMobile } from "@/lib/hooks/use-is-mobile";
 import { useToast } from "@/lib/hooks/use-toast";
 import { isSearchProvider } from "@/lib/contracts";
-import { llmModelName, searchProviderName, setupState, usableProviders } from "@/lib/provider-catalog";
+import { llmModelName, modelReadsImages, searchProviderName, setupState, usableProviders } from "@/lib/provider-catalog";
 import { useAccount, useConversations, type ThreadMessage } from "@/lib/store";
 import { MODE_LABELS } from "@/lib/modes";
 import type { Mode, SearchProvider } from "@/lib/types";
@@ -43,7 +45,7 @@ export function ChatView({ conversationId }: ChatViewProps) {
 /** Hides the stored rows of the exchange that is streaming; the live answer stands in for them. */
 function visibleMessages(messages: ThreadMessage[], live: LiveAnswer | undefined): ThreadMessage[] {
   if (!live) return messages;
-  const hidden = new Set([live.messageId, live.replaces, live.question ? live.userMessageId : null]);
+  const hidden = new Set([live.messageId, live.replaces, live.ask ? live.userMessageId : null]);
   return messages.filter(
     (message) =>
       !hidden.has(message.id) &&
@@ -75,6 +77,7 @@ function ChatPane({ conversationId }: ChatViewProps) {
   const messages = useMemo(() => visibleMessages(thread?.messages ?? [], live), [thread, live]);
 
   const [input, setInput] = useState("");
+  const imageDraft = useImageDraft(showToast);
   // Mode picked before the first question; kept local so it does not change the saved default.
   const [draftMode, setDraftMode] = useState<Mode | null>(null);
   const mode = summary?.mode ?? draftMode ?? settings.defaultMode;
@@ -134,7 +137,8 @@ function ChatPane({ conversationId }: ChatViewProps) {
 
   const submit = useCallback(async () => {
     const question = collapseWhitespace(input);
-    if (!question || live || followStored || creatingRef.current) return;
+    const images = imageDraft.images;
+    if ((!question && !images.length) || imageDraft.adding || live || followStored || creatingRef.current) return;
     let id = activeId;
     if (!id) {
       creatingRef.current = true;
@@ -151,11 +155,13 @@ function ChatPane({ conversationId }: ChatViewProps) {
       setLocalId(id);
       if (window.location.pathname === "/") window.history.replaceState(null, "", `/chat/${id}`);
     }
-    if (streams.start({ conversationId: id, mode, searchProvider, question })) {
+    const ask = { text: question, attachments: images.map(toAttachment) };
+    if (streams.start({ conversationId: id, mode, searchProvider, ask, picked: images })) {
       setInput("");
+      imageDraft.clear();
       beforeStart();
     }
-  }, [input, live, followStored, activeId, createConversation, mode, searchProvider, showToast, streams, beforeStart]);
+  }, [input, imageDraft, live, followStored, activeId, createConversation, mode, searchProvider, showToast, streams, beforeStart]);
 
   const onRetry = useCallback(
     (messageId: string) => {
@@ -165,10 +171,11 @@ function ChatPane({ conversationId }: ChatViewProps) {
       const failed = list[index];
       if (!failed) return;
       if (failed.local) {
-        // Never stored: ask the same question again as a new one.
+        // Never stored: ask the same question again as a new one, with the images this device kept.
         const question = list.slice(0, index).findLast((message) => message.role === "user");
         if (!question) return;
-        if (streams.start({ conversationId: activeId, mode, searchProvider, question: question.content })) {
+        const ask = { text: question.content, attachments: question.attachments ?? [] };
+        if (streams.start({ conversationId: activeId, mode, searchProvider, ask })) {
           removeMessages(activeId, question.local ? [failed.id, question.id] : [failed.id]);
           beforeStart();
         }
@@ -262,7 +269,7 @@ function ChatPane({ conversationId }: ChatViewProps) {
                 />
                 {live ? (
                   <>
-                    {live.question ? <UserBubble content={live.question} /> : null}
+                    {live.ask ? <UserBubble content={live.ask.text} attachments={live.ask.attachments} /> : null}
                     <WorkingAnswer
                       live={live}
                       providerName={searchProviderName(live.searchProvider)}
@@ -307,6 +314,11 @@ function ChatPane({ conversationId }: ChatViewProps) {
         onSearchProviderChange={setDraftSearchProvider}
         modelLabel={modelName}
         inputRef={inputRef}
+        attach={{
+          ...imageDraft,
+          modelReadsImages: modelReadsImages(settings.llmModel),
+          onChangeModel: () => openSettings("models"),
+        }}
       />
 
       <SourcesSheet

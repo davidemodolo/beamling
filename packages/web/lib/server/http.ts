@@ -60,9 +60,9 @@ function tooLarge(): ApiError {
   return new ApiError("PAYLOAD_TOO_LARGE", "The request body is too large.", 413);
 }
 
-async function readLimitedText(request: Request): Promise<string> {
+async function readLimitedText(request: Request, maxBytes: number): Promise<string> {
   const declared = Number(request.headers.get("content-length"));
-  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) throw tooLarge();
+  if (Number.isFinite(declared) && declared > maxBytes) throw tooLarge();
   if (!request.body) return "";
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -71,7 +71,7 @@ async function readLimitedText(request: Request): Promise<string> {
     const { done, value } = await reader.read();
     if (done) break;
     size += value.byteLength;
-    if (size > MAX_BODY_BYTES) {
+    if (size > maxBytes) {
       await reader.cancel().catch(() => {});
       throw tooLarge();
     }
@@ -80,8 +80,9 @@ async function readLimitedText(request: Request): Promise<string> {
   return new TextDecoder().decode(Buffer.concat(chunks));
 }
 
-export async function parseBody<T>(request: Request, schema: ZodType<T>): Promise<T> {
-  const text = await readLimitedText(request);
+/** Parses a JSON body of at most `maxBytes` (MAX_BODY_BYTES unless a route allows more). */
+export async function parseBody<T>(request: Request, schema: ZodType<T>, maxBytes = MAX_BODY_BYTES): Promise<T> {
+  const text = await readLimitedText(request, maxBytes);
   let body: unknown;
   try {
     body = JSON.parse(text);

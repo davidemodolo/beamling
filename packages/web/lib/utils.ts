@@ -36,8 +36,7 @@ export function orList(items: readonly string[]): string {
 }
 
 export function createId(prefix: string): string {
-  const uuid = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : Math.random().toString(36).slice(2, 10);
-  return `${prefix}-${uuid}`;
+  return `${prefix}-${crypto.randomUUID()}`;
 }
 
 /** Collapse runs of whitespace (including newlines) into single spaces and trim the ends. */

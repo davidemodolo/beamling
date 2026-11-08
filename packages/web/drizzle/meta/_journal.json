@@ -15,6 +15,13 @@
       "when": 1794134955970,
       "tag": "0001_default_model_nemotron",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794144678453,
+      "tag": "0002_message_attachments",
+      "breakpoints": true
     }
   ]
 }

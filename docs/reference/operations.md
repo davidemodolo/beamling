@@ -155,7 +155,7 @@ Cloud Run in `europe-west1`, Neon Postgres in Frankfurt, Cloud KMS key in `europ
 - Enable backups and log retention, and set `LEGAL_BACKUP_RETENTION_DAYS` (default 7) and `LEGAL_LOG_RETENTION_DAYS` (default 30) to the real windows (the privacy notice states them). Alert on the watchdog and `/api/health`.
 - Analytics is off by default; see [Configuration](configuration.md) for the `ANALYTICS_*`/`POSTHOG_*` variables (the personal key needs `person:write`).
 - Set `LEGAL_ENTITY`, `LEGAL_ADDRESS`, `LEGAL_CONTACT_EMAIL` (optional `LEGAL_VAT_ID`); use `SIGNUP_MODE=open` only after legal review. Material terms/privacy changes bump `LEGAL_VERSION` in `packages/web/lib/legal.ts`, forcing re-acceptance.
-- Before each release: `pnpm audit --prod`, a Gitleaks history scan, a container scan. CI runs `pnpm audit --audit-level moderate` and Gitleaks.
+- Before each release: `pnpm audit --prod`, a Gitleaks history scan, a container scan. CI runs `pnpm audit --audit-level low` (any advisory fails) and Gitleaks.
 
 ## Incident runbook
 

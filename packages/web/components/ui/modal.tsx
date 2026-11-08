@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useFocusTrap } from "@/lib/hooks/use-focus-trap";
 import { Icon } from "./icon";
 
@@ -26,9 +27,11 @@ export function Modal({ open, onClose, title, children, footer, width = 440 }: M
     };
   }, [open]);
 
-  if (!open) return null;
+  if (!open || typeof document === "undefined") return null;
 
-  return (
+  // Rendered at the body: an ancestor with a transform or backdrop filter (the sidebar) would
+  // otherwise become the containing block and clip the fixed dialog.
+  return createPortal(
     <>
       <button type="button" className="overlay" aria-label="Close dialog" onClick={onClose} />
       <div ref={ref} className="dialog" role="dialog" aria-modal="true" aria-label={title} style={{ width: `min(${width}px, calc(100vw - 32px))` }}>
@@ -41,6 +44,7 @@ export function Modal({ open, onClose, title, children, footer, width = 440 }: M
         <div className="dialog-body">{children}</div>
         {footer ? <div className="dialog-foot">{footer}</div> : null}
       </div>
-    </>
+    </>,
+    document.body,
   );
 }

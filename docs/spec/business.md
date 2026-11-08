@@ -78,7 +78,7 @@ Guardrails: credential validation failures, decryption errors, rate-limit incide
 | Event | When | Allowed properties |
 |---|---|---|
 | `account_created` | First sign-in of a new account | `app_version` |
-| `question_asked` | Chat request accepted | `mode`, `search_provider`, `llm_model`, `app_version` |
+| `question_asked` | Chat request accepted | `mode`, `search_provider`, `llm_model`, `images` (count), `app_version` |
 | `answer_completed` | `done` emitted | `mode`, `search_provider`, `llm_model`, `resolved_model`, `upstream_provider`, `tokens_in`, `tokens_out`, `cost_usd`, `search_cost_usd`, `search_requests`, `search_failures`, `latency_ms`, `uncited`, `no_sources`, `degraded` |
 | `answer_failed` | Error emitted | `mode`, `search_provider`, `llm_model`, `error_code`, `latency_ms`, `search_failures` |
 | `answer_stopped` | User stops | `mode`, `search_provider`, `latency_ms` |

@@ -12,7 +12,8 @@
 | `packages/web/tests/integration/streams.test.ts` | 10 | Per-conversation, global and per-account limits, lock timeout, stop, mid-answer delete, stale repair, cleanup, terminal race, new-stream flag |
 | `packages/web/tests/integration/conversations.test.ts` | 5 | Pinned ordering, pagination, 100-conversation cap, 60-day expiry, per-chat and storage caps |
 | `packages/web/tests/integration/accounts.test.ts` | 12 | Sessions, account cleanup, export, analytics opt-out and erasure, sign-up cap, rate limits, Brave spacing, keys, shutdown |
-| `packages/web/e2e/*.spec.ts` | 52 | 15 API checks, 25 UI flows, 12 route CSP/axe variants (below) |
+| `packages/web/tests/unit/images.test.ts` | 4 | Image type and signature checks, image markers in prompts, single entity decoding, model vision flags |
+| `packages/web/e2e/*.spec.ts` | 56 | 15 API checks, 29 UI flows, 12 route CSP/axe variants (below) |
 
 ## Running
 
@@ -51,7 +52,9 @@ UI:
 - Per-question Tavily selection keeps its badge after reload; providers without a key are marked; an Exa key is saved unvalidated and checked later.
 - Settings: a model is picked under its keyed provider, an unkeyed provider's models stay disabled until its key is added, a search provider is picked by card, and the dialog has no serious axe violations.
 - Install: the manifest is linked and standalone, its icons load, the service worker activates, and a page load offline shows the offline page.
-- Sidebar pinning and title search; older conversations load on demand.
+- Sidebar pinning and title search; older conversations load on demand; several chats are selected and deleted in one request, in a dialog centred in the window.
+- Images: only the image id and type are stored; a follow-up re-sends the image from the browser; after 7 days, or in another browser, a placeholder shows and the model does not get it; an image-only question is titled "Image question" and deleting it clears the device copy.
+- Setup offers sign-out and account deletion without any key.
 - Streams stay isolated per conversation and survive client-side navigation.
 - Stop keeps partial text; “Ask again” replaces the answer; reload mid-answer shows a stopped answer.
 - Failures before storage retry as a new question; deleting the active conversation returns to a new question.

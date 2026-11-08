@@ -91,6 +91,8 @@ export interface ModelInfo {
   provider: LlmProvider;
   /** The model name sent to the provider's API. */
   apiModel: string;
+  /** Reads images attached to a question. */
+  vision: boolean;
   /** Costs nothing on the provider's free tier, within its daily request limit. */
   free?: true;
 }
@@ -102,14 +104,15 @@ export const MODELS: readonly ModelInfo[] = [
     name: "Nemotron 3.5 Super · free",
     provider: "openrouter",
     apiModel: "nvidia/nemotron-3.5-super-vl:free",
+    vision: true,
     free: true,
   },
-  { id: "google/gemma-4-31b-it:free", name: "Gemma 4 31B · free", provider: "openrouter", apiModel: "google/gemma-4-31b-it:free", free: true },
-  { id: "deepseek/deepseek-v4.1-flash", name: "DeepSeek V4.1 Flash", provider: "openrouter", apiModel: "deepseek/deepseek-v4.1-flash" },
-  { id: "google/gemini-3.5-flash-lite", name: "Gemini 3.5 Flash Lite", provider: "openrouter", apiModel: "google/gemini-3.5-flash-lite" },
-  { id: "openai/gpt-6-luna", name: "GPT-6 Luna", provider: "openrouter", apiModel: "openai/gpt-6-luna" },
-  { id: "anthropic/claude-haiku-5.5", name: "Claude Haiku 5.5", provider: "openrouter", apiModel: "anthropic/claude-haiku-5.5" },
-  { id: "deepseek:deepseek-flash", name: "DeepSeek V4.1 Flash · direct", provider: "deepseek", apiModel: "deepseek-flash" },
+  { id: "google/gemma-4-31b-it:free", name: "Gemma 4 31B · free", provider: "openrouter", apiModel: "google/gemma-4-31b-it:free", vision: true, free: true },
+  { id: "deepseek/deepseek-v4.1-flash", name: "DeepSeek V4.1 Flash", provider: "openrouter", apiModel: "deepseek/deepseek-v4.1-flash", vision: true },
+  { id: "google/gemini-3.5-flash-lite", name: "Gemini 3.5 Flash Lite", provider: "openrouter", apiModel: "google/gemini-3.5-flash-lite", vision: true },
+  { id: "openai/gpt-6-luna", name: "GPT-6 Luna", provider: "openrouter", apiModel: "openai/gpt-6-luna", vision: true },
+  { id: "anthropic/claude-haiku-5.5", name: "Claude Haiku 5.5", provider: "openrouter", apiModel: "anthropic/claude-haiku-5.5", vision: true },
+  { id: "deepseek:deepseek-flash", name: "DeepSeek V4.1 Flash · direct", provider: "deepseek", apiModel: "deepseek-flash", vision: true },
 ];
 
 export const DEFAULT_LLM_MODEL = MODELS[0].id;
@@ -125,6 +128,9 @@ export const ALL_PROVIDERS: readonly ProviderInfo[] = CREDENTIAL_PROVIDER_IDS.ma
 export const SEARCH_PROVIDERS = SEARCH_PROVIDER_IDS.map((id) => PROVIDERS[id]);
 
 export const modelInfo = (id: string): ModelInfo | undefined => MODELS.find((model) => model.id === id);
+/** Whether the model reads images; unknown and retired models do not. */
+/** Whether the model reads images; unknown ids run the default model, as on the server. */
+export const modelReadsImages = (id: string): boolean => (modelInfo(id) ?? MODELS[0]).vision;
 export const isAllowedModel = (id: string): boolean => Boolean(modelInfo(id));
 /** Names of models removed from the catalog, so older answers keep a readable label. */
 const RETIRED_MODEL_NAMES: Readonly<Record<string, string>> = {

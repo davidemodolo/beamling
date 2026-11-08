@@ -2,7 +2,7 @@
 
 ## Registry and shared model layer
 
-`lib/server/providers/index.ts` maps each provider id to an adapter. A mapped type makes the compiler require a key check for every provider, a model adapter for every model provider and a search function for every search provider. To add a provider: list it in `contracts.ts`, describe it in `provider-catalog.ts`, register its adapter. Removing is the reverse.
+`lib/server/providers/index.ts` maps each provider id to an adapter. A mapped type makes the compiler require a key check for every provider, a model adapter for every model provider and a search function for every search provider. To add a provider: list it in `contracts.ts`, describe it in `provider-catalog.ts`, register its adapter. Removing is the reverse. Each catalog model declares `vision` (reads images).
 
 A model adapter (`LlmAdapter` in `providers/llm.ts`) supplies only:
 

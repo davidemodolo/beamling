@@ -210,6 +210,16 @@ export interface SceneOptions {
   label: string;
 }
 
+/** Text safe inside SVG markup, in content or a quoted attribute. */
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 /**
  * Static SVG markup; the animation engine updates the same nodes in place.
  * With beams, eye and light are one flat shape; the small mark keeps the same
@@ -218,7 +228,7 @@ export interface SceneOptions {
 export function sceneMarkup(id: string, f: Frame, o: SceneOptions): string {
   const g = scenePaths(f, o.beams);
   const paths = (part: string) => `<path data-part="${part}-l" d="${g.left}"/><path data-part="${part}-r" d="${g.right}"/>`;
-  const title = o.label ? `<title>${o.label.replace(/[<&]/g, "")}</title>` : "";
+  const title = o.label ? `<title>${escapeXml(o.label)}</title>` : "";
   const room =
     o.beams && o.room
       ? `<path d="${roomEdges()}" style="stroke:var(--beamling-room,rgba(244,241,234,.08));stroke-width:.6;fill:none"/>`

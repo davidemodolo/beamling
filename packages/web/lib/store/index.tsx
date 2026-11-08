@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api, ApiRequestError, errorMessage } from "../api";
+import { clearImages, pruneImages } from "../image-store";
 import type { AppState } from "../types";
 import { AccountContext, useAccountSlice, type AccountValue } from "./account";
 import { ConversationsContext, useConversationsSlice } from "./conversations";
@@ -59,8 +60,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     void refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    void pruneImages();
+  }, []);
+
   const deleteAccount = useCallback(async () => {
     await api("/api/account", { method: "DELETE" });
+    await clearImages();
     resetAccount();
     resetConversations();
   }, [resetAccount, resetConversations]);

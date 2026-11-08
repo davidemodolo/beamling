@@ -9,6 +9,11 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 export const DEFAULT_CONVERSATION_TITLE = "New conversation";
+/** Conversation title for a question that is only images. */
+export const IMAGE_QUESTION_TITLE = "Image question";
+
+/** Messages before the question that the prompt includes as conversation history. */
+export const HISTORY_MESSAGES = 6;
 
 /** Conversation summaries per page in the sidebar. */
 export const CONVERSATION_PAGE_SIZE = 50;

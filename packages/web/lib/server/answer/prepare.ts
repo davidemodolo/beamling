@@ -1,3 +1,4 @@
+import { toAttachment, type Attachment, type ImageUpload } from "../../attachments";
 import { credentialKind, isSearchProvider, type CredentialProvider } from "../../contracts";
 import { DEFAULT_LLM_MODEL, modelInfo } from "../../provider-catalog";
 import type { Message, Mode, SearchProvider } from "../../types";
@@ -30,6 +31,21 @@ async function providerKey(userId: string, provider: CredentialProvider) {
   }
 }
 
+/** A model that cannot read images is refused new ones; earlier images are then marked unavailable in the prompt. */
+function noVision(modelName: string): ApiError {
+  return new ApiError("MODEL_NO_VISION", `${modelName} cannot read images. Pick a model that can in Settings, or remove the images.`, 400);
+}
+
+/**
+ * The image bytes the model will see: the question's and those of earlier questions in the history
+ * window, in that order. Anything else the browser sent is ignored.
+ */
+function allowedUploads(uploads: ImageUpload[], attachments: Attachment[], history: Message[]): ImageUpload[] {
+  const allowed = new Set([...attachments, ...history.flatMap((message) => message.attachments ?? [])].map((item) => item.id));
+  const seen = new Set<string>();
+  return uploads.filter((image) => allowed.has(image.id) && !seen.has(image.id) && seen.add(image.id));
+}
+
 /**
  * Everything that can fail before streaming starts: settings, keys, conversation and the stored
  * exchange. Errors here are returned as plain JSON responses. A retry reuses the stored question
@@ -41,11 +57,17 @@ export async function prepareChat(input: {
   mode: Mode;
   searchProvider?: SearchProvider;
   question?: string;
+  /** The new question's images. */
+  attachments?: ImageUpload[];
+  /** Earlier images the browser still has; only those in the history window are used. */
+  context?: ImageUpload[];
   retryOf?: string;
 }): Promise<PreparedChat> {
   const startedAt = Date.now();
   const settings = await ensureSettings(input.userId);
   const llm = modelInfo(settings.llmModel) ?? modelInfo(DEFAULT_LLM_MODEL)!;
+  const uploads = input.attachments ?? [];
+  if (uploads.length && !llm.vision) throw noVision(llm.name);
   const searchProvider =
     input.searchProvider && isSearchProvider(input.searchProvider) ? input.searchProvider : settings.defaultSearchProvider;
 
@@ -69,13 +91,14 @@ export async function prepareChat(input: {
     const searchCredential =
       (searchProvider as CredentialProvider) === llm.provider ? llmCredential : await providerKey(input.userId, searchProvider);
 
-    const { userMessage, assistantMessage, questionText } = await createExchange({
+    const { userMessage, assistantMessage, questionText, attachments } = await createExchange({
       userId: input.userId,
       conversationId,
       mode: input.mode,
       llmModel: llm.id,
       searchProvider,
       question: input.question,
+      attachments: uploads.map(toAttachment),
       retryOf: input.retryOf,
     });
     let history: Message[];
@@ -98,6 +121,7 @@ export async function prepareChat(input: {
       log.error("Conversation cap could not be applied", error);
       return [];
     });
+    const images = llm.vision ? allowedUploads([...uploads, ...(input.context ?? [])], attachments, history) : [];
 
     return {
       userId: input.userId,
@@ -105,6 +129,9 @@ export async function prepareChat(input: {
       messageId: assistantMessage.id,
       userMessageId: userMessage.id,
       question: questionText,
+      attachments,
+      images,
+      imageIds: new Set(images.map((image) => image.id)),
       mode: input.mode,
       llm,
       llmKey: llmCredential.key,

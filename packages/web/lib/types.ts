@@ -1,4 +1,5 @@
 export type { BravePlan, CredentialKind, CredentialProvider, CredentialStatus, Mode, SearchProvider } from "./contracts";
+import type { Attachment } from "./attachments";
 import type { BravePlan, CredentialKind, CredentialStatus, MessageStatus, Mode, SearchProvider } from "./contracts";
 
 type Role = "user" | "assistant";
@@ -67,6 +68,8 @@ export interface Message {
   searchFailures?: number;
   searches?: SearchTrace[];
   reasoning?: string;
+  /** Images on a question: id and type only, never the bytes. */
+  attachments?: Attachment[];
 }
 
 export interface ConversationSummary {

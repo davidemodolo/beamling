@@ -37,6 +37,7 @@ messages
   role, content, status, mode,
   uncited, no_sources, truncated, degraded,
   searches (encrypted JSON trace), reasoning (encrypted),
+  attachments (encrypted JSON image ids and types; never bytes),
   llm_model, resolved_model, upstream_provider,
   search_requests, search_failures,
   search_provider, tokens_in, tokens_out, cost_usd, search_cost_usd,
@@ -124,7 +125,7 @@ A second concurrent answer in one conversation hits the partial unique index: `G
 - `GET /api/conversations/:id` returns the newest page plus `hasMoreMessages`.
 - `GET /api/conversations/:id/messages?before=<messageId>` returns the previous page.
 - Cursors are base64url JSON tuples; invalid ones return `INVALID_CURSOR`.
-- Deleting a conversation cascades to messages and sources and aborts its local active answers.
+- Deleting a conversation cascades to messages and sources and aborts its local active answers. `POST /api/conversations/delete { ids }` deletes up to 100 at once, ignores ids of other accounts and returns `{ deleted }`.
 - Max 100 conversations per account (`MAX_CONVERSATIONS`). After `/api/chat` stores a question, `trimConversations` keeps the current one plus the first 99 others in sidebar order (pinned first, then most recent) and deletes the rest. Deleted ids are sent in the `meta` event's `removed`. Trim failures are logged, not fatal.
 - Database guard: before a new question, if `pg_database_size` ≥ `DATABASE_SIZE_LIMIT_MB` (default 850, below the Neon Free plan's 1 GB) `prepareChat` returns `SERVICE_FULL` (503) for everyone.
 - Per-account storage limit: 10 MB (`STORAGE_LIMIT_MB`), measured on demand as `pg_column_size` of the account's conversation, message and source rows (ciphertext). Nothing about usage is stored. `prepareChat` checks it before a new question (not a retry) and returns `STORAGE_FULL` at the limit.
