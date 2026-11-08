@@ -186,6 +186,22 @@ test("a key saved without validation is unverified and has no check date", { ski
   assert.equal(credential.lastValidatedAt, undefined);
 });
 
+test("deleting an account removes its per-account rate-limit counters, question counters included", { skip }, async (t) => {
+  const { like } = await import("drizzle-orm");
+  const { db } = await import("../../lib/server/db");
+  const { rateLimits } = await import("../../lib/server/schema");
+  const { consumeRateLimit, deleteAccount, questionLimitKeys } = await import("../../lib/server/repo");
+  const userId = await createAccount(t, { keys: false });
+  const keys = questionLimitKeys(userId);
+  for (const key of [keys.hour, keys.day, `reads:${userId}`, `writes:${userId}`]) await consumeRateLimit(key, 10, 3600);
+  const counters = () => db.select({ key: rateLimits.key }).from(rateLimits).where(like(rateLimits.key, `%${userId}`));
+  assert.equal((await counters()).length, 4);
+
+  await deleteAccount(userId);
+  // Every counter keyed by the account id is gone, so a new key cannot be left behind unnoticed.
+  assert.deepEqual(await counters(), []);
+});
+
 test("deleting an account queues its erasure, which runs twice and backs off on failure", { skip }, async (t) => {
   const { claimAnalyticsErasures, deleteAccount, recordAnalyticsErasure } = await import("../../lib/server/repo");
   const { db } = await import("../../lib/server/db");
