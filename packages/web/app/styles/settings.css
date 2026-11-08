@@ -156,9 +156,8 @@
   color: var(--muted);
   font-size: 13.5px;
   line-height: 1.6;
-}
-.limits-rules {
   padding-left: 18px;
+  list-style: disc;
 }
 .limit-meter {
   padding: 14px 16px;

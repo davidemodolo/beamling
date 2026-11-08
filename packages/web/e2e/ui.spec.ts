@@ -376,7 +376,6 @@ const PNG = Buffer.from(
 async function attachImage(page: import("@playwright/test").Page, name = "photo.png") {
   await page.locator('input[type="file"]').setInputFiles({ name, mimeType: "image/png", buffer: PNG });
   await expect(page.getByRole("list", { name: "Attached images" }).locator("img")).toHaveCount(1);
-  await expect(page.getByText("Images stay only in this browser, for 7 days.")).toBeVisible();
 }
 
 test("an image stays on the device and is sent again with a follow-up", async ({ page, browser }) => {
@@ -388,7 +387,6 @@ test("an image stays on the device and is sent again with a follow-up", async ({
   await expect(answers(page).last()).toContainText("The model saw 1 image", { timeout: 20_000 });
   await expect(page.locator(".message-user .message-image img")).toHaveCount(1);
 
-  await expect(page.getByText("Images stay only in this browser")).toHaveCount(0);
   // The server stores only that the question had an image: no bytes, no description.
   const id = page.url().split("/").at(-1)!;
   const { conversation } = await (await page.request.get(`/api/conversations/${id}`)).json();
@@ -641,7 +639,7 @@ test("a scheduled shutdown is announced in the app, at sign-in and on the status
     await page.goto("/");
     const banner = page.getByRole("alert").filter({ hasText: "Beamling shuts down on" });
     await expect(banner).toBeVisible();
-    await expect(page.getByText("Chats are deleted 60 days after their last message.").first()).toBeVisible();
+    await expect(page.getByText("Chats are deleted 60 days after their last question.").first()).toBeVisible();
     await banner.getByRole("button", { name: "Download my data" }).click();
     await expect(page.getByRole("link", { name: "Download" })).toHaveAttribute("href", "/api/account/export");
   } finally {

@@ -166,12 +166,6 @@
   background: var(--surface);
   color: var(--text);
 }
-.composer-note {
-  margin: 0;
-  padding: 8px 14px 0;
-  color: var(--muted);
-  font-size: 12px;
-}
 .composer-warning {
   display: flex;
   align-items: center;

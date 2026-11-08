@@ -238,7 +238,7 @@ function SidebarContent({ mobile, onNavigate }: SidebarProps) {
             {conversationCount >= CONVERSATION_WARNING_THRESHOLD
               ? `${Math.min(conversationCount, MAX_CONVERSATIONS)} of ${MAX_CONVERSATIONS} chats. New chats replace the oldest unpinned ones. `
               : null}
-            Chats are deleted {CONVERSATION_RETENTION_DAYS} days after their last message.
+            Chats are deleted {CONVERSATION_RETENTION_DAYS} days after their last question.
           </p>
         ) : null}
       </div>
