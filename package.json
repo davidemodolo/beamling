@@ -25,6 +25,6 @@
   },
   "devDependencies": {
     "jscpd": "5.4.2",
-    "knip": "6.44.1"
+    "knip": "6.44.2"
   }
 }
