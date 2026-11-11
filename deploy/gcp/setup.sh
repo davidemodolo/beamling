@@ -69,6 +69,11 @@ exists g logging buckets describe beamling-eu --location "$REGION" ||
     --description "Beamling logs, kept in the EU for 30 days"
 g logging sinks update _Default \
   "logging.googleapis.com/projects/$PROJECT_ID/locations/$REGION/buckets/beamling-eu" >/dev/null
+# Cloud Run request logs below 500 are not ingested: app logs already record path and status,
+# a flood cannot grow log spend, and full request URLs (query strings) never reach the logs.
+g logging sinks describe _Default --format='value(exclusions[].name)' | grep -qw run-requests-ok ||
+  g logging sinks update _Default --add-exclusion \
+    'name=run-requests-ok,filter=LOG_ID("run.googleapis.com/requests") AND httpRequest.status<500' >/dev/null
 
 step "Service accounts"
 create_sa() {
