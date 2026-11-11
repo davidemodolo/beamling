@@ -79,7 +79,7 @@ Evals: each golden question has a reference answer and expected domains. A judge
 
 **Hard caps**
 
-- Cloud Run max instances (2 at launch).
+- Cloud Run max instances (1).
 - Per-machine concurrency `hard_limit` (total ≈ machines × limit).
 - Global active-stream cap and per-IP/per-account rate limits.
 - Neon max CU cap, scale-to-zero on.

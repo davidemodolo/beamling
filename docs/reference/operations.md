@@ -110,8 +110,8 @@ Cloud Run in `europe-west1`, Neon Postgres in Frankfurt, Cloud KMS key in `europ
   Deploys never change IAM; `allUsers` → `run.invoker` is granted once by setup.
 - **GitHub settings:** environment `production` with variables `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_DEPLOY_SERVICE_ACCOUNT`, `OIDC_CLIENT_ID` and secret `SIGNUP_ALLOWED_EMAILS`; repository variables `GCP_DEPLOY_ENABLED` and optional `PUBLIC_APP_URL` (default `https://beamling.app`). The GHCR package must be public.
 - **Background work:** idle instances have no CPU, so hourly [cleanup](conversations.md#cleanup) runs only while serving.
-- **Logs:** JSON on stdout with `severity`; `_Default` sink to EU bucket `beamling-eu` (`europe-west1`, 30 days), matching `LEGAL_LOG_RETENTION_DAYS=30`.
-- **Spend:** max two instances, plus `deploy/gcp/budgets.sh`: a €5 Cloud Run spend cap (pauses new requests until the 1st or a manual lift) and a €5 account email alert.
+- **Logs:** JSON on stdout with `severity`; `_Default` sink to EU bucket `beamling-eu` (`europe-west1`, 30 days), matching `LEGAL_LOG_RETENTION_DAYS=30`. Cloud Run request logs with status below 500 are excluded (`run-requests-ok`).
+- **Spend:** max one instance, plus `deploy/gcp/budgets.sh`: a €5 Cloud Run spend cap (pauses new requests until the 1st or a manual lift) and a €5 account email alert.
 - **Domain:** `beamling.app` via Cloud Run domain mapping, Google-managed TLS.
 - Optional: `LEGAL_ADDRESS`, `LEGAL_VAT_ID` (requires the address), and `SMTP_URL`, `MAIL_FROM`, `LEGAL_MAIL_PROVIDER` for shutdown email, added to `service.yaml` when needed.
 - `APP_URL` is `https://beamling.app`; for another domain change it and register the Google OAuth callback.

@@ -16,7 +16,7 @@ spec:
       annotations:
         # Scale to zero when idle. The maximum is the spend cap: Cloud Run never starts more.
         autoscaling.knative.dev/minScale: "0"
-        autoscaling.knative.dev/maxScale: "2"
+        autoscaling.knative.dev/maxScale: "1"
         # Request-based billing: CPU is allocated only while a request (or stream) is in flight.
         run.googleapis.com/cpu-throttling: "true"
         run.googleapis.com/startup-cpu-boost: "true"
