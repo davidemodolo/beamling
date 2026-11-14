@@ -49,9 +49,11 @@ export function deepSeekCost(step: ModelStep, at = new Date()): number {
 
 export const deepSeekModels: LlmAdapter = {
   model: (key, apiModel) => createDeepSeek({ apiKey: key }).chat(apiModel),
-  // Thinking is on by default. Beamling's planner, gap review and answer prompts are written for
-  // direct replies, and forcing the first research step to call search requires thinking off.
+  // Thinking is off for research: the planner and gap review expect direct replies, and forcing the
+  // first research step to call search requires it off. The answer is written with thinking on, so
+  // the reasoning can be shown.
   providerOptions: { deepseek: { thinking: { type: "disabled" } } },
+  answerProviderOptions: { deepseek: { thinking: { type: "enabled" } } },
   stepUsage: (step) => ({ costUsd: deepSeekCost(step) }),
 };
 

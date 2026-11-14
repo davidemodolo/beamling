@@ -64,6 +64,7 @@ export async function chat(options: {
   return streamChat({
     provider: options.model.provider,
     adapter: llmAdapter(options.model.provider),
+    purpose: options.purpose,
     key: options.key,
     apiModel: options.model.apiModel,
     messages: options.messages,
