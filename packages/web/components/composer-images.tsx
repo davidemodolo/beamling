@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { Icon } from "./ui/icon";
-import type { PreparedImage } from "@/lib/images";
+import type { PreparedFile, PreparedImage } from "@/lib/images";
 
 function Preview({ image, index, onRemove }: { image: PreparedImage; index: number; onRemove: (id: string) => void }) {
   const ref = useRef<HTMLImageElement>(null);
@@ -23,16 +23,35 @@ function Preview({ image, index, onRemove }: { image: PreparedImage; index: numb
   );
 }
 
-/** The images picked for the next question, each removable. */
-export function ComposerImages({ images, adding, onRemove }: { images: PreparedImage[]; adding: boolean; onRemove: (id: string) => void }) {
-  if (!images.length && !adding) return null;
+/** The images and text files picked for the next question, each removable. */
+export function ComposerImages({
+  images,
+  files,
+  adding,
+  onRemove,
+}: {
+  images: PreparedImage[];
+  files: PreparedFile[];
+  adding: boolean;
+  onRemove: (id: string) => void;
+}) {
+  if (!images.length && !files.length && !adding) return null;
   return (
-    <ul className="composer-images" aria-label="Attached images">
+    <ul className="composer-images" aria-label="Attachments">
       {images.map((image, index) => (
         <Preview key={image.id} image={image} index={index} onRemove={onRemove} />
       ))}
+      {files.map((file) => (
+        <li key={file.id} className="composer-file">
+          <Icon name="file" size={13} />
+          <span title={file.name}>{file.name}</span>
+          <button type="button" onClick={() => onRemove(file.id)} aria-label={`Remove ${file.name}`}>
+            <Icon name="x" size={11} />
+          </button>
+        </li>
+      ))}
       {adding ? (
-        <li className="composer-image composer-image-loading" aria-label="Preparing image">
+        <li className="composer-image composer-image-loading" aria-label="Preparing attachment">
           <Icon name="loader" size={14} className="spin" />
         </li>
       ) : null}

@@ -2,7 +2,7 @@
 
 
 **Status:** describes the code in this checkout, not a roadmap.
-**Last verified against the code:** 2026-11-07.
+**Last verified against the code:** 2026-11-14.
 **Scope:** web app, API, schema, answer pipeline, UI, security, tests and local deployment.
 
 Users sign in with Google, add a model key (OpenRouter or DeepSeek) and a search key (Brave, Tavily, Exa or DeepSeek; one DeepSeek key can serve both), and ask in Quick, Deep or Deeper mode. The server searches, builds a prompt from the snippets, streams the answer over SSE and stores the conversation, sources and usage.
@@ -59,7 +59,7 @@ The server never fetches result pages, crawls or loads remote media. Provider ca
 | Messages | 60-message pages with sources |
 | Streaming | SSE events with heartbeat ([Streaming protocol](streaming.md)) |
 | Cancellation | Local and cross-instance stop, partial text kept, timeout and shutdown handling |
-| Models | Per-provider allowlist (five via OpenRouter), default DeepSeek V4.1 Flash |
+| Models | Per-provider allowlist (six via OpenRouter), default Nemotron 3.5 Super VL (free) |
 | Costs | Generation cost (OpenRouter-reported or DeepSeek-estimated), list-price search cost, tokens, latency, search count |
 | Transparency | Stored search trace and encrypted provider reasoning, both collapsed |
 | Markdown | Tables, headings, lists, quotes, code, citations |

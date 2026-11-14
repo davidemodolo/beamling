@@ -28,7 +28,7 @@ import { users } from "./schema";
 import { createSession } from "./session";
 import { ensureWorkspaceKey } from "./workspace-key";
 
-const STATE_PATH = /^\/(onboarding|chat\/[0-9a-f-]{36})?$/i;
+const STATE_PATH = /^\/(onboarding|search|chat\/[0-9a-f-]{36})?$/i;
 
 let configuration: Promise<client.Configuration> | undefined;
 

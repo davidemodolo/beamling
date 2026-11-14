@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
-import type { Attachment, ImageUpload } from "../../attachments";
+import { isImage, type Attachment, type FileUpload, type ImageUpload } from "../../attachments";
 import type { BravePlan, CredentialProvider } from "../../contracts";
 import { providerName, PROVIDERS, type ModelInfo } from "../../provider-catalog";
 import type { Message, Mode, SearchProvider, SearchTrace, Source, Usage } from "../../types";
 import { ApiError } from "../http";
-import { promptQuestion, type Prompt, type VisibleImages } from "../prompts";
+import { fileBlocks, promptQuestion, type Prompt, type VisibleImages } from "../prompts";
 import { search } from "../providers";
 import type { ChatMessage, ChatPart, ChatResult } from "../providers/llm";
 import { rankSources } from "../ranking";
@@ -34,16 +34,21 @@ export interface PreparedChat {
   conversationId: string;
   messageId: string;
   userMessageId: string;
-  /** The question as typed; empty when it is only images. */
+  /** The question as typed; empty when it is only attachments. */
   question: string;
-  /** The question's images, as stored (id and type). */
+  /** The question's images and text files, as stored (id, and type or name). */
   attachments: Attachment[];
   /**
    * Image bytes the model will see: the question's and those of earlier questions in the history
    * window that the browser still has. Empty when the model does not read images.
    */
   images: ImageUpload[];
-  /** Ids of `images`, for prompts that say whether an image is included. */
+  /**
+   * Text files the model will see: the question's and those of earlier questions in the history
+   * window that the browser still has.
+   */
+  files: FileUpload[];
+  /** Ids of `images` and `files`, for prompts that say whether an attachment is included. */
   imageIds: VisibleImages;
   mode: Mode;
   llm: ModelInfo;
@@ -132,9 +137,14 @@ export function promptMessages(prompt: Prompt, images: ChatPart[] = []): ChatMes
   return [{ role: "system", content: prompt.system }, userMessage(prompt.user, images)];
 }
 
-/** The question as prompts state it: what was typed, with a marker per attached image. */
+/**
+ * The question as prompts state it: what was typed, a marker per attachment, then the text of the
+ * files the model can see. Every step that reads the question (planner, research, writer) gets them.
+ */
 export function askedQuestion(prepared: PreparedChat): string {
-  return promptQuestion(prepared.question, prepared.attachments, prepared.imageIds);
+  const question = promptQuestion(prepared.question, prepared.attachments, prepared.imageIds);
+  const files = fileBlocks(prepared.files);
+  return files ? `${question}\n\n${files}` : question;
 }
 
 /**
@@ -142,7 +152,7 @@ export function askedQuestion(prepared: PreparedChat): string {
  * window. Empty when there are none or the model does not read images.
  */
 export function imageParts(prepared: PreparedChat): ChatPart[] {
-  const position = new Map(prepared.attachments.map((item, index) => [item.id, index + 1]));
+  const position = new Map(prepared.attachments.filter(isImage).map((item, index) => [item.id, index + 1]));
   const part = (image: ImageUpload): ChatPart => ({ type: "image", image: image.data, mediaType: image.mediaType });
   const current = prepared.images.filter((image) => position.has(image.id));
   const earlier = prepared.images.filter((image) => !position.has(image.id));

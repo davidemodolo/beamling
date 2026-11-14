@@ -11,7 +11,7 @@ import {
   STORAGE_LIMIT_BYTES,
   STORAGE_WARNING_RATIO,
 } from "@/lib/legal";
-import { IMAGE_RETENTION_DAYS, MAX_IMAGES_PER_QUESTION } from "@/lib/attachments";
+import { IMAGE_RETENTION_DAYS, MAX_FILE_BYTES, MAX_FILES_PER_QUESTION, MAX_IMAGES_PER_QUESTION } from "@/lib/attachments";
 import { useAccount } from "@/lib/store";
 import type { UsageReport } from "@/lib/types";
 import { formatNumber } from "@/lib/utils";
@@ -138,7 +138,8 @@ export function LimitsView({ usage }: { usage: UsageReport }) {
               <li>{MAX_QUESTIONS_PER_CONVERSATION} questions per chat, then start a new one.</li>
               <li>{formatNumber(MAX_QUESTION_CHARS)} characters per question.</li>
               <li>
-                {MAX_IMAGES_PER_QUESTION} images per question. They stay only in this browser, for {IMAGE_RETENTION_DAYS} days.
+                {MAX_IMAGES_PER_QUESTION} images and {MAX_FILES_PER_QUESTION} text files (.md or .txt, {MAX_FILE_BYTES / 1000} KB each) per
+                question. They stay only in this browser, for {IMAGE_RETENTION_DAYS} days.
               </li>
               <li>Chats are deleted {CONVERSATION_RETENTION_DAYS} days after their last question.</li>
               <li>The model sees the last few messages of a chat, not all of it.</li>

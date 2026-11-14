@@ -3,19 +3,20 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { ComposerImages } from "./composer-images";
 import { Icon } from "./ui/icon";
-import type { PreparedImage } from "@/lib/images";
+import { ATTACH_ACCEPT } from "@/lib/attachments";
+import type { PreparedFile, PreparedImage } from "@/lib/images";
 import { MODE_ICONS, MODE_LABELS, MODES } from "@/lib/modes";
 import { SEARCH_PROVIDERS } from "@/lib/provider-catalog";
 import type { Mode, SearchProvider } from "@/lib/types";
 
-/** Images for the next question. */
+/** Images and text files for the next question. */
 export interface ComposerAttach {
   images: PreparedImage[];
+  files: PreparedFile[];
   adding: boolean;
-  full: boolean;
   add: (files: File[]) => void;
   remove: (id: string) => void;
-  /** The selected model reads images; when it does not, attaching is off and sending images is blocked. */
+  /** The selected model reads images; when it does not, sending images is blocked. Text files always work. */
   modelReadsImages: boolean;
   onChangeModel: () => void;
 }
@@ -64,8 +65,9 @@ export function Composer({
   const [dragging, setDragging] = useState(false);
   const hasImages = attach.images.length > 0;
   const blockedByModel = hasImages && !attach.modelReadsImages;
-  const canSubmit = !busy && !disabled && !attach.adding && !blockedByModel && (!!value.trim() || hasImages);
-  const canAttach = !disabled && attach.modelReadsImages && !attach.full;
+  const hasAttachments = hasImages || attach.files.length > 0;
+  const canSubmit = !busy && !disabled && !attach.adding && !blockedByModel && (!!value.trim() || hasAttachments);
+  const canAttach = !disabled;
   useEffect(() => {
     const el = inputRef.current;
     if (!el) return;
@@ -97,7 +99,7 @@ export function Composer({
         }}
         aria-label="Ask a question"
       >
-        <ComposerImages images={attach.images} adding={attach.adding} onRemove={attach.remove} />
+        <ComposerImages images={attach.images} files={attach.files} adding={attach.adding} onRemove={attach.remove} />
         {blockedByModel ? (
           <p className="composer-warning" role="alert">
             <Icon name="alert" size={12} /> {modelLabel} cannot read images.{" "}
@@ -112,15 +114,15 @@ export function Composer({
             className="attach"
             onClick={() => fileRef.current?.click()}
             disabled={!canAttach}
-            aria-label="Attach images"
-            title={attach.modelReadsImages ? "Attach images" : `${modelLabel} cannot read images`}
+            aria-label="Attach images or text files"
+            title={attach.modelReadsImages ? "Attach images or .md and .txt files" : `Attach .md or .txt files (${modelLabel} cannot read images)`}
           >
             <Icon name="image" size={16} />
           </button>
           <input
             ref={fileRef}
             type="file"
-            accept="image/*"
+            accept={ATTACH_ACCEPT}
             multiple
             hidden
             onChange={(event) => {

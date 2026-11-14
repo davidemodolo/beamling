@@ -3,8 +3,8 @@
 import { IMAGE_RETENTION_DAYS, type ImageMediaType } from "./attachments";
 
 /**
- * Attached images, kept only in this browser (IndexedDB) for IMAGE_RETENTION_DAYS. The server never
- * stores image bytes, so this is the only copy: it is re-sent with follow-up questions, and deleted
+ * Attached images and text files, kept only in this browser (IndexedDB) for IMAGE_RETENTION_DAYS. The server never
+ * stores their content, so this is the only copy: it is re-sent with follow-up questions, and deleted
  * when it expires, with its conversation, on sign-out and on account deletion. Every call fails
  * soft: without storage, the model is told the image is no longer available.
  */
@@ -16,6 +16,18 @@ export interface StoredImage {
   savedAt: number;
 }
 
+export interface StoredFile {
+  id: string;
+  conversationId: string;
+  kind: "text";
+  name: string;
+  text: string;
+  savedAt: number;
+}
+
+type Stored = StoredImage | StoredFile;
+const isStoredFile = (item: Stored): item is StoredFile => "kind" in item;
+
 const DB_NAME = "beamling-images";
 const STORE = "images";
 const BY_CONVERSATION = "conversationId";
@@ -24,7 +36,7 @@ const BY_DATE = "savedAt";
 let opening: Promise<IDBDatabase> | null = null;
 // Images saved in this tab that are not in IndexedDB yet (or could not be written), so they still
 // show and can be sent in a browser without IndexedDB. Written images are dropped from it.
-const recent = new Map<string, StoredImage>();
+const recent = new Map<string, Stored>();
 
 function database(): Promise<IDBDatabase> {
   opening ??= new Promise<IDBDatabase>((resolve, reject) => {
@@ -76,7 +88,7 @@ function deleteAll(source: IDBIndex, range: IDBKeyRange): Promise<void> {
   });
 }
 
-export async function saveImages(images: StoredImage[]): Promise<void> {
+export async function saveImages(images: Stored[]): Promise<void> {
   for (const image of images) recent.set(image.id, image);
   const written = await run("readwrite", (store) => (images.forEach((image) => store.put(image)), true), false);
   if (written) for (const image of images) recent.delete(image.id);
@@ -84,31 +96,41 @@ export async function saveImages(images: StoredImage[]): Promise<void> {
 
 const expiresBefore = () => Date.now() - IMAGE_RETENTION_DAYS * 86_400_000;
 
-/** The images that are on this device and not expired, in the order asked. */
-export async function loadImages(ids: string[]): Promise<StoredImage[]> {
+/** What is on this device and not expired, in the order asked. */
+async function load(ids: string[]): Promise<Stored[]> {
   const missing = ids.filter((id) => !recent.has(id));
-  const stored = new Map((missing.length ? await readImages(missing) : []).map((image) => [image.id, image]));
+  const stored = new Map((missing.length ? await read(missing) : []).map((item) => [item.id, item]));
   const cutoff = expiresBefore();
   return ids.flatMap((id) => {
-    const image = recent.get(id) ?? stored.get(id);
-    return image && image.savedAt > cutoff ? [image] : [];
+    const item = recent.get(id) ?? stored.get(id);
+    return item && item.savedAt > cutoff ? [item] : [];
   });
 }
 
-function readImages(ids: string[]): Promise<StoredImage[]> {
+/** The images that are on this device and not expired, in the order asked. */
+export async function loadImages(ids: string[]): Promise<StoredImage[]> {
+  return (await load(ids)).filter((item): item is StoredImage => !isStoredFile(item));
+}
+
+/** The text files that are on this device and not expired, in the order asked. */
+export async function loadFiles(ids: string[]): Promise<StoredFile[]> {
+  return (await load(ids)).filter(isStoredFile);
+}
+
+function read(ids: string[]): Promise<Stored[]> {
   return run(
     "readonly",
     (store) =>
       Promise.all(
         ids.map(
           (id) =>
-            new Promise<StoredImage | undefined>((resolve) => {
+            new Promise<Stored | undefined>((resolve) => {
               const request = store.get(id);
-              request.onsuccess = () => resolve(request.result as StoredImage | undefined);
+              request.onsuccess = () => resolve(request.result as Stored | undefined);
               request.onerror = () => resolve(undefined);
             }),
         ),
-      ).then((found) => found.filter((image): image is StoredImage => !!image)),
+      ).then((found) => found.filter((item): item is Stored => !!item)),
     [],
   );
 }

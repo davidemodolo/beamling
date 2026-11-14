@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { memo, useCallback, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useRef, type ReactNode } from "react";
+import type { BeamlingHandle } from "@beamling/mascot/react";
 import { describeAnswerError } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
 import { useToast } from "@/lib/hooks/use-toast";
@@ -23,6 +24,10 @@ interface AnswerCardProps {
   onCitation: (messageId: string, source: Source) => void;
   onOpenSources: (messageId: string) => void;
   onRetry?: (messageId: string) => void;
+  /** Set on the latest complete answer: replaces it with a new one. */
+  onRegenerate?: (messageId: string) => void;
+  /** This answer just finished in this view: the mascot lights its citations once. */
+  lit?: boolean;
 }
 
 /**
@@ -140,8 +145,14 @@ export function ReasoningDetails({
   );
 }
 
-export const AnswerCard = memo(function AnswerCard({ message, onCitation, onOpenSources, onRetry }: AnswerCardProps) {
+export const AnswerCard = memo(function AnswerCard({ message, onCitation, onOpenSources, onRetry, onRegenerate, lit = false }: AnswerCardProps) {
   const { openSettings } = useSidebar();
+  const mascotRef = useRef<BeamlingHandle>(null);
+  useEffect(() => {
+    if (!lit) return;
+    mascotRef.current?.lookAt(0.7, 0.8, 1.6);
+    mascotRef.current?.pulse(0.6);
+  }, [lit]);
   const [toast, showToast] = useToast();
 
   const sources = message.sources;
@@ -166,10 +177,11 @@ export const AnswerCard = memo(function AnswerCard({ message, onCitation, onOpen
   const failedSearches = message.searchFailures ?? 0;
 
   return (
-    <article className="message message-assistant" aria-label="Beamling answer" aria-busy={writing || undefined}>
+    <article className={`message message-assistant${lit ? " just-lit" : ""}`} aria-label="Beamling answer" aria-busy={writing || undefined}>
       <div className="assistant-head">
         <span className="mark" aria-hidden="true">
           <Mascot
+            ref={mascotRef}
             state={writing ? "writing" : message.status === "error" ? "error" : message.status === "stopped" ? "stopped" : "done"}
             beams={false}
             label=""
@@ -273,6 +285,17 @@ export const AnswerCard = memo(function AnswerCard({ message, onCitation, onOpen
               <AnswerMeta selected={message.llmModel} searchProvider={message.searchProvider ?? message.usage?.searchProvider} usage={message.usage} />
             </div>
             <div className="actions">
+              {onRegenerate ? (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-icon btn-sm"
+                  onClick={() => onRegenerate(message.id)}
+                  aria-label="Regenerate answer"
+                  title="Regenerate: replaces this answer"
+                >
+                  <Icon name="refresh" size={14} />
+                </button>
+              ) : null}
               <button type="button" className="btn btn-ghost btn-icon btn-sm" onClick={copy} aria-label="Copy answer">
                 <Icon name="copy" size={14} />
               </button>

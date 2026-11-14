@@ -10,6 +10,7 @@
 | `/onboarding` | Two steps (model key, search key) after picking a path; redirects to `/` once setup is complete |
 | `/chat/:id` | A conversation; signed-out visitors go to `/login`. The app loads workspace state, conversation list and threads. During a scheduled shutdown a banner shows the closing date and a "Download my data" button (Settings → Account) |
 | `/chat/[id]` | Conversation; newest 60 messages, then earlier pages |
+| `/search` | Address-bar entry point, not indexed ([Address-bar search](#address-bar-search)) |
 | `/limits` | Signed in only, not indexed, rendered per request. Storage, chats and hourly/daily question meters, the five largest chats (decrypted titles, size, questions) and the rules (including images per question and their browser retention). Linked from the sidebar and from `STORAGE_FULL`/`CONVERSATION_FULL` answer errors |
 | `/privacy` | GDPR Art. 13/14 notice: controller, data and legal bases, retention (below), providers on the user's accounts (some in China), transfers (hosting in Belgium, database in Frankfurt), Art. 15–21 rights, Garante complaints |
 | `/terms` | Alpha terms: 18+, user owns keys, costs and provider choice, storage limits, acceptable use, MIT source (name and logo not licensed), liability limits, 24-month inactive deletion, closure with 14 days' notice, DSA contact, `LEGAL_GOVERNING_LAW` with consumer forum |
@@ -54,7 +55,8 @@ Behavior:
 - `visibleMessages()` hides stored streaming rows while a live answer replaces them.
 - A stored `streaming` row from another tab or load is followed by polling the thread every 4 seconds.
 - If the connection fails before a message id arrives, the UI reloads the thread. If nothing was stored, it keeps a local failed pair that can be retried without duplicating the question.
-- If a retry fails before `meta`, the stored answer gets the error; no duplicate card.
+- If a retry fails before `meta`, the stored answer gets the error; no duplicate card. A refused **Regenerate** or **Edit** leaves the stored exchange as it is and shows the reason as a toast.
+- While an edit streams, the edited text stands in for the stored question.
 
 ## Setup and onboarding
 
@@ -76,9 +78,9 @@ Setup is complete with a model key (OpenRouter or DeepSeek) and a search key (Br
 
 - **Header**: title, mode, model, search provider, source-count button, avatar.
 - **Sidebar**: title search over loaded pages, Pinned section, Today/Yesterday/Previous (UTC), pin/unpin, delete confirmation, **Select chats** (checkboxes, select all, one confirmed delete for the selected chats on screen; a search hides and excludes the others), "Show older conversations", Limits, Settings, email, sign-out. Retention note: "Chats are deleted 60 days after their last question." From 90 conversations it adds "N of 100 chats. New chats replace the oldest unpinned ones." as a highlighted status.
-- **Thread**: user bubbles, answer cards, working card, earlier-messages button, empty, not-found and load-error states.
-- **Composer**: image button, paste or drop for up to 4 images ([Images](#images)), textarea growing to 190 px, Enter sends, Shift+Enter adds a newline, Quick/Deep/Deeper control, model badge, search-provider selector (unkeyed ones marked "· no key"), Stop while busy. Hint: "Answers are AI-generated with your keys and can be wrong. Check the sources." Sending is not blocked client-side; the server's `CREDENTIAL_MISSING` shows the "Key needed" card.
-- **Answer card**: streamed markdown, citation buttons, **Searches** and **Model reasoning** panels (collapsed, also live), an "Uncited" badge when no valid citation survives, stopped/error/truncated/degraded/partial-search notices, and retry on the latest failed or stopped answer. The no-sources answer is its fixed text, no extra notice. Footer: model, search provider, total cost and time, copy and sources buttons; tooltips show the actual model and host, tokens and cost split (generation from OpenRouter or DeepSeek token estimate, search from list price).
+- **Thread**: user bubbles, answer cards, working card, earlier-messages button, empty, not-found and load-error states. The latest question has a pencil: it edits the text inline (Enter or Send, Escape or Cancel) and replaces the answer. Only the latest, so a chat never branches.
+- **Composer**: attach button, paste or drop for up to 4 images ([Images](#images)) and 3 text files ([Text files](#text-files)), textarea growing to 190 px, Enter sends, Shift+Enter adds a newline, Quick/Deep/Deeper control, model badge, search-provider selector (unkeyed ones marked "· no key"), Stop while busy. Hint: "Answers are AI-generated with your keys and can be wrong. Check the sources." Sending is not blocked client-side; the server's `CREDENTIAL_MISSING` shows the "Key needed" card.
+- **Answer card**: streamed markdown, citation buttons, **Searches** and **Model reasoning** panels (collapsed, also live), an "Uncited" badge when no valid citation survives, stopped/error/truncated/degraded/partial-search notices, retry on the latest failed or stopped answer, and **Regenerate** on the latest complete one (it replaces the answer, with the mode and search provider picked in the composer). The no-sources answer is its fixed text, no extra notice. Footer: model, search provider, total cost and time, copy and sources buttons; tooltips show the actual model and host, tokens and cost split (generation from OpenRouter or DeepSeek token estimate, search from list price).
 - **Source panel**: right pane on desktop, focus-trapped bottom sheet on mobile; count, provider badge (from the stored answer), title, domain, date, snippet, link.
 - **Working card**: mascot, stage label, detail string, skeleton or streaming body, Stop.
 - **Stop**: the client asks the server to stop, waits for confirmation and keeps the partial answer.
@@ -96,6 +98,31 @@ Markdown is intentionally small:
 
 Dialogs render into `document.body`, so the sidebar's backdrop filter and the drawer's animation cannot clip them.
 
+## Address-bar search
+
+`/search#q=<question>&mode=<quick|deep|deeper>` asks a question from the browser's address bar.
+
+- The question is in the URL **fragment**, which browsers do not send to servers: it reaches no request log, and Beamling receives it only as a normal encrypted chat request.
+- The page reads the fragment on the device and removes it from the address (`lib/search-request.ts`).
+- It is sent without a click only when the navigation's `Sec-Fetch-Site` is `none` (typed, bookmark, browser search engine) or `same-origin`. A link from another site only fills the composer, so a link cannot spend the user's keys.
+- Signed out: the question is kept in the tab's `sessionStorage`, the visitor signs in and returns to `/search`, and the composer is filled (not sent).
+- Browser setup: add a search engine with the URL `https://<host>/search#q=%s` (Settings → Search copies it). `/opensearch.xml` describes the same template and is linked from every page.
+
+## Text files
+
+- `.md` and `.txt` files (at most 100 KB each) are read on the device as UTF-8; empty files and files that are not valid text are refused.
+- They share the image store and its rules: IndexedDB `beamling-images`, 7 days, re-sent with follow-ups whose history window includes their question (at most 3, newest first), deleted with the conversation, on sign-out and on account deletion.
+- The composer and the question show the file name as a chip; once the content is gone from this browser the chip is dimmed ("No longer available").
+- They work with any model, including one that cannot read images.
+
+## Mascot
+
+The mascot reacts to the content, briefly and without blocking anything (all of it is off with reduced motion):
+
+- **Searching**: the working card shows the query being searched and the mascot brightens briefly when a new one starts.
+- **Answer finished**: for about 2.5 seconds the answer's citation buttons and the source cards glow once, and the answer's mark looks at them.
+- **New question**: while a question is being typed, the empty-state mascot opens its eyes and looks towards the composer.
+
 ## Images
 
 - The browser decodes the image, scales it to at most 1,568 px on the long side and re-encodes it as WebP (JPEG where WebP encoding is missing), at most 1.5 MB. Re-encoding drops metadata such as location.
@@ -103,7 +130,7 @@ Dialogs render into `document.body`, so the sidebar's backdrop filter and the dr
 - The image limit and retention are listed in the `/limits` rules, and in the privacy notice.
 - Questions show thumbnails from this browser; once expired, or in another browser, an image placeholder ("No longer available").
 - Local images are also deleted with their conversation once the server confirms the delete (including when the cap removes it), on sign-out and on account deletion.
-- A model without `vision` (`lib/provider-catalog.ts`) disables the image button; attached images then show "<model> cannot read images. Change model" and block sending. Unknown model ids follow the default model, as on the server. Every current catalog model reads images.
+- With a model without `vision` (`lib/provider-catalog.ts`), attached images show "<model> cannot read images. Change model" and block sending. Unknown model ids follow the default model, as on the server. Every current catalog model reads images.
 
 ## Settings and account
 

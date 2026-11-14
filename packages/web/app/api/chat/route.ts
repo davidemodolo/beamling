@@ -3,10 +3,10 @@ import { MODES, SEARCH_PROVIDER_IDS } from "@/lib/contracts";
 import { ClientDisconnectError, watchChat } from "@/lib/server/active-chats";
 import { analytics } from "@/lib/server/analytics";
 import { prepareChat, publicError, runChat, TIMEOUT_MS, type ChatEmit } from "@/lib/server/answer-pipeline";
-import { MAX_CONTEXT_IMAGES, MAX_IMAGES_PER_QUESTION } from "@/lib/attachments";
+import { MAX_CONTEXT_FILES, MAX_CONTEXT_IMAGES, MAX_FILES_PER_QUESTION, MAX_IMAGES_PER_QUESTION } from "@/lib/attachments";
 import { maxConcurrentChatsPerUser } from "@/lib/server/env";
 import { ApiError, cleanText, clientIpKey, json, MAX_BODY_BYTES, parseBody } from "@/lib/server/http";
-import { imageUpload, MAX_BASE64_CHARS } from "@/lib/server/image-upload";
+import { fileUpload, imageUpload, MAX_BASE64_CHARS, MAX_FILE_BODY_BYTES } from "@/lib/server/image-upload";
 import { MAX_QUESTION_CHARS, QUESTIONS_PER_DAY, QUESTIONS_PER_HOUR } from "@/lib/legal";
 import { acceptingNewStreams, consumeRateLimit, questionLimitKeys } from "@/lib/server/repo";
 import { apiRoute } from "@/lib/server/route";
@@ -29,34 +29,42 @@ const question = z
   );
 
 const images = (max: number, message: string) => z.array(imageUpload).max(max, message).optional();
+const files = (max: number, message: string) => z.array(fileUpload).max(max, message).optional();
 
-// Images make the body larger than other routes allow; this is the most a valid request can carry
-// (each image's base64 plus room for its id and type).
-const CHAT_BODY_BYTES = MAX_BODY_BYTES + (MAX_IMAGES_PER_QUESTION + MAX_CONTEXT_IMAGES) * (MAX_BASE64_CHARS + 200);
+// Images and text files make the body larger than other routes allow; this is the most a valid
+// request can carry (each image's base64 plus room for its id and type, and each file's text).
+const CHAT_BODY_BYTES =
+  MAX_BODY_BYTES +
+  (MAX_IMAGES_PER_QUESTION + MAX_CONTEXT_IMAGES) * (MAX_BASE64_CHARS + 200) +
+  (MAX_FILES_PER_QUESTION + MAX_CONTEXT_FILES) * (MAX_FILE_BODY_BYTES + 400);
 
-// A new question, or a retry of the latest failed or stopped answer (the server reuses its question).
-// `attachments` are the new question's images; `context` re-sends earlier images the browser still has.
+// A new question, or a new answer for the latest question (`retryOf` names the answer it replaces).
+// With `retryOf`, a `question` is the edited text of that question; without one the stored text is
+// reused. `attachments` and `files` belong to a new question; `context` and `contextFiles` re-send
+// earlier ones the browser still has.
 const schema = z
   .object({
     conversationId: z.string().uuid().optional(),
     question: question.optional(),
     attachments: images(MAX_IMAGES_PER_QUESTION, `Attach at most ${MAX_IMAGES_PER_QUESTION} images.`),
     context: images(MAX_CONTEXT_IMAGES, "Too many earlier images."),
+    files: files(MAX_FILES_PER_QUESTION, `Attach at most ${MAX_FILES_PER_QUESTION} text files.`),
+    contextFiles: files(MAX_CONTEXT_FILES, "Too many earlier files."),
     retryOf: z.string().uuid().optional(),
     mode: z.enum(MODES),
     searchProvider: z.enum(SEARCH_PROVIDER_IDS).optional(),
   })
-  .refine((input) => (input.question === undefined) !== (input.retryOf === undefined), {
-    message: "Send either a question or the answer to retry.",
+  .refine((input) => input.question !== undefined || input.retryOf !== undefined, {
+    message: "Send a question or the answer to replace.",
   })
-  .refine((input) => input.retryOf || input.question || input.attachments?.length, {
+  .refine((input) => input.retryOf || input.question || input.attachments?.length || input.files?.length, {
     message: "Ask a question first.",
   })
-  .refine((input) => !input.retryOf || !input.attachments?.length, {
-    message: "A retry reuses the question's images.",
+  .refine((input) => !input.retryOf || !(input.attachments?.length || input.files?.length), {
+    message: "A new answer reuses the question's attachments.",
   })
   .refine((input) => !input.retryOf || input.conversationId, {
-    message: "A retry needs its conversation.",
+    message: "A new answer needs its conversation.",
   });
 
 /**
@@ -120,7 +128,7 @@ export const POST = apiRoute(async ({ request, user }) => {
     mode: prepared.mode,
     search_provider: prepared.searchProvider,
     llm_model: prepared.llm.id,
-    images: prepared.attachments.length,
+    images: prepared.attachments.filter((item) => item.kind === "image").length,
   });
 
   const internal = new AbortController();

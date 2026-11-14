@@ -297,16 +297,86 @@ test("retrying a failed answer replaces it and reuses the question", { skip }, a
       ["assistant", "complete"],
     ],
   );
-  // Only a failed or stopped latest answer can be retried.
-  const latest = stored?.messages[1].id as string;
-  await assert.rejects(
-    ask(userId, { conversationId: conversation.id, retryOf: latest, mode: "quick" }),
-    (error) => error instanceof ApiError && error.code === "RETRY_NOT_ALLOWED",
-  );
   await assert.rejects(
     ask(userId, { conversationId: conversation.id, retryOf: first.assistantMessage.id, mode: "quick" }),
     (error) => error instanceof ApiError && error.code === "MESSAGE_NOT_FOUND",
   );
+});
+
+test("the latest complete answer can be regenerated, and its question edited; older ones cannot", { skip }, async (t) => {
+  const { createExchange, getConversation } = await import("../../lib/server/repo");
+  const { ApiError } = await import("../../lib/server/http");
+  const userId = await createAccount(t);
+  const first = await ask(userId, { question: "Original first question", mode: "quick" });
+  const conversationId = first.prepared.conversationId;
+
+  // Regenerate: same question row, a new answer in place of the old one.
+  const again = await ask(userId, { conversationId, retryOf: first.prepared.messageId, mode: "deep" });
+  assert.equal(again.prepared.userMessageId, first.prepared.userMessageId);
+  assert.equal(again.prepared.question, "Original first question");
+  let stored = await getConversation(userId, conversationId);
+  assert.deepEqual(stored?.messages.map((message) => message.id), [first.prepared.userMessageId, again.prepared.messageId]);
+  assert.equal(stored?.messages[1].mode, "deep", "the new answer uses the mode picked now");
+
+  // Edit: the question text is rewritten and the title it gave follows.
+  const edited = await ask(userId, { conversationId, retryOf: again.prepared.messageId, question: "Edited first question", mode: "quick" });
+  assert.equal(edited.prepared.question, "Edited first question");
+  stored = await getConversation(userId, conversationId);
+  assert.deepEqual(stored?.messages.map((message) => message.content).slice(0, 1), ["Edited first question"]);
+  assert.equal(stored?.messages.length, 2);
+  assert.equal(stored?.title, "Edited first question");
+
+  // A second exchange: the first answer is no longer the latest, and a second question's edit keeps the title.
+  const second = await ask(userId, { conversationId, question: "Second question", mode: "quick" });
+  await assert.rejects(
+    ask(userId, { conversationId, retryOf: edited.prepared.messageId, mode: "quick" }),
+    (error) => error instanceof ApiError && error.code === "RETRY_NOT_ALLOWED",
+  );
+  await ask(userId, { conversationId, retryOf: second.prepared.messageId, question: "Second, edited", mode: "quick" });
+  stored = await getConversation(userId, conversationId);
+  assert.equal(stored?.title, "Edited first question");
+  assert.deepEqual(stored?.messages.filter((message) => message.role === "user").map((message) => message.content), [
+    "Edited first question",
+    "Second, edited",
+  ]);
+
+  // An answer still being written cannot be replaced.
+  const running = await createExchange({ userId, conversationId, question: "Third", mode: "quick", llmModel: "m" });
+  await assert.rejects(
+    ask(userId, { conversationId, retryOf: running.assistantMessage.id, mode: "quick" }),
+    (error) => error instanceof ApiError && (error.code === "RETRY_NOT_ALLOWED" || error.code === "SERVER_BUSY" || error.code === "GENERATION_IN_PROGRESS"),
+  );
+});
+
+test("a text file is stored by name only, reaches every step and is re-read from a follow-up's context", { skip }, async (t) => {
+  const { getConversation } = await import("../../lib/server/repo");
+  const userId = await createAccount(t);
+  const file = { id: "00000000-0000-4000-8000-0000000000f1", name: "notes.md", text: "The launch moved to May." };
+  const first = await ask(userId, { question: "Summarize my notes", files: [file], mode: "quick" });
+  assert.deepEqual(first.prepared.attachments, [{ id: file.id, kind: "text", name: "notes.md" }]);
+  assert.deepEqual(first.prepared.files, [file]);
+  let { answer } = await storedAnswer(userId, first.prepared.conversationId);
+  assert.match(answer?.content ?? "", /^The model saw 1 file\./);
+  const stored = await getConversation(userId, first.prepared.conversationId);
+  assert.ok(!JSON.stringify(stored).includes("launch moved"), "the file text is not stored");
+
+  // A follow-up: the browser re-sends the file; one it never attached is ignored.
+  const stray = { id: "00000000-0000-4000-8000-0000000000f2", name: "other.txt", text: "unrelated" };
+  const followUp = await ask(userId, {
+    conversationId: first.prepared.conversationId,
+    question: "And the date?",
+    contextFiles: [file, stray],
+    mode: "quick",
+  });
+  assert.deepEqual(followUp.prepared.files, [file]);
+  ({ answer } = await storedAnswer(userId, first.prepared.conversationId));
+  assert.match(answer?.content ?? "", /^The model saw 1 file\./);
+
+  // Without the file (expired on the device), the prompt says it is gone.
+  const without = await ask(userId, { conversationId: first.prepared.conversationId, question: "Once more", mode: "quick" });
+  assert.deepEqual(without.prepared.files, []);
+  ({ answer } = await storedAnswer(userId, first.prepared.conversationId));
+  assert.doesNotMatch(answer?.content ?? "", /The model saw/);
 });
 
 test("one DeepSeek key runs both the model and search, and is read once", { skip }, async (t) => {

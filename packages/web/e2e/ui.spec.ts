@@ -375,7 +375,7 @@ const PNG = Buffer.from(
 
 async function attachImage(page: import("@playwright/test").Page, name = "photo.png") {
   await page.locator('input[type="file"]').setInputFiles({ name, mimeType: "image/png", buffer: PNG });
-  await expect(page.getByRole("list", { name: "Attached images" }).locator("img")).toHaveCount(1);
+  await expect(page.getByRole("list", { name: "Attachments" }).locator("img")).toHaveCount(1);
 }
 
 test("an image stays on the device and is sent again with a follow-up", async ({ page, browser }) => {
@@ -647,4 +647,92 @@ test("a scheduled shutdown is announced in the app, at sign-in and on the status
   }
   await page.goto("/");
   await expect(page.getByRole("alert").filter({ hasText: "Beamling shuts down on" })).toHaveCount(0);
+});
+
+test("the latest answer can be regenerated and its question edited, replacing the exchange", async ({ page }) => {
+  await connectKeys(page.request);
+  await page.goto("/");
+  await ask(page, "First wording of the question");
+  await expect(answers(page)).toHaveCount(1);
+  await expect(answers(page).last()).toContainText("fixture answer", { timeout: 20_000 });
+
+  await answers(page).last().getByRole("button", { name: "Regenerate answer" }).click();
+  await expect(workingAnswer(page)).toBeVisible();
+  await expect(answers(page).last()).toContainText("fixture answer", { timeout: 20_000 });
+  await expect(answers(page)).toHaveCount(1);
+  await expect(page.locator(".message-user .bubble")).toHaveCount(1);
+
+  await page.getByRole("button", { name: "Edit question" }).click();
+  const editor = page.getByRole("textbox", { name: "Edit your question" });
+  await editor.fill("Second wording of the question");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(answers(page).last()).toContainText("fixture answer", { timeout: 20_000 });
+  await expect(answers(page)).toHaveCount(1);
+  await expect(page.locator(".message-user .bubble")).toHaveText("Second wording of the question");
+
+  // Stored: one exchange, with the edited text and a title that followed it.
+  const id = page.url().split("/chat/")[1];
+  const stored = (await (await page.request.get(`/api/conversations/${id}`)).json()).conversation;
+  expect(stored.messages.map((message: { role: string }) => message.role)).toEqual(["user", "assistant"]);
+  expect(stored.messages[0].content).toBe("Second wording of the question");
+  expect(stored.title).toBe("Second wording of the question");
+});
+
+test("a text file stays on the device, reaches the model and is stored only by name", async ({ page }) => {
+  await connectKeys(page.request);
+  await page.goto("/");
+  const input = page.locator('input[type="file"]');
+  await input.setInputFiles({ name: "binary.txt", mimeType: "text/plain", buffer: Buffer.from([0x00, 0xff, 0xfe]) });
+  await expect(page.getByText("This file is not plain text.")).toBeVisible();
+  await input.setInputFiles({ name: "notes.md", mimeType: "text/markdown", buffer: Buffer.from("# Notes\nThe launch moved to May.") });
+  await expect(page.getByRole("list", { name: "Attachments" })).toContainText("notes.md");
+  await ask(page, "Summarize my notes");
+  await expect(answers(page).last()).toContainText("The model saw 1 file", { timeout: 20_000 });
+  await expect(page.locator(".message-user .message-file")).toHaveText("notes.md");
+
+  const id = page.url().split("/chat/")[1];
+  const stored = (await (await page.request.get(`/api/conversations/${id}`)).json()).conversation;
+  expect(stored.messages[0].attachments).toEqual([{ id: expect.any(String), kind: "text", name: "notes.md" }]);
+  expect(JSON.stringify(stored)).not.toContain("The launch moved to May");
+
+  // A follow-up re-sends the file from this device.
+  await ask(page, "And the date?");
+  await expect(answers(page).last()).toContainText("The model saw 1 file", { timeout: 20_000 });
+});
+
+test("/search sends a typed question from the fragment, and only fills the composer for a link from another site", async ({ page }) => {
+  await connectKeys(page.request);
+  // Typed in the address bar: no initiator, so the question is sent.
+  await page.goto("/search#q=typed%20from%20the%20address%20bar");
+  await expect(page.locator(".message-user .bubble")).toHaveText("typed from the address bar", { timeout: 20_000 });
+  await expect(page).toHaveURL(/\/chat\/[0-9a-f-]{36}$/);
+  await expect(answers(page).last()).toContainText("fixture answer", { timeout: 20_000 });
+
+  // Arriving from another site: the composer is filled and nothing is sent.
+  const link = new URL("/search#q=from%20a%20link&mode=deep", page.url()).href;
+  await page.route("http://another-site.test/", (route) =>
+    route.fulfill({ contentType: "text/html", body: `<a href="${link}">Ask Beamling</a>` }),
+  );
+  await page.goto("http://another-site.test/");
+  await page.getByRole("link", { name: "Ask Beamling" }).click();
+  await expect(composer(page)).toHaveValue("from a link");
+  await expect(page).toHaveURL(/\/search$/);
+  await expect(page.getByRole("button", { name: "Deep", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".message-user")).toHaveCount(0);
+
+  const description = await page.request.get("/opensearch.xml");
+  expect(description.headers()["content-type"]).toContain("application/opensearchdescription+xml");
+  expect(await description.text()).toContain("/search#q={searchTerms}");
+});
+
+test("the limits page fits a phone screen without horizontal scrolling", async ({ page }) => {
+  await connectKeys(page.request);
+  await page.setViewportSize({ width: 360, height: 740 });
+  await page.goto("/");
+  await ask(page, "A question whose title is long enough to fill the row twice over");
+  await expect(answers(page).last()).toContainText("fixture answer", { timeout: 20_000 });
+  await page.goto("/limits");
+  await expect(page.getByRole("heading", { name: "Largest chats" })).toBeVisible();
+  const overflow = await page.locator(".limits-scroll").evaluate((el) => el.scrollWidth - el.clientWidth);
+  expect(overflow).toBe(0);
 });

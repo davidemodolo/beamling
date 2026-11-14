@@ -132,9 +132,9 @@ function SourcesHeader({
   );
 }
 
-export function SourcesPanel({ sources, active, loading, onSelect, provider, onClose }: SourcesPanelProps) {
+export function SourcesPanel({ sources, active, loading, onSelect, provider, onClose, lit }: SourcesPanelProps & { lit?: boolean }) {
   return (
-    <aside className="sources-pane" id="sources-pane" aria-label="Sources">
+    <aside className={`sources-pane${lit ? " just-lit" : ""}`} id="sources-pane" aria-label="Sources">
       <SourcesHeader count={sources.length} provider={provider} onClose={onClose} closeLabel="Hide sources" />
       <SourceList sources={sources} active={active} loading={loading} onSelect={onSelect} />
       <div className="sources-foot">

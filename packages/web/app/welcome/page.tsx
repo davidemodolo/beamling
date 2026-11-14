@@ -9,7 +9,7 @@ import { getCurrentUser } from "@/lib/server/session";
 
 export const metadata: Metadata = { title: "Terms", robots: { index: false, follow: false } };
 
-const NEXT_PATH = /^\/(onboarding|chat\/[0-9a-f-]{36})?$/i;
+const NEXT_PATH = /^\/(onboarding|search|chat\/[0-9a-f-]{36})?$/i;
 
 export default async function WelcomePage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
   const params = await searchParams;

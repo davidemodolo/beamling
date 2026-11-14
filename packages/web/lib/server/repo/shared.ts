@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { isImageMediaType, type Attachment } from "../../attachments";
+import { isImageMediaType, isTextFileName, MAX_FILE_NAME_CHARS, type Attachment } from "../../attachments";
 import { DEFAULT_SETTINGS } from "../../data";
 import { isSearchProvider } from "../../contracts";
 import { DEFAULT_SEARCH_PROVIDER } from "../../provider-catalog";
@@ -139,23 +139,22 @@ export async function mapMessage(userId: string, row: MessageRow, sourceRows: So
   };
 }
 
-/** A question's image metadata; malformed entries are dropped. */
+/** A question's attachment metadata; malformed entries are dropped. */
 export async function readAttachments(userId: string, row: MessageRow): Promise<Attachment[] | undefined> {
   if (!row.attachments) return undefined;
   try {
     const value = JSON.parse(await decryptText(userId, "messages", row.id, "attachments", row.attachments)) as unknown;
     if (!Array.isArray(value)) return undefined;
-    return value.flatMap((item: Partial<Attachment> | null) =>
-      item && typeof item.id === "string" && item.kind === "image" && isImageMediaType(String(item.mediaType))
-        ? [
-            {
-              id: item.id,
-              kind: "image" as const,
-              mediaType: item.mediaType!,
-            },
-          ]
-        : [],
-    );
+    return value.flatMap((item: { id?: unknown; kind?: unknown; mediaType?: unknown; name?: unknown } | null): Attachment[] => {
+      if (!item || typeof item.id !== "string") return [];
+      if (item.kind === "image" && typeof item.mediaType === "string" && isImageMediaType(item.mediaType)) {
+        return [{ id: item.id, kind: "image", mediaType: item.mediaType }];
+      }
+      if (item.kind === "text" && typeof item.name === "string" && isTextFileName(item.name)) {
+        return [{ id: item.id, kind: "text", name: item.name.slice(-MAX_FILE_NAME_CHARS) }];
+      }
+      return [];
+    });
   } catch {
     return undefined;
   }

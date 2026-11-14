@@ -1,6 +1,8 @@
 "use client";
 
 import { errorMessage } from "@/lib/api";
+import { copyText } from "@/lib/clipboard";
+import { searchTemplate } from "@/lib/search-request";
 import { isLlmProvider, type SearchProvider } from "@/lib/contracts";
 import { useToast } from "@/lib/hooks/use-toast";
 import { SEARCH_PROVIDERS, usableProviders } from "@/lib/provider-catalog";
@@ -63,6 +65,27 @@ export function SearchPanel() {
           );
         })}
       </fieldset>
+      <section className="settings-card">
+        <div className="settings-card-body tight">
+          <div className="setting-row">
+            <div className="grow">
+              <div className="row-title">Ask from the address bar</div>
+              <div className="row-hint">
+                Add this address to your browser as a search engine. The question stays in your browser until it is asked.
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={async () =>
+                showToast((await copyText(searchTemplate(window.location.origin))) ? "Address copied" : "Could not copy")
+              }
+            >
+              Copy address
+            </button>
+          </div>
+        </div>
+      </section>
       <KeysNotice />
       {toast}
     </div>

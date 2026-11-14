@@ -32,7 +32,9 @@ export type IconName =
   | "check-circle"
   | "pin"
   | "search"
-  | "image";
+  | "image"
+  | "file"
+  | "pencil";
 
 const paths: Record<IconName, ReactNode> = {
   plus: <path d="M12 5v14M5 12h14" />,
@@ -43,6 +45,13 @@ const paths: Record<IconName, ReactNode> = {
       <path d="m21 16-5-5-9 9" />
     </>
   ),
+  file: (
+    <>
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z" />
+      <path d="M14 3v5h5M9 13h6M9 17h4" />
+    </>
+  ),
+  pencil: <path d="M4 20h4L19.5 8.5a2.1 2.1 0 0 0-3-3L5 17l-1 3ZM14.5 7.5l3 3" />,
   stop: <rect x="6" y="6" width="12" height="12" rx="2" />,
   x: <path d="M6 6l12 12M18 6 6 18" />,
   menu: <path d="M4 7h16M4 12h16M4 17h16" />,

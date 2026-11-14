@@ -124,8 +124,11 @@ export async function fakeChat(options: {
     await sleep(4);
   }
   const images = typeof user?.content === "string" ? 0 : (user?.content.filter((part) => part.type === "image").length ?? 0);
+  const text = typeof user?.content === "string" ? user.content : (user?.content.map((part) => (part.type === "text" ? part.text : "")).join("\n") ?? "");
+  const files = text.match(/<file name="/g)?.length ?? 0;
   const content =
     (images ? `The model saw ${images === 1 ? "1 image" : `${images} images`}. ` : "") +
+    (files ? `The model saw ${files === 1 ? "1 file" : `${files} files`}. ` : "") +
     "This is a fixture answer for local testing. It demonstrates the streaming pipeline, source numbering and citations [1]. The second source adds a recent development [2], while the third records a limitation [3].\n\n| Source | Finding |\n| --- | --- |\n| Overview | Fixture baseline |\n| Recent | Newer detail |";
   for (const word of content.split(" ")) {
     aborted(options.signal);
