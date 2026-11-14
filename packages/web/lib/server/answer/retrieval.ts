@@ -68,5 +68,6 @@ export async function retrieveSources(
     if (!isSearchOutage(errors[0])) throw errors[0];
     throw everySearchFailed(ctx.prepared.searchProvider);
   }
-  state.sources = rankSources(batches.filter(Boolean), { limit: limits.sources, perSite: limits.perSite, startPosition: 1 });
+  state.sources = rankSources(batches, { limit: limits.sources, perSite: limits.perSite, startPosition: 1 });
+  ctx.signal.throwIfAborted();
 }

@@ -39,7 +39,7 @@ Current code: one model provider (OpenRouter or DeepSeek), one search provider, 
 | **Final answer stream starts** | **2.5 s** | **7.0 s** |
 | Full Deep report | 15 s | 45 s |
 
-Hard timeouts: Deep 90 s, Deeper 360 s. On timeout, stop, keep partial text, mark the answer stopped.
+Hard timeouts: Deep 180 s, Deeper 360 s. Research stops at half the limit and the answer is written from the sources found. On timeout, stop, keep partial text, mark the answer stopped.
 
 ## Context budget
 

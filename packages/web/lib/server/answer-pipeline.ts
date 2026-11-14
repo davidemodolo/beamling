@@ -6,7 +6,16 @@ import { hasValidCitation, sanitizeCitations } from "./citations";
 import { ApiError, INTERNAL_ERROR_MESSAGE } from "./http";
 import { log } from "./log";
 import { NO_SOURCES_ANSWER } from "./prompts";
-import { newRunState, type ChatEmit, type PreparedChat, type RunContext, type RunState } from "./answer/context";
+import {
+  newRunState,
+  RESEARCH_SHARE,
+  TIMEOUT_MS,
+  updateTrace,
+  type ChatEmit,
+  type PreparedChat,
+  type RunContext,
+  type RunState,
+} from "./answer/context";
 import { fillEvidenceGaps, planQueries } from "./answer/deep";
 import { DEEPER_BUDGET, QUICK_BUDGET, runResearch } from "./answer/research";
 import { abortOutcome, RunRecorder } from "./answer/outcome";
@@ -19,8 +28,34 @@ export { TIMEOUT_MS, type ChatEmit } from "./answer/context";
 
 const QUEUED_DETAIL = { quick: "Understanding the question", deep: "Planning a research path", deeper: "Starting deeper research" };
 
+class ResearchTimeUp extends Error {
+  override name = "ResearchTimeUp";
+}
+
+/**
+ * Gathers sources within the research share of the time limit. When it runs out, searches in
+ * flight are cancelled and the answer is written from the sources already found.
+ */
+async function gatherSources(ctx: RunContext, state: RunState, researchMs: number): Promise<string[]> {
+  const research = new AbortController();
+  const remaining = ctx.prepared.startedAt + researchMs - Date.now();
+  const timer = setTimeout(() => research.abort(new ResearchTimeUp()), Math.max(0, remaining));
+  try {
+    return await collectSources({ ...ctx, signal: AbortSignal.any([ctx.signal, research.signal]) }, state);
+  } catch (error) {
+    if (ctx.signal.aborted || !research.signal.aborted) throw error;
+    state.researchCut = true;
+    state.searches.forEach((trace, index) => {
+      if (trace.status === "searching") updateTrace(state, ctx.emit, index, { query: trace.query, status: "failed", results: 0 });
+    });
+    return state.searches.filter((trace) => trace.status === "done").map((trace) => trace.query);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Collects the answer's sources for its mode and returns the queries that were searched. */
-async function gatherSources(ctx: RunContext, state: RunState): Promise<string[]> {
+async function collectSources(ctx: RunContext, state: RunState): Promise<string[]> {
   const { prepared } = ctx;
   if (prepared.mode !== "deep") {
     await runResearch(ctx, state, prepared.mode === "quick" ? QUICK_BUDGET : DEEPER_BUDGET);
@@ -93,8 +128,17 @@ async function finishFailed(ctx: RunContext, state: RunState, recorder: RunRecor
   if (stored) recorder.failed(usage, code);
 }
 
-export async function runChat(prepared: PreparedChat, options: { signal: AbortSignal; emit: ChatEmit }): Promise<void> {
+export async function runChat(
+  prepared: PreparedChat,
+  options: {
+    signal: AbortSignal;
+    emit: ChatEmit;
+    /** Time for gathering sources, from the start; defaults to the mode's share of its limit. */
+    researchMs?: number;
+  },
+): Promise<void> {
   const { signal, emit } = options;
+  const researchMs = options.researchMs ?? TIMEOUT_MS[prepared.mode] * RESEARCH_SHARE;
   const ctx: RunContext = { prepared, signal, emit, freshnessDays: freshnessDays(prepared.question) };
   const state = newRunState();
   const recorder = new RunRecorder(prepared, state);
@@ -108,10 +152,13 @@ export async function runChat(prepared: PreparedChat, options: { signal: AbortSi
   emit("stage", { stage: "queued", detail: QUEUED_DETAIL[prepared.mode] });
 
   try {
-    const queries = await gatherSources(ctx, state);
+    const queries = await gatherSources(ctx, state, researchMs);
+    recorder.markSourcesGathered();
     emit("stage", {
       stage: "reading",
-      detail: `Reading ${plural(state.sources.length, "source")}`,
+      detail: state.researchCut
+        ? `Research time is up · reading ${plural(state.sources.length, "source")}`
+        : `Reading ${plural(state.sources.length, "source")}`,
     });
     emit("sources", state.sources);
     if (state.sources.length) await finishWithAnswer(ctx, state, recorder, queries);

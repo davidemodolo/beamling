@@ -18,7 +18,12 @@ export const DEEP_RESULTS_PER_QUERY = 6;
 export const DEEPER_SOURCE_LIMIT = 60;
 export const SEARCH_CONCURRENCY = 2;
 /** Hard caps from the spec; on timeout the partial answer is kept and stored as stopped. */
-export const TIMEOUT_MS: Record<Mode, number> = { quick: 60_000, deep: 90_000, deeper: 360_000 };
+export const TIMEOUT_MS: Record<Mode, number> = { quick: 60_000, deep: 180_000, deeper: 360_000 };
+/**
+ * Share of the time limit for gathering sources. When it runs out, research stops and the answer
+ * is written from the sources found so far, so slow models still get time to write.
+ */
+export const RESEARCH_SHARE = 0.5;
 
 type ChatEvent = import("../../stream-events").StreamEvent;
 
@@ -73,6 +78,8 @@ export interface RunState {
   content: string;
   reasoning: string;
   degraded: boolean;
+  /** Research stopped at its share of the time limit. */
+  researchCut?: boolean;
   resolvedModel?: string;
   upstreamProvider?: string;
 }
@@ -199,7 +206,7 @@ async function searchSources(ctx: RunContext, query: string, count: number): Pro
   }));
 }
 
-function updateTrace(state: RunState, emit: ChatEmit, index: number, trace: SearchTrace): void {
+export function updateTrace(state: RunState, emit: ChatEmit, index: number, trace: SearchTrace): void {
   state.searches[index] = trace;
   emit("search", trace);
 }
@@ -234,8 +241,8 @@ export async function runSearches(
     completed += 1;
     options.onSettled?.(completed);
   });
-  ctx.signal.throwIfAborted();
-  return { batches, errors };
+  // On abort, the settled batches are still returned: callers keep them, then throw.
+  return { batches: batches.filter(Boolean), errors };
 }
 
 /** Ranks new results after the existing sources, without renumbering them, up to `limit` in total. */

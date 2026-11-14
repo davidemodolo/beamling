@@ -85,11 +85,12 @@ export async function ask(
     searchProvider?: import("../../lib/contracts").SearchProvider;
   },
   signal = new AbortController().signal,
+  options: { researchMs?: number } = {},
 ) {
   const { prepareChat, runChat } = await import("../../lib/server/answer-pipeline");
   const events: ChatEvents = [];
   const prepared = await prepareChat({ userId, ...input });
-  await runChat(prepared, { signal, emit: (name, data) => events.push({ name, data }) });
+  await runChat(prepared, { signal, emit: (name, data) => events.push({ name, data }), ...options });
   return { events, prepared };
 }
 

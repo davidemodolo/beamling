@@ -9,6 +9,8 @@ const BROKEN_PLAN = "[fixture:broken-plan]";
 const BAD_FIRST_PLAN = "[fixture:bad-plan]";
 const PARTIAL_SEARCH = "[fixture:partial-search]";
 const FAILING_QUERY = "fixture failing search";
+const SLOW_SEARCH = "[fixture:slow-search]";
+const HANGING_QUERY = "fixture hanging search";
 
 function delay(ms: number): number {
   return Number(process.env.BEAMLING_FAKE_DELAY_MS ?? ms);
@@ -32,6 +34,12 @@ export async function fakeValidateKey(key: string, provider: CredentialProvider)
 export async function fakeSearch(provider: SearchProvider, query: string, count: number, signal?: AbortSignal): Promise<RetrievedSource[]> {
   await sleep(30);
   aborted(signal);
+  if (query.includes(HANGING_QUERY)) {
+    // Never answers; only an abort ends it.
+    await new Promise((_, reject) =>
+      signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true }),
+    );
+  }
   if (query.includes(FAILING_QUERY)) {
     throw new ApiError("PROVIDER_UNAVAILABLE", `${providerName(provider)} is temporarily unavailable.`, 502, provider);
   }
@@ -76,6 +84,7 @@ function result(content: string, usage: ChatResult["usage"]): ChatResult {
 function planJson(question: string): string {
   const queries = ["fixture topic overview", "fixture recent developments", "fixture limitations"];
   if (question.includes(PARTIAL_SEARCH)) queries[2] = FAILING_QUERY;
+  if (question.includes(SLOW_SEARCH)) queries[2] = HANGING_QUERY;
   return JSON.stringify({ subqueries: queries.map((query) => ({ query, intent: "fixture" })) });
 }
 

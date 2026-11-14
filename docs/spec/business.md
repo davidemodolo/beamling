@@ -49,7 +49,7 @@ The chosen support mechanism if fixed costs need help. Never gates a feature.
 | Time to first answer | First visit to first rendered answer | < 3 min median |
 | Quick time to first token | Request to first token | < 3 s p95 |
 | Deep time to first progress | Submit to first truthful `stage`/`progress` | < 1 s p95 |
-| Deep completion | Submit to `done` | < 45 s p95, 90 s max |
+| Deep completion | Submit to `done` | < 45 s p95, 180 s max |
 | Uncited answers | Completed answers with no valid citation | < 2% |
 | Provider cost accuracy | Recorded vs invoiced cost | Within 5% |
 | D7 retention | Active on day 7 | 35% |

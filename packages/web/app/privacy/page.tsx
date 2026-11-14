@@ -72,7 +72,7 @@ export default function PrivacyPage() {
         </li>
         <li>
           <strong>Logs:</strong> structured request, error and security logs containing the request path, status, timing
-          and a keyed hash of your account identifier. They exclude keys, session tokens, request bodies, questions and
+          and a keyed hash of your account identifier; for answers, also the mode, models, providers, counts and outcome. They exclude keys, session tokens, request bodies, questions and
           answers. Legal basis: legitimate interests in operating and securing the service.
         </li>
         <li>

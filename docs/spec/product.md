@@ -40,7 +40,7 @@ No managed, search-first, citation-first BYOK product exists.
 
 | ID | Goal | Success signal |
 |---|---|---|
-| G1 | Grounded, cited answers in Quick, Deep or Deeper mode | Quick: p95 first token < 3 s, full answer < 12 s. Deep: progress within 1 s, report < 45 s p95 / 90 s max. Deeper: each search visible within 1 s, report < 6 min |
+| G1 | Grounded, cited answers in Quick, Deep or Deeper mode | Quick: p95 first token < 3 s, full answer < 12 s. Deep: progress within 1 s, report < 45 s p95 / 180 s max. Deeper: each search visible within 1 s, report < 6 min |
 | G2 | BYOK pipeline with OpenRouter and three search adapters in Alpha 1; add LLM providers without changing the core | OpenRouter, Brave, Tavily and Exa contract tests pass; interface supports ≥ 3 LLM and ≥ 3 search providers at public launch |
 | G3 | Keep user keys confidential | No plaintext key in logs, dumps, client payloads or error reports |
 | G4 | First cited answer < 3 minutes from first visit | Onboarding funnel |

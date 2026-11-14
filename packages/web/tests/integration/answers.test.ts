@@ -227,6 +227,23 @@ test("the time limit keeps partial text and records GENERATION_TIMEOUT", { skip 
   assert.equal(answer?.errorCode, "GENERATION_TIMEOUT");
 });
 
+test("research stops at its time share and the answer uses the sources found", { skip }, async (t) => {
+  const userId = await createAccount(t);
+  const { events, prepared } = await ask(
+    userId,
+    { question: "Slow [fixture:slow-search]", mode: "deep" },
+    undefined,
+    { researchMs: 500 },
+  );
+  assert.equal(events.at(-1)?.name, "done");
+  const searches = events.filter((event) => event.name === "search").map((event) => event.data as { status: string });
+  assert.equal(searches.at(-1)?.status, "failed", "the cancelled search is settled, not left spinning");
+  const { answer } = await storedAnswer(userId, prepared.conversationId);
+  assert.equal(answer?.status, "complete");
+  assert.ok((answer?.sources?.length ?? 0) > 0);
+  assert.match(answer?.content ?? "", /\[1\]/);
+});
+
 test("NUL characters never reach Postgres", { skip }, async (t) => {
   const { createConversation, createExchange } = await import("../../lib/server/repo");
   const userId = await createAccount(t);

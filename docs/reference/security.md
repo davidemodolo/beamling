@@ -59,6 +59,7 @@ frame-ancestors 'none'
 ## Logging and error handling
 
 - One-line JSON logs. Each API request logs request id, method, path, status, duration and a keyed user hash; `x-request-id` is returned.
+- Each answer logs one `answer` line with its outcome metadata (mode, models, providers, counts, timings, error code), never content ([answer pipeline](answer-pipeline.md#stop-timeout-disconnect-and-shutdown)).
 - Error summaries keep name, Postgres code, message and SQL text, without parameters. Provider adapters log only provider and HTTP status; bodies and keys are redacted.
 - Never logged: request bodies, cookies, authorization headers, plaintext keys.
 - Unknown errors return `INTERNAL` with a generic message; no stack traces.
