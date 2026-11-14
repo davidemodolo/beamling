@@ -1,4 +1,4 @@
-import { toAttachment, type Attachment, type ImageUpload } from "../../attachments";
+import { toAttachment, toFileAttachment, type Attachment, type FileUpload, type ImageUpload } from "../../attachments";
 import { credentialKind, isSearchProvider, type CredentialProvider } from "../../contracts";
 import { DEFAULT_LLM_MODEL, modelInfo } from "../../provider-catalog";
 import type { Message, Mode, SearchProvider } from "../../types";
@@ -37,19 +37,25 @@ function noVision(modelName: string): ApiError {
 }
 
 /**
- * The image bytes the model will see: the question's and those of earlier questions in the history
+ * The uploads the model will see: the question's and those of earlier questions in the history
  * window, in that order. Anything else the browser sent is ignored.
  */
-function allowedUploads(uploads: ImageUpload[], attachments: Attachment[], history: Message[]): ImageUpload[] {
-  const allowed = new Set([...attachments, ...history.flatMap((message) => message.attachments ?? [])].map((item) => item.id));
+function allowedUploads<T extends { id: string }>(
+  uploads: T[],
+  kind: Attachment["kind"],
+  attachments: Attachment[],
+  history: Message[],
+): T[] {
+  const stored = [...attachments, ...history.flatMap((message) => message.attachments ?? [])];
+  const allowed = new Set(stored.filter((item) => item.kind === kind).map((item) => item.id));
   const seen = new Set<string>();
-  return uploads.filter((image) => allowed.has(image.id) && !seen.has(image.id) && seen.add(image.id));
+  return uploads.filter((upload) => allowed.has(upload.id) && !seen.has(upload.id) && seen.add(upload.id));
 }
 
 /**
  * Everything that can fail before streaming starts: settings, keys, conversation and the stored
- * exchange. Errors here are returned as plain JSON responses. A retry reuses the stored question
- * and replaces the failed or stopped answer.
+ * exchange. Errors here are returned as plain JSON responses. With `retryOf` the latest answer is
+ * replaced: its stored question is reused, or rewritten when `question` is sent too.
  */
 export async function prepareChat(input: {
   userId: string;
@@ -61,12 +67,17 @@ export async function prepareChat(input: {
   attachments?: ImageUpload[];
   /** Earlier images the browser still has; only those in the history window are used. */
   context?: ImageUpload[];
+  /** The new question's text files. */
+  files?: FileUpload[];
+  /** Earlier text files the browser still has; only those in the history window are used. */
+  contextFiles?: FileUpload[];
   retryOf?: string;
 }): Promise<PreparedChat> {
   const startedAt = Date.now();
   const settings = await ensureSettings(input.userId);
   const llm = modelInfo(settings.llmModel) ?? modelInfo(DEFAULT_LLM_MODEL)!;
   const uploads = input.attachments ?? [];
+  const fileUploads = input.files ?? [];
   if (uploads.length && !llm.vision) throw noVision(llm.name);
   const searchProvider =
     input.searchProvider && isSearchProvider(input.searchProvider) ? input.searchProvider : settings.defaultSearchProvider;
@@ -98,7 +109,7 @@ export async function prepareChat(input: {
       llmModel: llm.id,
       searchProvider,
       question: input.question,
-      attachments: uploads.map(toAttachment),
+      attachments: [...uploads.map(toAttachment), ...fileUploads.map(toFileAttachment)],
       retryOf: input.retryOf,
     });
     let history: Message[];
@@ -121,7 +132,8 @@ export async function prepareChat(input: {
       log.error("Conversation cap could not be applied", error);
       return [];
     });
-    const images = llm.vision ? allowedUploads([...uploads, ...(input.context ?? [])], attachments, history) : [];
+    const images = llm.vision ? allowedUploads([...uploads, ...(input.context ?? [])], "image", attachments, history) : [];
+    const files = allowedUploads([...fileUploads, ...(input.contextFiles ?? [])], "text", attachments, history);
 
     return {
       userId: input.userId,
@@ -131,7 +143,8 @@ export async function prepareChat(input: {
       question: questionText,
       attachments,
       images,
-      imageIds: new Set(images.map((image) => image.id)),
+      files,
+      imageIds: new Set([...images, ...files].map((upload) => upload.id)),
       mode: input.mode,
       llm,
       llmKey: llmCredential.key,

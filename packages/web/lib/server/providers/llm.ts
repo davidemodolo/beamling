@@ -44,11 +44,15 @@ export interface ModelStep {
   response?: { modelId: string };
 }
 
+type ProviderOptions = Record<string, Record<string, never> | Record<string, unknown>>;
+
 /** What a model provider contributes; everything else (streaming, errors, usage) is shared. */
 export interface LlmAdapter {
   model(key: string, apiModel: string): LanguageModel;
   /** Per-request options for this provider, such as usage accounting or switching reasoning off. */
-  providerOptions?: Record<string, Record<string, never> | Record<string, unknown>>;
+  providerOptions?: ProviderOptions;
+  /** Options for the call that writes the answer, when they differ (for example reasoning left on). */
+  answerProviderOptions?: ProviderOptions;
   /** Cost in USD and the upstream host for one step. */
   stepUsage(step: ModelStep): { costUsd: number; upstreamProvider?: string };
 }
@@ -122,6 +126,8 @@ function conversation(messages: ChatMessage[]): ModelMessage[] {
 export interface StreamChatOptions {
   provider: LlmProvider;
   adapter: LlmAdapter;
+  /** The answer call may use the adapter's `answerProviderOptions`. */
+  purpose?: ChatPurpose;
   key: string;
   apiModel: string;
   messages: ChatMessage[];
@@ -135,6 +141,7 @@ export interface StreamChatOptions {
 export async function streamChat(options: StreamChatOptions): Promise<ChatResult> {
   const { provider, adapter, signal } = options;
   // The AI SDK takes system prompts as instructions, separate from the conversation.
+  const providerOptions = (options.purpose === "answer" && adapter.answerProviderOptions) || adapter.providerOptions;
   const instructions = options.messages.filter((message) => message.role === "system").map(messageText);
   const result = streamText({
     model: adapter.model(options.key, options.apiModel),
@@ -144,7 +151,7 @@ export async function streamChat(options: StreamChatOptions): Promise<ChatResult
     temperature: 0.2,
     abortSignal: signal,
     maxRetries: 0,
-    providerOptions: adapter.providerOptions as Parameters<typeof streamText>[0]["providerOptions"],
+    providerOptions: providerOptions as Parameters<typeof streamText>[0]["providerOptions"],
   });
 
   let content = "";

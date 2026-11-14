@@ -1,6 +1,6 @@
 "use client";
 
-import { IMAGE_MAX_EDGE, MAX_IMAGE_BYTES, type ImageMediaType } from "./attachments";
+import { IMAGE_MAX_EDGE, isTextFileName, MAX_FILE_BYTES, MAX_FILE_NAME_CHARS, MAX_IMAGE_BYTES, type ImageMediaType } from "./attachments";
 
 /** A picked image after resizing, ready to show, keep on the device and send. */
 export interface PreparedImage {
@@ -9,7 +9,31 @@ export interface PreparedImage {
   mediaType: ImageMediaType;
 }
 
+/** A picked text file, read on the device, ready to show, keep and send. */
+export interface PreparedFile {
+  id: string;
+  name: string;
+  text: string;
+}
+
 export class ImageError extends Error {}
+
+export const isTextFile = (file: File): boolean =>
+  isTextFileName(file.name) && (!file.type || file.type.startsWith("text/"));
+
+/** Reads a .md or .txt file as UTF-8. Empty, oversized and binary files are refused. */
+export async function prepareTextFile(file: File): Promise<PreparedFile> {
+  if (file.size > MAX_FILE_BYTES) throw new ImageError(`Text files are limited to ${MAX_FILE_BYTES / 1000} KB.`);
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(await file.arrayBuffer());
+  } catch {
+    throw new ImageError("This file is not plain text.");
+  }
+  if (text.includes("\u0000")) throw new ImageError("This file is not plain text.");
+  if (!text.trim()) throw new ImageError("This file is empty.");
+  return { id: crypto.randomUUID(), name: file.name.slice(-MAX_FILE_NAME_CHARS), text };
+}
 
 // Smaller and smaller until the image fits MAX_IMAGE_BYTES.
 const ATTEMPTS = [

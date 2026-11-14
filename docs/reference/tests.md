@@ -8,12 +8,12 @@
 | `packages/web/tests/unit/answer.test.ts` | 8 | Citations, ranking, freshness, language, prompt injection, history, stream events |
 | `packages/web/tests/unit/security.test.ts` | 11 | IP HMAC, derived keys, test sign-in, origins, production config, body limits, log redaction, signup allowlists, shutdown notice |
 | `packages/web/tests/unit/analytics.test.ts` | 13 | Allowlist, identity, delivery, opt-out, deletion, erasure backoff, host rules |
-| `packages/web/tests/integration/answers.test.ts` | 17 | All modes, tool loops, planner repair, partial search, missing keys, provider and cost, no fallback, timeout, research time share, NUL, retry, single DeepSeek key |
+| `packages/web/tests/integration/answers.test.ts` | 19 | All modes, tool loops, planner repair, partial search, missing keys, provider and cost, no fallback, timeout, research time share, NUL, retry, regenerate and edit, text files, single DeepSeek key |
 | `packages/web/tests/integration/streams.test.ts` | 10 | Per-conversation, global and per-account limits, lock timeout, stop, mid-answer delete, stale repair, cleanup, terminal race, new-stream flag |
-| `packages/web/tests/integration/conversations.test.ts` | 5 | Pinned ordering, pagination, 100-conversation cap, 60-day expiry, per-chat and storage caps |
-| `packages/web/tests/integration/accounts.test.ts` | 12 | Sessions, account cleanup, export, analytics opt-out and erasure, sign-up cap, rate limits, Brave spacing, keys, shutdown |
-| `packages/web/tests/unit/images.test.ts` | 4 | Image type and signature checks, image markers in prompts, single entity decoding, model vision flags |
-| `packages/web/e2e/*.spec.ts` | 56 | 15 API checks, 29 UI flows, 12 route CSP/axe variants (below) |
+| `packages/web/tests/integration/conversations.test.ts` | 6 | Pinned ordering, pagination, 100-conversation cap, 60-day expiry, per-chat and storage caps |
+| `packages/web/tests/integration/accounts.test.ts` | 13 | Sessions, account cleanup, export, analytics opt-out and erasure, sign-up cap, rate limits, Brave spacing, keys, shutdown |
+| `packages/web/tests/unit/images.test.ts` | 7 | Image type and signature checks, image markers in prompts, single entity decoding, model vision flags, text file validation, `<file>` blocks and their budget, address-bar fragment and auto-send rule |
+| `packages/web/e2e/*.spec.ts` | 60 | 15 API checks, 33 UI flows, 12 route CSP/axe variants (below) |
 
 ## Running
 
@@ -54,6 +54,10 @@ UI:
 - Install: the manifest is linked and standalone, its icons load, the service worker activates, and a page load offline shows the offline page.
 - Sidebar pinning and title search; older conversations load on demand; several chats are selected and deleted in one request, in a dialog centred in the window.
 - Images: only the image id and type are stored; a follow-up re-sends the image from the browser; after 7 days, or in another browser, a placeholder shows and the model does not get it; an image-only question is titled "Image question" and deleting it clears the device copy.
+- Text files: a binary file is refused; only the file id and name are stored; the model gets the text, also with a follow-up.
+- Regenerate replaces the latest answer; editing the latest question rewrites it, replaces the answer and retitles the chat.
+- `/search`: a typed question from the fragment is sent; arriving from another site only fills the composer and sets the mode; `/opensearch.xml` carries the fragment template.
+- `/limits` does not scroll horizontally at phone width.
 - Setup offers sign-out and account deletion without any key.
 - Streams stay isolated per conversation and survive client-side navigation.
 - Stop keeps partial text; “Ask again” replaces the answer; reload mid-answer shows a stopped answer.

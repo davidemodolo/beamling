@@ -105,7 +105,7 @@ One key serves model and search. It is stored as `llm` and read once when an ans
 Model:
 
 - `@ai-sdk/deepseek` 3.0.80; catalog entry `deepseek:deepseek-flash` ("DeepSeek V4.1 Flash · direct", API model `deepseek-flash`).
-- Every request sends `thinking: { type: "disabled" }`: prompts expect direct replies, and thinking mode rejects the forced tool choice of the research loop's first step.
+- Research requests (planner, gap review, tool loop) send `thinking: { type: "disabled" }`: those prompts expect direct replies, and thinking mode rejects the forced tool choice of the research loop's first step. The request that writes the answer sends `thinking: { type: "enabled" }`, so its reasoning is streamed and stored like any other model's.
 - DeepSeek reports tokens but no price. Cost is estimated from `PEAK_PRICES` in `deepseek.ts`; off-peak is half. Peak is 01:00–04:00 and 06:00–10:00 UTC on weekdays. Chinese holidays are priced as peak, so the estimate can only be high.
 - Validation: `GET https://api.deepseek.com/user/balance` (spends nothing). `is_available: false` → `INSUFFICIENT_CREDITS`.
 

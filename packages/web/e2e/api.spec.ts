@@ -53,10 +53,19 @@ test("oversized and malformed bodies are refused before they reach the database"
   const nul = await request.post("/api/chat", { data: { question: "\u0000\u0000", mode: "quick" } });
   expect(nul.status()).toBe(400);
   expect((await nul.json()).error.code).toBe("INVALID_INPUT");
-  const both = await request.post("/api/chat", {
-    data: { question: "q", retryOf: "00000000-0000-4000-8000-000000000000", conversationId: "00000000-0000-4000-8000-000000000000", mode: "quick" },
+  // A replaced answer keeps its question's attachments: new ones are refused with it.
+  const replaced = { retryOf: "00000000-0000-4000-8000-000000000000", conversationId: "00000000-0000-4000-8000-000000000000", mode: "quick" };
+  const withFile = await request.post("/api/chat", {
+    data: { ...replaced, files: [{ id: "00000000-0000-4000-8000-000000000001", name: "a.txt", text: "a" }] },
   });
-  expect(both.status()).toBe(400);
+  expect(withFile.status()).toBe(400);
+  const notText = await request.post("/api/chat", {
+    data: { question: "q", mode: "quick", files: [{ id: "00000000-0000-4000-8000-000000000001", name: "a.exe", text: "a" }] },
+  });
+  expect(notText.status()).toBe(400);
+  // An edit (a question with the answer it replaces) is valid input; this conversation does not exist.
+  const edit = await request.post("/api/chat", { data: { ...replaced, question: "q" } });
+  expect(edit.status()).toBe(404);
 });
 
 test("authenticated responses are private and pages carry a nonce-based CSP", async ({ request }) => {

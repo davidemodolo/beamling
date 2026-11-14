@@ -166,6 +166,45 @@
   background: var(--surface);
   color: var(--text);
 }
+.composer-file,
+.message-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 220px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--raised);
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.composer-file {
+  position: relative;
+  align-self: center;
+}
+.composer-file > span,
+.message-file > span:not(.sr-only) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.composer-file button {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--text);
+}
 .composer-warning {
   display: flex;
   align-items: center;
@@ -215,4 +254,57 @@
   width: 56px;
   height: 56px;
   cursor: help;
+}
+.message-files {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: 82%;
+}
+.message-file-missing {
+  opacity: 0.55;
+  cursor: help;
+}
+
+/* ---------- editing the last question ---------- */
+
+.bubble-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  max-width: 100%;
+}
+.bubble-row .bubble {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.bubble-edit-button {
+  flex: none;
+  color: var(--muted);
+}
+.bubble-edit {
+  width: min(560px, 100%);
+  display: grid;
+  gap: 8px;
+}
+.bubble-edit textarea {
+  width: 100%;
+  min-height: 72px;
+  max-height: 240px;
+  resize: vertical;
+  padding: 11px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line-strong);
+  background: var(--raised);
+  color: var(--text);
+  font: inherit;
+  font-size: 14.5px;
+  line-height: 1.55;
+}
+.bubble-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
 }

@@ -687,22 +687,18 @@
   color: var(--muted);
   font-size: 12.5px;
   min-height: 58px;
+  position: relative;
+  overflow: hidden;
 }
 .working-mascot {
-  width: 54px;
-  height: 42px;
+  width: 56px;
   flex: none;
-  overflow: hidden;
-  display: grid;
-  place-items: center;
-}
-.working-mascot > div {
-  width: 64px;
-  margin-top: -8px;
+  position: relative;
 }
 .working-text {
   flex: 1;
   min-width: 0;
+  position: relative;
 }
 .working-text strong {
   display: block;

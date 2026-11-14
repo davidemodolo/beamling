@@ -3,9 +3,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Attachment } from "./attachments";
 import { streamAnswer, type StreamError, type StreamHandle } from "./api";
-import { chatImages, historyImageIds } from "./chat-images";
-import { IMAGE_QUESTION_TITLE } from "./data";
-import type { PreparedImage } from "./images";
+import { chatUploads, historyAttachments } from "./chat-images";
+import { attachmentQuestionTitle } from "./data";
+import type { PreparedFile, PreparedImage } from "./images";
 import { useAccount, useConversations, withoutKey, type ThreadMessage } from "./store";
 import type { ChatStage, DoneEvent, Mode, SearchProvider, SearchTrace, Source } from "./types";
 import { createId } from "./utils";
@@ -22,7 +22,7 @@ export const STAGE_LABEL: Record<ChatStage, string> = {
   error: "The provider returned an error",
 };
 
-/** A new question: its text (empty when it is only images) and its images. */
+/** A question: its text (empty when it is only attachments) and its images and text files. */
 export interface Ask {
   text: string;
   attachments: Attachment[];
@@ -34,10 +34,12 @@ export interface LiveAnswer {
   /** Stored ids, known once the server sends "meta". */
   messageId: string | null;
   userMessageId: string | null;
-  /** A new question, shown in the thread while it is answered; absent for a retry. */
+  /** The question shown in the thread while it is answered: a new one, or the edited one. Absent when an answer is only replaced. */
   ask?: Ask;
-  /** The failed or stopped answer this run replaces. */
+  /** The stored answer this run replaces. */
   replaces?: string;
+  /** The stored question an edit rewrites; `ask` stands in for it. */
+  replacesQuestion?: string;
   mode: Mode;
   searchProvider: SearchProvider;
   content: string;
@@ -54,11 +56,20 @@ export interface StartAnswer {
   conversationId: string;
   mode: Mode;
   searchProvider?: SearchProvider;
-  /** A new question; absent when retrying a stored answer, whose question the server reuses. */
+  /**
+   * A new question. With `retryOf` it is the edited text of the latest question (its attachments are
+   * the stored ones); without `ask`, `retryOf` reuses the stored question.
+   */
   ask?: Ask;
-  /** Images just picked for `ask`, to keep on this device for follow-ups. */
+  /** Images and text files just picked for `ask`, to keep on this device for follow-ups. */
   picked?: PreparedImage[];
+  pickedFiles?: PreparedFile[];
+  /** The latest stored answer to replace. */
   retryOf?: string;
+  /** The stored question being edited (with `ask` and `retryOf`). */
+  editOf?: string;
+  /** Told when the server refused to replace an answer; the stored exchange is unchanged. */
+  onRefused?: (message: string) => void;
 }
 
 interface StreamsValue {
@@ -165,6 +176,7 @@ export function AnswerStreamsProvider({ children }: { children: ReactNode }) {
           userMessageId: null,
           ask,
           replaces: input.retryOf,
+          replacesQuestion: input.editOf,
           mode,
           searchProvider,
           content: "",
@@ -179,7 +191,7 @@ export function AnswerStreamsProvider({ children }: { children: ReactNode }) {
       }));
       announce(`Beamling is ${STAGE_LABEL.queued.toLowerCase()}.`);
 
-      if (ask) titleFromFirstQuestion(conversationId, ask.text || IMAGE_QUESTION_TITLE);
+      if (ask && !input.retryOf) titleFromFirstQuestion(conversationId, ask.text || attachmentQuestionTitle(ask.attachments));
       // An earlier question that never reached the server would otherwise end up below this answer.
       dropFailedMessages(conversationId);
 
@@ -197,10 +209,13 @@ export function AnswerStreamsProvider({ children }: { children: ReactNode }) {
             stage === "stopped" || ["NETWORK", "STREAM_ENDED", "INTERNAL"].includes(error?.code ?? "");
           if (uncertain) {
             const stored = await loadThread(conversationId).catch(() => null);
-            const asked = stored?.messages.some(
-              (message) => !knownIds.has(message.id) && message.role === "user" && message.content === ask?.text,
-            );
-            if (stored && (asked || !ask)) {
+            // The request was accepted if the new question is stored, or the replaced answer is gone.
+            const accepted = input.retryOf
+              ? stored && !stored.messages.some((message) => message.id === input.retryOf)
+              : stored?.messages.some(
+                  (message) => !knownIds.has(message.id) && message.role === "user" && message.content === ask?.text,
+                );
+            if (accepted) {
               removeLive();
               return;
             }
@@ -211,9 +226,15 @@ export function AnswerStreamsProvider({ children }: { children: ReactNode }) {
             return;
           }
           if (input.retryOf) {
-            // The retried answer is still stored; it shows the new error instead of a second card.
+            // The replaced answer is still stored. A failed one shows the new error instead of a
+            // second card; a complete one is left as it is and the caller is told.
             const id = input.retryOf;
-            if (error) updateMessage(conversationId, id, (current) => ({ ...current, errorCode: error.code, errorMessage: error.message }));
+            if (error) {
+              updateMessage(conversationId, id, (current) =>
+                current.status === "error" ? { ...current, errorCode: error.code, errorMessage: error.message } : current,
+              );
+              input.onRefused?.(error.message);
+            }
             removeLive();
             return;
           }
@@ -252,7 +273,9 @@ export function AnswerStreamsProvider({ children }: { children: ReactNode }) {
             // Keep what was streamed on screen until the conversation can be loaded again.
             const status = stage === "stopped" ? "stopped" : error ? "error" : "complete";
             const provisional: ThreadMessage[] = [];
-            if (ask && userMessageId) {
+            if (ask && input.editOf) {
+              updateMessage(conversationId, input.editOf, (current) => ({ ...current, content: ask.text }));
+            } else if (ask && userMessageId) {
               provisional.push({ id: userMessageId, role: "user", content: ask.text, attachments, status: "complete", createdAt: now, local: "provisional" });
             }
             provisional.push({
@@ -279,11 +302,15 @@ export function AnswerStreamsProvider({ children }: { children: ReactNode }) {
         removeLive();
       };
 
-      const contextIds = historyImageIds(latest.current.threads[conversationId]?.messages ?? [], input.retryOf);
+      const context = historyAttachments(latest.current.threads[conversationId]?.messages ?? [], input.retryOf);
       const request = { conversationId, mode, searchProvider, question: ask?.text, retryOf: input.retryOf };
+      // A replaced answer reuses its question's stored attachments; they travel as earlier ones.
+      const own = input.retryOf ? [] : (ask?.attachments ?? []);
       const handle = streamAnswer(
-        attachments || contextIds.length
-          ? chatImages(conversationId, ask?.attachments ?? [], input.picked ?? [], contextIds).then((uploads) => ({ ...request, ...uploads }))
+        own.length || context.images.length || context.files.length
+          ? chatUploads(conversationId, own, { images: input.picked ?? [], files: input.pickedFiles ?? [] }, context).then(
+              (uploads) => ({ ...request, ...uploads }),
+            )
           : request,
         {
           onMeta: (meta) => {

@@ -428,7 +428,7 @@ test("DeepSeek cost is estimated from tokens, at half price off-peak", async () 
   assert.ok(Math.abs(deepSeekCost(step, weekend) - (0.003 + 0.15 + 1.2) / 2) < 1e-9);
 });
 
-test("DeepSeek models stream through the shared layer with thinking off", async (t) => {
+test("DeepSeek models stream through the shared layer, thinking only for the answer", async (t) => {
   const { deepSeekModels } = await import("../../lib/server/providers/deepseek");
   const requests: Record<string, unknown>[] = [];
   const base = { id: "c1", object: "chat.completion.chunk", created: 1, model: "deepseek-flash" };
@@ -462,4 +462,7 @@ test("DeepSeek models stream through the shared layer with thinking off", async 
   assert.ok(result.usage.costUsd > 0);
   assert.deepEqual(requests[0].thinking, { type: "disabled" });
   assert.equal((requests[0].messages as { role: string }[])[0].role, "system");
+
+  await streamChat({ provider: "deepseek", adapter: deepSeekModels, purpose: "answer", key: "sk-ds", apiModel: "deepseek-flash", messages: [{ role: "user", content: "hi" }], maxTokens: 5 });
+  assert.deepEqual(requests[1].thinking, { type: "enabled" });
 });

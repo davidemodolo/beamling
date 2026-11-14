@@ -28,7 +28,7 @@ Errors use one envelope ([Error model](errors.md)):
 | `GET` | `/api/auth/callback/google` | OIDC transaction cookie | `code`, `state` | 307 to the stored return path (default `/`) |
 | `POST` | `/api/auth/logout` | Optional, terms not required | `?scope=all` signs out every session | `{ ok: true }` and cleared cookie |
 | `GET` | `/api/state` | Required | None | `{ user, conversations, nextCursor, conversationCount, credentials, settings }` |
-| `POST` | `/api/chat` | Required | `{ conversationId?, question?, attachments?, context?, retryOf?, mode, searchProvider? }`; images are `{ id, mediaType, data }` (base64) | SSE stream |
+| `POST` | `/api/chat` | Required | `{ conversationId?, question?, attachments?, context?, files?, contextFiles?, retryOf?, mode, searchProvider? }`; images are `{ id, mediaType, data }` (base64), text files `{ id, name, text }` | SSE stream |
 | `POST` | `/api/chat/stop` | Required | `{ messageId }` | `{ stopped: boolean }` |
 | `GET` | `/api/conversations` | Required | `?cursor=` | `{ conversations, nextCursor }` |
 | `POST` | `/api/conversations/delete` | Required | `{ ids: uuid[] }` (1–100) | `{ deleted: uuid[] }` |
@@ -37,10 +37,10 @@ Errors use one envelope ([Error model](errors.md)):
 | `GET` | `/api/conversations/:id/messages` | Required | `?before=<messageId>` | `{ messages, hasMore }` |
 | `PATCH` | `/api/conversations/:id` | Required | `{ mode?, pinned? }` (at least one) | `{ conversation }` |
 | `DELETE` | `/api/conversations/:id` | Required | None | `{ ok: true }` |
-| `POST` | `/api/credentials` | Required | `{ provider, key, plan?, expiresOn?, budgetUsd?, validate? }` ([Accepted credentials](credentials.md#accepted-credentials)) | `201 { credential }` |
+| `POST` | `/api/credentials` | Required | `{ provider, key, plan?, expiresOn?, budgetUsd?, validate? }` ([Accepted credentials](credentials.md#accepted-credentials)) | `201 { credential, settings }` |
 | `POST` | `/api/credentials/:id/validate` | Required | None | `{ credential }` |
 | `PATCH` | `/api/credentials/:id` | Required | `{ plan?, expiresOn?, budgetUsd? }` | `{ credential }` |
-| `DELETE` | `/api/credentials/:id` | Required | None | `{ ok: true }` |
+| `DELETE` | `/api/credentials/:id` | Required | None | `{ ok: true, settings }` |
 | `PATCH` | `/api/settings` | Required | `{ llmModel?, defaultSearchProvider?, defaultMode?, analyticsOptOut? }` | `{ settings }` |
 | `POST` | `/api/account/terms` | Required, terms not required | `{ version, confirmAge: true }` | `{ ok: true, version }` |
 | `GET` | `/api/account/export` | Required, terms not required | None | JSON attachment `beamling-export-<date>.json` |
@@ -80,7 +80,7 @@ Provider keys, key ciphertext and session tokens are never included.
 | Login start | `LOGINS_PER_IP_PER_HOUR` per hashed IP, default 60/hour |
 | OIDC callback | `AUTH_CALLBACKS_PER_IP_PER_HOUR` per hashed IP, default 120/hour |
 | New accounts | `NEW_ACCOUNTS_PER_HOUR` per deployment, default 200/hour; `SIGNUPS_PER_IP_PER_HOUR` per hashed IP, default 10/hour |
-| Request body | 64 KB; `/api/chat` with images up to about 16.8 MB ([Images](answer-pipeline.md#images)) |
+| Request body | 64 KB; `/api/chat` with images and text files up to about 17.3 MB ([Images](answer-pipeline.md#images)) |
 | Question | 4,000 characters after control-character cleanup |
 | Global active streams | `MAX_CONCURRENT_CHATS`, default 50; at most half (at least 1) in Deeper |
 | Active streams per account | `MAX_CONCURRENT_CHATS_PER_USER`, default 2 |

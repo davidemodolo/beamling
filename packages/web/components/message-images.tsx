@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { Icon } from "./ui/icon";
-import { IMAGE_RETENTION_DAYS, type Attachment } from "@/lib/attachments";
-import { loadImages } from "@/lib/image-store";
+import { IMAGE_RETENTION_DAYS, isFile, isImage, type FileAttachment, type ImageAttachment } from "@/lib/attachments";
+import type { Attachment } from "@/lib/attachments";
+import { loadFiles, loadImages } from "@/lib/image-store";
 
 /** One image from this browser, or a placeholder once it expired or when this browser never had it. */
-function MessageImage({ attachment, index }: { attachment: Attachment; index: number }) {
+function MessageImage({ attachment, index }: { attachment: ImageAttachment; index: number }) {
   const [url, setUrl] = useState<string | null>(null);
   const [missing, setMissing] = useState(false);
 
@@ -46,14 +47,48 @@ function MessageImage({ attachment, index }: { attachment: Attachment; index: nu
   );
 }
 
-const GONE = `No longer available. Images stay only in the browser they were sent from, for ${IMAGE_RETENTION_DAYS} days.`;
+const GONE = `No longer available. Images and files stay only in the browser they were sent from, for ${IMAGE_RETENTION_DAYS} days.`;
+
+/** A text file's name; dimmed once this browser no longer has its content. */
+function MessageFile({ attachment }: { attachment: FileAttachment }) {
+  const [missing, setMissing] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void loadFiles([attachment.id]).then(([file]) => {
+      if (active) setMissing(!file);
+    });
+    return () => {
+      active = false;
+    };
+  }, [attachment.id]);
+  return (
+    <span className={`message-file${missing ? " message-file-missing" : ""}`} title={missing ? GONE : attachment.name}>
+      <Icon name="file" size={13} />
+      <span>{attachment.name}</span>
+      {missing ? <span className="sr-only">{GONE}</span> : null}
+    </span>
+  );
+}
 
 export function MessageImages({ attachments }: { attachments: Attachment[] }) {
+  const images = attachments.filter(isImage);
+  const files = attachments.filter(isFile);
   return (
-    <div className="message-images">
-      {attachments.map((attachment, index) => (
-        <MessageImage key={attachment.id} attachment={attachment} index={index} />
-      ))}
-    </div>
+    <>
+      {images.length ? (
+        <div className="message-images">
+          {images.map((attachment, index) => (
+            <MessageImage key={attachment.id} attachment={attachment} index={index} />
+          ))}
+        </div>
+      ) : null}
+      {files.length ? (
+        <div className="message-files">
+          {files.map((attachment) => (
+            <MessageFile key={attachment.id} attachment={attachment} />
+          ))}
+        </div>
+      ) : null}
+    </>
   );
 }

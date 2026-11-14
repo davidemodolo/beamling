@@ -96,7 +96,7 @@ Cloud Run in `europe-west1`, Neon Postgres in Frankfurt, Cloud KMS key in `europ
 - **Secrets:** Secret Manager (`europe-west1`) holds `DATABASE_URL`, `DATABASE_URL_DIRECT`, `AUTH_SECRET`, `OIDC_CLIENT_SECRET`, `KILL_SWITCH_SECRET`, `METRICS_SECRET` (`key: latest`, read at instance start). Add values with `gcloud secrets versions add NAME --data-file=-`.
 - **Images:** public GHCR, proxied by Artifact Registry remote `ghcr`; Cloud Run deploys `europe-west1-docker.pkg.dev/beamling-prod/ghcr/<owner>/<repo>@sha256:…`. Cleanup keeps the five newest versions.
 - **Topology** (`deploy/gcp/service.yaml`):
-  - 0–2 instances; the maximum is the spend cap.
+  - 0–1 instances; the maximum is the spend cap.
   - Request-based billing, startup CPU boost, 1 vCPU, 1 GiB.
   - 40 concurrent requests per instance (`PLATFORM_CONNECTION_LIMIT=40`), 420 s timeout (Deeper's 360 s plus storing).
   - Startup and liveness probes on `/api/live`.

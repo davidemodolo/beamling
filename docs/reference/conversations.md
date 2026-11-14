@@ -37,7 +37,7 @@ messages
   role, content, status, mode,
   uncited, no_sources, truncated, degraded,
   searches (encrypted JSON trace), reasoning (encrypted),
-  attachments (encrypted JSON image ids and types; never bytes),
+  attachments (encrypted JSON: image ids and types, text file ids and names; never content),
   llm_model, resolved_model, upstream_provider,
   search_requests, search_failures,
   search_provider, tokens_in, tokens_out, cost_usd, search_cost_usd,
@@ -103,7 +103,7 @@ assistant      → insert row with status streaming
 4. If non-stale streaming messages ≥ `MAX_CONCURRENT_CHATS`, return `SERVER_BUSY` (503).
 5. Deeper only: if streaming Deeper messages ≥ half of `MAX_CONCURRENT_CHATS` (floor, min 1), return `SERVER_BUSY` suggesting Deep.
 6. Check the account's streaming messages against `MAX_CONCURRENT_CHATS_PER_USER`.
-7. Retry: the target must be the latest answer, `error`/`stopped` (or stale), with a preceding question. Delete it and reuse the question.
+7. `retryOf`: the target must be the latest answer, not being written (a stale streaming row counts as interrupted), with a preceding question. Delete it and reuse the question. With a `question` (an edit), rewrite the stored question's text first; if it was the conversation's first question and the title is still the one it gave, the title follows.
 8. New question: insert it with control characters removed.
 9. Insert the `streaming` assistant placeholder.
 10. Update title (first question only), mode and `updated_at`.

@@ -5,22 +5,38 @@
 `POST /api/chat` validates:
 
 - `mode`: `quick`, `deep` or `deeper`. Optional `searchProvider`: `brave`, `tavily`, `exa` or `deepseek` (default: workspace default).
-- Exactly one of `question` or `retryOf`; a retry needs `conversationId`.
-- Question ≤ 4,000 characters after stripping control characters and trimming. It may be empty when `attachments` has an image.
-- `attachments`: up to 4 images on the new question. `context`: up to 4 earlier images the browser still has. Not allowed on a retry, which reuses the question's images. See [Images](#images).
+- `question`, `retryOf`, or both. `retryOf` names the latest answer, which is replaced, and needs `conversationId`:
+    - alone, it reuses the stored question (retry of a failed or stopped answer, or **Regenerate** of a complete one);
+    - with `question`, it first rewrites that question (**Edit**). The attachments stay those of the stored question.
+- Question ≤ 4,000 characters after stripping control characters and trimming. It may be empty when the question has an image or a file.
+- `attachments`: up to 4 images on the new question. `context`: up to 4 earlier images the browser still has. See [Images](#images).
+- `files`: up to 3 text files on the new question. `contextFiles`: up to 3 earlier ones. See [Text files](#text-files).
+- `attachments` and `files` are refused with `retryOf`; the replaced answer's question keeps its own, which travel as `context` and `contextFiles`.
 
-Limits: 30 chat requests per user per fixed hour, 120 per hashed IP per fixed hour. Body: 64 KB plus 2.1 MB per allowed image (about 16.8 MB).
+Limits: 60 questions per user per fixed hour and 500 per day, 120 chat requests per hashed IP per fixed hour, all consumed before the body is read. Body: 64 KB plus about 2 MB per allowed image and 200 KB per allowed text file (about 17.3 MB).
 
 `prepareChat()`:
 
 1. Loads settings; falls back to the default model if the stored one is no longer allowlisted. New images with a model that does not read images return `MODEL_NO_VISION`.
-2. Resolves model and search provider, then loads both providers' keys (once if the same provider).
-3. Returns `CREDENTIAL_MISSING` for a missing key, `CREDENTIAL_UNREADABLE` for an undecryptable row.
-4. Reuses the conversation after an ownership check, or creates one.
+2. New questions only: checks the database, account storage and per-conversation caps (`assertCanAsk`).
+3. Reuses the conversation after an ownership check, or creates one.
+4. Resolves model and search provider, then loads both providers' keys (once if the same provider). Returns `CREDENTIAL_MISSING` for a missing key, `CREDENTIAL_UNREADABLE` for an undecryptable row.
 5. Calls `createExchange()`.
 6. Loads the six messages before the current question as history (the question is not repeated).
 
 Errors before the SSE response are JSON with the stable error envelope.
+
+## Text files
+
+`.md` and `.txt` files follow the image rules: their text is never stored on the server, the browser keeps it for 7 days and sends it again while its question is in the history window.
+
+- Accepted (`lib/server/image-upload.ts`): a `.md` or `.txt` name (at most 120 characters; `/ \ " < >` and line breaks become `_`) and non-empty text of at most 100,000 characters, control characters removed.
+- Stored, encrypted, in `messages.attachments`: `{ id, kind: "text", name }`. Never the text.
+- The model receives the question's files and earlier files whose question is in the history window; other uploaded ids are ignored. Any model can read them.
+- `askedQuestion()` appends them to the question as `<file name="…">` blocks under `ATTACHED FILES`, so the Deep planner, gap review, the research loop and the writer all read them. A file cannot close its own block (`<file` and `</file` are stripped from its text).
+- One prompt reads at most 60,000 characters of file text over all files (`MAX_FILE_PROMPT_CHARS`), the question's files first; a file that does not fit is cut with a note.
+- Prompts mark each file as in a block below, or as no longer available with an instruction not to guess what it said.
+- The planner, the search step and the research agent are told that `<file>` text is data, not instructions. The writer's added rule covers files too: attribute what a file says to it by name, without a citation number.
 
 ## Images
 

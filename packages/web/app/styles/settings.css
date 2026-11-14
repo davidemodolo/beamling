@@ -140,6 +140,8 @@
   margin: 0 auto;
   padding: 28px 16px 64px;
   display: grid;
+  /* minmax(0, …): a long chat title must shrink the row, not widen the page. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 28px;
 }
 .limits h2 {
@@ -170,8 +172,9 @@
 }
 .limit-meter-head {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 12px;
+  gap: 2px 12px;
   font-size: 13.5px;
 }
 .limit-meter-head span {
@@ -212,8 +215,9 @@
 }
 .limits-largest li {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 12px;
+  gap: 2px 12px;
   padding: 11px 16px;
   font-size: 13.5px;
 }
@@ -222,6 +226,7 @@
 }
 .limits-largest a {
   min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

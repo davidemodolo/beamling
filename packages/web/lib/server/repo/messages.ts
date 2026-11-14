@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, count, desc, eq, gt, inArray, lt, lte, sql } from "drizzle-orm";
 import type { Attachment } from "../../attachments";
-import { DEFAULT_CONVERSATION_TITLE, HISTORY_MESSAGES, IMAGE_QUESTION_TITLE, titleFromQuestion } from "../../data";
+import { DEFAULT_CONVERSATION_TITLE, HISTORY_MESSAGES, attachmentQuestionTitle, titleFromQuestion } from "../../data";
 import { DEFAULT_SEARCH_PROVIDER } from "../../provider-catalog";
 import type { Message, Mode, SearchProvider, SearchTrace, Source, Usage } from "../../types";
 import { plural } from "../../utils";
@@ -42,7 +42,7 @@ export async function getHistory(userId: string, conversationId: string, before:
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-/** The failed or stopped answer being retried, with the question it answered. */
+/** The latest answer, about to be replaced, with the question it answered. */
 async function retryTarget(tx: Tx, input: { userId: string; conversationId: string; messageId: string }) {
   const [target] = await tx
     .select()
@@ -58,16 +58,16 @@ async function retryTarget(tx: Tx, input: { userId: string; conversationId: stri
     .limit(1);
   if (!target) throw new ApiError("MESSAGE_NOT_FOUND", "That answer no longer exists.", 404);
   const stale = target.status === "streaming" && target.createdAt.getTime() <= staleBefore().getTime();
-  // A stale streaming row reads as interrupted, so it can be retried too.
-  if (target.status !== "error" && target.status !== "stopped" && !stale) {
-    throw new ApiError("RETRY_NOT_ALLOWED", "Only a failed or stopped answer can be retried.", 409);
+  // A stale streaming row reads as interrupted, so it can be replaced too.
+  if ((target.status === "streaming" || target.status === "pending") && !stale) {
+    throw new ApiError("RETRY_NOT_ALLOWED", "This answer is still being written.", 409);
   }
   const [newer] = await tx
     .select({ id: messages.id })
     .from(messages)
     .where(and(eq(messages.conversationId, input.conversationId), gt(messages.createdAt, target.createdAt)))
     .limit(1);
-  if (newer) throw new ApiError("RETRY_NOT_ALLOWED", "Only the latest answer can be retried.", 409);
+  if (newer) throw new ApiError("RETRY_NOT_ALLOWED", "Only the latest answer can be replaced.", 409);
 
   const [question] = await tx
     .select()
@@ -82,12 +82,25 @@ async function retryTarget(tx: Tx, input: { userId: string; conversationId: stri
     .orderBy(desc(messages.createdAt), desc(messages.id))
     .limit(1);
   if (!question) throw new ApiError("MESSAGE_NOT_FOUND", "The question for that answer no longer exists.", 404);
-  return { target, question, questionText: await decryptText(input.userId, "messages", question.id, "content", question.content) };
+  const [earlier] = await tx
+    .select({ id: messages.id })
+    .from(messages)
+    .where(
+      and(eq(messages.conversationId, input.conversationId), eq(messages.role, "user"), lt(messages.createdAt, question.createdAt)),
+    )
+    .limit(1);
+  return {
+    target,
+    question,
+    questionText: await decryptText(input.userId, "messages", question.id, "content", question.content),
+    /** The conversation was titled from this question. */
+    first: !earlier,
+  };
 }
 
 /**
- * Stores the question (or reuses it, when retrying a failed or stopped answer, which is replaced) and
- * a streaming assistant placeholder. Rejects a second concurrent answer for the same conversation
+ * Stores the question and a streaming assistant placeholder. With `retryOf` the latest answer is
+ * replaced instead: its question is reused, or rewritten when `question` is given (an edit). Rejects a second concurrent answer for the same conversation
  * (enforced by a partial unique index) and enforces the global concurrency cap.
  */
 export async function createExchange(input: {
@@ -97,7 +110,7 @@ export async function createExchange(input: {
   llmModel: string;
   searchProvider?: SearchProvider;
   question?: string;
-  /** Images on a new question; a retry reuses the stored question's. */
+  /** Images and files on a new question; with `retryOf` the stored question's are reused. */
   attachments?: Attachment[];
   retryOf?: string;
 }): Promise<{ userMessage: MessageRow; assistantMessage: MessageRow; questionText: string; attachments: Attachment[] }> {
@@ -171,8 +184,10 @@ export async function createExchange(input: {
       let userMessage: MessageRow;
       let questionText: string;
       let attachments: Attachment[];
+      // Set when an edit rewrote the question the conversation was titled from.
+      let retitleFrom: string | undefined;
       if (input.retryOf) {
-        const { target, question, questionText: storedQuestion } = await retryTarget(tx, {
+        const { target, question, questionText: storedQuestion, first } = await retryTarget(tx, {
           userId: input.userId,
           conversationId: conversation.id,
           messageId: input.retryOf,
@@ -181,6 +196,17 @@ export async function createExchange(input: {
         userMessage = question;
         questionText = storedQuestion;
         attachments = (await readAttachments(input.userId, question)) ?? [];
+        const edited = input.question === undefined ? storedQuestion : storableText(input.question);
+        if (edited !== storedQuestion) {
+          if (!edited && !attachments.length) throw new ApiError("INVALID_INPUT", "Ask a question first.", 400);
+          [userMessage] = await tx
+            .update(messages)
+            .set({ content: await encryptText(input.userId, "messages", question.id, "content", edited) })
+            .where(eq(messages.id, question.id))
+            .returning();
+          questionText = edited;
+          if (first) retitleFrom = storedQuestion;
+        }
       } else {
         questionText = storableText(input.question ?? "");
         attachments = input.attachments ?? [];
@@ -222,10 +248,10 @@ export async function createExchange(input: {
         .returning();
 
       const currentTitle = await decryptText(input.userId, "conversations", conversation.id, "title", conversation.title);
-      const nextTitle =
-        currentTitle === DEFAULT_CONVERSATION_TITLE
-          ? titleFromQuestion(questionText || (attachments.length ? IMAGE_QUESTION_TITLE : ""))
-          : currentTitle;
+      const titleFor = (text: string) => titleFromQuestion(text || attachmentQuestionTitle(attachments));
+      // An edited first question retitles the conversation, unless the title is no longer the one it gave.
+      const untitled = currentTitle === DEFAULT_CONVERSATION_TITLE || (retitleFrom !== undefined && currentTitle === titleFor(retitleFrom));
+      const nextTitle = untitled ? titleFor(questionText) : currentTitle;
       await tx
         .update(conversations)
         .set({

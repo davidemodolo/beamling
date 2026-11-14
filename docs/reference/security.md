@@ -32,7 +32,8 @@ frame-ancestors 'none'
 ## Input and output
 
 - JSON bodies: 64 KB cap (streamed, plus `Content-Length` pre-check), Zod-validated. `/api/chat` allows more for images, each checked for type, size and file signature.
-- Image bytes are never stored on the server; images live in the browser for 7 days ([Images](answer-pipeline.md#images)).
+- Image bytes and text file content are never stored on the server; they live in the browser for 7 days ([Images](answer-pipeline.md#images), [Text files](answer-pipeline.md#text-files)).
+- A question asked from the address bar travels in the URL fragment, so it is in no request log ([Address-bar search](browser.md#address-bar-search)).
 - Route ids must be UUIDs; Drizzle parameterizes queries.
 - Control characters stripped from questions and stored text; NUL removed from provider output.
 - Markdown uses a custom React renderer; raw HTML is never parsed.

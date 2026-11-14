@@ -72,6 +72,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   await connection();
   return (
     <html lang="en" className={`${inter.variable} ${jetbrains.variable}`}>
+      <head>
+        <link rel="search" type="application/opensearchdescription+xml" title="Beamling" href="/opensearch.xml" />
+      </head>
       <body>
         {children}
         <ServiceWorker />

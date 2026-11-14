@@ -29,7 +29,7 @@ This specification is the **target contract** for Alpha 1 and public launch. It 
 
 ### Snapshot
 
-Verified against the code on 2026-11-07.
+Verified against the code on 2026-11-14.
 
 | Area | Current checkout | Alpha 1 / public-launch target |
 |---|---|---|
@@ -50,5 +50,5 @@ Verified against the code on 2026-11-07.
 | License | Open source under the MIT License (`LICENSE`); dependency licenses inventoried on `/licenses` | Same |
 | Analytics | Server-side PostHog events with an allowlist, HMAC distinct IDs, opt-in kill switch, per-account opt-out and account-deletion hook; no browser SDK | PostHog Cloud EU, server-side metadata-only events and operator dashboards |
 | Operations | Production-parity Docker Compose with Caddy TLS, Dex OIDC, LocalStack KMS, TLS Postgres and the production image; release migrations, versioned health, tagged releases, graceful shutdown; deployed to Google Cloud Run (europe-west1) with Neon Postgres (Frankfurt) at https://beamling.app since 7 November 2026, keyless CI deploys, sign-ups limited to an allowlist; database killswitch and internal metrics; operator-scheduled service shutdown with at least 14 days' notice (English email over optional SMTP, banner, sign-ups closed, then every account deleted) | Cloud Run + Neon, GCP KMS, monitoring, backups, killswitch |
-| Tests | 64 web unit tests, 41 database integration tests, 48 Playwright E2E tests, 6 mascot tests | Add parity-stack smoke, analytics, dump-encryption, load and eval gates |
+| Tests | 71 web unit tests, 48 database integration tests, 60 Playwright E2E tests, 6 mascot tests | Add parity-stack smoke, analytics, dump-encryption, load and eval gates |
 | Donations | None | Optional post-public `/support` and `/supporters` |

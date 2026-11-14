@@ -79,6 +79,8 @@ export async function ask(
   userId: string,
   input: {
     question?: string;
+    files?: import("../../lib/attachments").FileUpload[];
+    contextFiles?: import("../../lib/attachments").FileUpload[];
     retryOf?: string;
     conversationId?: string;
     mode: "quick" | "deep" | "deeper";

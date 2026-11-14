@@ -1,7 +1,7 @@
 "use client";
 
 import { createParser } from "eventsource-parser";
-import type { ImageUpload } from "./attachments";
+import type { FileUpload, ImageUpload } from "./attachments";
 import type { ChatStage, DoneEvent, Mode, SearchProvider, SearchTrace, Source, Usage } from "./types";
 import { parseStreamEvent, type StreamError, type StreamMeta } from "./stream-events";
 
@@ -204,6 +204,10 @@ export interface StreamInput {
   attachments?: ImageUpload[];
   /** Earlier images still on this device, for questions in the history window. */
   context?: ImageUpload[];
+  /** The new question's text files, and earlier ones still on this device. */
+  files?: FileUpload[];
+  contextFiles?: FileUpload[];
+  /** The latest answer to replace; with `question`, that question is rewritten first. */
   retryOf?: string;
 }
 

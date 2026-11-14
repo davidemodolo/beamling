@@ -9,8 +9,11 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 export const DEFAULT_CONVERSATION_TITLE = "New conversation";
-/** Conversation title for a question that is only images. */
-export const IMAGE_QUESTION_TITLE = "Image question";
+/** Conversation title for a question that is only attachments. */
+export function attachmentQuestionTitle(attachments: { kind: string }[]): string {
+  if (!attachments.length) return "";
+  return attachments.some((item) => item.kind === "image") ? "Image question" : "File question";
+}
 
 /** Messages before the question that the prompt includes as conversation history. */
 export const HISTORY_MESSAGES = 6;

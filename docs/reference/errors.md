@@ -38,8 +38,8 @@ Error codes are stable strings. The UI maps each to a title, message and action.
 | `SEARCH_FAILED` | Every search failed | 502 |
 | `CONTEXT_TOO_LARGE` | Provider says the context is too long | 400 |
 | `GENERATION_IN_PROGRESS` | Another stream owns the conversation | 409 |
-| `SERVER_BUSY` | Global, Deeper or per-account stream cap, or lock timeout | 503 |
-| `RETRY_NOT_ALLOWED` | Retry of a non-latest or non-failed answer | 409 |
+| `SERVER_BUSY` | Global, Deeper or per-account stream cap, or lock timeout (503); the account already has its allowed chat requests being read or prepared (429) | 503, 429 |
+| `RETRY_NOT_ALLOWED` | `retryOf` names an answer that is not the latest, or is still being written | 409 |
 | `RATE_LIMITED` | Beamling rate limit | 429 |
 | `SERVICE_FULL` | Database at `DATABASE_SIZE_LIMIT_MB`; new questions paused for everyone; the answer card links to `/limits` | 503 |
 | `STORAGE_FULL` | Account storage at its limit; the answer card links to `/limits` | 403 |
