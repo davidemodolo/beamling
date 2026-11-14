@@ -1,6 +1,8 @@
 import type { Mode, Usage } from "../../types";
 import { isClientDisconnect, isShutdown } from "../active-chats";
 import { analytics } from "../analytics";
+import { hmacToken } from "../crypto";
+import { log } from "../log";
 import { completeAssistant, type AssistantOutcome } from "../repo";
 import { finalUsage, TIMEOUT_MS, type PreparedChat, type RunState } from "./context";
 
@@ -39,17 +41,54 @@ type OutcomeFields = Omit<AssistantOutcome, "userId" | "messageId" | "usage" | "
 export class RunRecorder {
   /** True once a successful outcome is stored; a later error must not overwrite it. */
   finished = false;
+  /** When source gathering ended, so the outcome log can split research from writing. */
+  private sourcesAt?: number;
 
   constructor(
     private readonly prepared: PreparedChat,
     private readonly state: RunState,
   ) {}
 
+  markSourcesGathered(): void {
+    this.sourcesAt = Date.now();
+  }
+
   /** Stores the answer. `stored` is false when the message was deleted while it ran. */
   async complete(fields: OutcomeFields): Promise<{ usage: Usage; stored: boolean }> {
     const result = await this.store(fields);
     if (fields.status === "complete") this.finished = true;
+    this.log(fields, result);
     return result;
+  }
+
+  /** One line per answer, however it ended: metadata only, never questions, queries or text. */
+  private log(fields: OutcomeFields, { usage, stored }: { usage: Usage; stored: boolean }): void {
+    const { prepared, state } = this;
+    const outcome = {
+      messageId: prepared.messageId,
+      userId: hmacToken(prepared.userId),
+      mode: prepared.mode,
+      status: fields.status,
+      errorCode: fields.errorCode,
+      llmModel: prepared.llm.id,
+      resolvedModel: usage.resolvedModel,
+      upstreamProvider: usage.upstreamProvider,
+      searchProvider: prepared.searchProvider,
+      durationMs: usage.latencyMs,
+      sourcesMs: this.sourcesAt === undefined ? undefined : this.sourcesAt - prepared.startedAt,
+      searchRequests: state.searchRequests,
+      searchFailures: state.searchFailures,
+      sources: state.sources.length,
+      tokensIn: usage.tokensIn,
+      tokensOut: usage.tokensOut,
+      contentChars: fields.content.length,
+      truncated: fields.truncated,
+      degraded: state.degraded,
+      researchCut: state.researchCut,
+      stored,
+    };
+    if (fields.status === "error") log.warn("answer", outcome);
+    else log.info("answer", outcome);
   }
 
   private async store(fields: OutcomeFields): Promise<{ usage: Usage; stored: boolean }> {

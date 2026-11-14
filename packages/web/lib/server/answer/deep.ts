@@ -82,7 +82,7 @@ export async function planQueries(ctx: RunContext, state: RunState): Promise<str
     if (queries.length >= MIN_DEEP_QUERIES) return queries;
   } catch (error) {
     if (signal.aborted) throw error;
-    log.warn("Deep planner failed", { code: error instanceof ApiError ? error.code : "INTERNAL" });
+    log.warn("Deep planner failed", { code: error instanceof ApiError ? error.code : "INTERNAL", llmModel: prepared.llm.id });
   }
   state.degraded = true;
   // A question that is only an image has no text to search; it takes the no-source path.
@@ -114,6 +114,7 @@ export async function fillEvidenceGaps(ctx: RunContext, state: RunState, queries
     terminalSearchError = errors.find((error) => !isSearchOutage(error));
     if (terminalSearchError) throw terminalSearchError;
     appendSources(state, batches, DEEP_SOURCE_LIMIT);
+    signal.throwIfAborted();
   } catch (error) {
     if (signal.aborted || terminalSearchError) throw error;
   }

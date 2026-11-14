@@ -123,11 +123,15 @@ async function searchForAgent(research: Research, queries: string[]) {
     onSettled: (completed) => emit("progress", { completed, total: unique.length }),
   });
   for (const error of errors) {
-    log.warn("Research search failed", { code: error instanceof ApiError ? error.code : "INTERNAL" });
+    log.warn("Research search failed", {
+      code: error instanceof ApiError ? error.code : "INTERNAL",
+      searchProvider: ctx.prepared.searchProvider,
+    });
   }
   research.terminalError ??= errors.find((error) => !isSearchOutage(error));
 
   const added = appendSources(state, batches, budget.sources, budget.perSite);
+  ctx.signal.throwIfAborted();
   const recent = state.searches
     .slice(-unique.length)
     .map((trace) => `${trace.query}: ${trace.status === "done" ? `${trace.results ?? 0} results` : trace.status}`);
@@ -215,6 +219,8 @@ export async function runResearch(ctx: RunContext, state: RunState, budget: Rese
     maxOutputTokens: budget.maxOutputTokens,
     maxRetries: 0,
     toolChoice: "auto",
+    // Per step, so the usage of finished steps is kept when research is cut short.
+    onStepEnd: (step) => recordAgentUsage(state, adapter, [step]),
     prepareStep: ({ stepNumber }) => (stepNumber === 0 ? { toolChoice: { type: "tool", toolName: "search" } } : {}),
     stopWhen: [
       isStepCount(budget.steps),
@@ -230,15 +236,13 @@ export async function runResearch(ctx: RunContext, state: RunState, budget: Rese
     stage: "searching",
     detail: budget.detailed ? `Researching with up to ${budget.searches} searches` : "Searching the web",
   });
-  let result;
   try {
     const request = researchRequest(askedQuestion(prepared), prepared.history, prepared.imageIds);
-    result = await agent.generate({ prompt: [userMessage(request, imageParts(prepared))], abortSignal: signal });
+    await agent.generate({ prompt: [userMessage(request, imageParts(prepared))], abortSignal: signal });
   } catch (error) {
     throw modelError(prepared.llm.provider, error, signal);
   }
 
   if (research.terminalError) throw research.terminalError;
-  recordAgentUsage(state, adapter, result.steps);
   if (!state.sources.length && state.searchFailures > 0) throw everySearchFailed(prepared.searchProvider);
 }

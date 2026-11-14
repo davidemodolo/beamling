@@ -54,7 +54,7 @@ Local parity is **not** a simplified dev server: same image, `NODE_ENV=productio
 ## Streaming and limits
 
 - SSE heartbeat every 15 seconds; web-standard streams on Node.js 26.
-- Max duration: Quick 60 s, Deep 90 s, Deeper 360 s. Deep and Deeper run synchronously in the request (no queue) and keep partial text on timeout.
+- Max duration: Quick 60 s, Deep 180 s, Deeper 360 s; research gets half, then the answer is written from the sources found. Deep and Deeper run synchronously in the request (no queue) and keep partial text on timeout.
 - One active generation per conversation; a second request gets `GENERATION_IN_PROGRESS` (409).
 - Global concurrency cap. With several instances, use a database-backed atomic counter or the host limiter, not process memory.
 - Per-user and per-IP limits use hashed keys in `rate_limits` or equivalent.

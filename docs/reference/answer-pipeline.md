@@ -92,8 +92,8 @@ Loop controls:
 - Terminal credential/plan/quota errors are rethrown, not replaced by `SEARCH_FAILED`.
 - Each search emits `search` and `progress` SSE events; the writer keeps the citation and `truncated` contract.
 - Agent text only signals completion; a separate synthesis call writes the report.
-- Agent tokens come from each AI SDK step; cost and upstream host from the adapter's `stepUsage` (OpenRouter: `providerMetadata.openrouter`). Both added to answer usage.
-- Timeout 360 s. Stop, timeout or shutdown keeps partial text like Deep.
+- Agent tokens are recorded at the end of each AI SDK step (`onStepEnd`), so a cut-short loop keeps them; cost and upstream host from the adapter's `stepUsage` (OpenRouter: `providerMetadata.openrouter`). Both added to answer usage.
+- Timeout 360 s, research share 180 s. Stop, timeout or shutdown keeps partial text like Deep.
 
 `[fixture:...]` does not apply to Deeper. With `BEAMLING_FAKE_PROVIDERS=1`, Quick searches the question itself and Deeper runs three fixture searches, without the AI SDK.
 
@@ -196,11 +196,16 @@ The client renders valid `[n]` as buttons that highlight the source card or open
 |---|---|---|
 | Stop on same instance | In-memory controller aborts | `stopped`, partial kept |
 | Stop on another instance | `POST /api/chat/stop` sets `stop_requested`; runner polls every 1.5 s | `stopped`, partial kept |
+| Research past half the limit | Searches in flight are cancelled (trace `failed`); settled results are kept and the answer is written from them; stage detail `Research time is up · reading N sources` | `complete` |
 | Quick > 60 s | Timeout | `stopped`, `GENERATION_TIMEOUT` |
-| Deep > 90 s | Timeout | `stopped`, `GENERATION_TIMEOUT` |
+| Deep > 180 s | Timeout | `stopped`, `GENERATION_TIMEOUT` |
 | Deeper > 360 s | Timeout | `stopped`, `GENERATION_TIMEOUT` |
 | Client disconnects | Request signal aborts | `stopped`, partial kept, `CLIENT_DISCONNECT` |
 | Conversation or account deleted | Local abort; others see it on next poll | Outcome storage is a no-op |
 | Shutdown | `SIGTERM`/`SIGINT` aborts with `ShutdownError`; waits up to 8 s, then marks leftovers | `error`, `INTERRUPTED` |
+
+Research share: `RESEARCH_SHARE = 0.5` of the mode limit, from the run start (`answer/context.ts`), for every phase that gathers sources (Deep planner, retrieval, gap fill; Quick and Deeper loops).
+
+Each run logs one `answer` line when its outcome is stored (`info`, `warn` on `error`): message id, keyed user hash, mode, status, error code, selected/resolved model, upstream and search provider, `durationMs`, `sourcesMs` (time to gather sources), search requests and failures, source count, tokens, answer length in characters, `truncated`, `degraded`, `researchCut`, `stored`. Never the question, queries, sources or text.
 
 Stop and timeout end with `stage: stopped`; shutdown or provider failure after streaming starts ends with `error`. Usage is persisted on stop/timeout/error, but the `usage` event is sent only on success (including no-source).

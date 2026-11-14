@@ -18,7 +18,7 @@
 | Provider concentration | High | High | Three search adapters, clear errors, no silent fallback, contract tests |
 | OpenRouter routing changes | Medium | Medium | Record and disclose resolved model/provider; no direct-provider privacy promise |
 | Model deprecation or price drift | High | Medium | Curated list refreshed from OpenRouter, pinned ids, reported cost |
-| Deep cost or latency spike | Medium | High | Max 7 searches, 90 s cap, progress, cost display, stop |
+| Deep cost or latency spike | Medium | High | Max 7 searches, 180 s cap, progress, cost display, stop |
 | Trademark conflict | Low | High | Clearance search before filing; domains reserved |
 | Single-founder bandwidth | High | Medium | Tight Alpha 1 scope, no teams, no native apps |
 | Legal exposure from answers | Low | Medium | Disclaimers, report flow, no professional-advice positioning |
