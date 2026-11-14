@@ -1,16 +1,13 @@
 import { abortAllChats } from "./active-chats";
 import { analytics } from "./analytics";
-import { processAnalyticsErasures } from "./analytics-erasure";
+import { CLEANUP_INTERVAL_MS, runCleanup } from "./cleanup";
 import { pool } from "./db";
 import { productionConfigErrors, productionConfigWarnings } from "./env";
-import { processShutdown } from "./shutdown";
 import { beginShutdown } from "./shutdown-state";
 import { log } from "./log";
-import { cleanupExpired, interruptStaleAnswers } from "./repo";
+import { interruptStaleAnswers } from "./repo";
 import { APP_VERSION, BUILD_TIME, GIT_COMMIT } from "../version";
 
-// Hourly: retention is measured in days, and a quiet instance should let Neon scale to zero.
-const CLEANUP_INTERVAL_MS = 60 * 60_000;
 /** Time running answers get to store their outcome before the process exits. */
 const SHUTDOWN_GRACE_MS = 8_000;
 
@@ -52,16 +49,6 @@ export async function startServer(): Promise<void> {
     process.once("SIGINT", () => void shutdown("SIGINT"));
   }
 
-  const cleanup = () =>
-    Promise.all([
-      cleanupExpired()
-        .then(({ failures }) => {
-          for (const failure of failures) log.error("Cleanup step failed", failure);
-        })
-        .catch((error) => log.error("Cleanup failed", error)),
-      processAnalyticsErasures().catch((error) => log.error("PostHog erasure run failed", error)),
-      processShutdown().catch((error) => log.error("Shutdown run failed", error)),
-    ]);
-  void cleanup();
-  setInterval(cleanup, CLEANUP_INTERVAL_MS).unref();
+  void runCleanup();
+  setInterval(() => void runCleanup(), CLEANUP_INTERVAL_MS).unref();
 }

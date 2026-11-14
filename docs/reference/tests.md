@@ -8,7 +8,7 @@
 | `packages/web/tests/unit/answer.test.ts` | 8 | Citations, ranking, freshness, language, prompt injection, history, stream events |
 | `packages/web/tests/unit/security.test.ts` | 11 | IP HMAC, derived keys, test sign-in, origins, production config, body limits, log redaction, signup allowlists, shutdown notice |
 | `packages/web/tests/unit/analytics.test.ts` | 13 | Allowlist, identity, delivery, opt-out, deletion, erasure backoff, host rules |
-| `packages/web/tests/integration/answers.test.ts` | 15 | All modes, tool loops, planner repair, partial search, missing keys, provider and cost, no fallback, timeout, NUL, retry, single DeepSeek key |
+| `packages/web/tests/integration/answers.test.ts` | 17 | All modes, tool loops, planner repair, partial search, missing keys, provider and cost, no fallback, timeout, research time share, NUL, retry, single DeepSeek key |
 | `packages/web/tests/integration/streams.test.ts` | 10 | Per-conversation, global and per-account limits, lock timeout, stop, mid-answer delete, stale repair, cleanup, terminal race, new-stream flag |
 | `packages/web/tests/integration/conversations.test.ts` | 5 | Pinned ordering, pagination, 100-conversation cap, 60-day expiry, per-chat and storage caps |
 | `packages/web/tests/integration/accounts.test.ts` | 12 | Sessions, account cleanup, export, analytics opt-out and erasure, sign-up cap, rate limits, Brave spacing, keys, shutdown |

@@ -1,6 +1,6 @@
 {
   "name": "@beamling/mascot",
-  "version": "0.8.3",
+  "version": "0.8.4",
   "license": "MIT",
   "description": "Beamling's mascot: two eyes made of light, casting beams shaped like themselves.",
   "type": "module",

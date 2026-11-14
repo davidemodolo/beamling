@@ -2,7 +2,7 @@ import { APICallError, streamText, type LanguageModel, type LanguageModelUsage, 
 import type { LlmProvider } from "../../contracts";
 import { providerName } from "../../provider-catalog";
 import { ApiError } from "../http";
-import { log } from "../log";
+import { log, safeMessage } from "../log";
 import { unavailable } from "./errors";
 
 /** Why a model call is made; fixture providers use it to pick their canned reply. */
@@ -64,8 +64,8 @@ const UPSTREAM_LIMIT_RE = /rate-limited upstream/i;
 export function modelHttpError(provider: LlmProvider, status: number, providerMessage = ""): ApiError {
   const name = providerName(provider);
   const detail = providerMessage.slice(0, 500);
-  // The provider's own wording is what tells a key limit from upstream capacity; it carries no key or prompt.
-  log.warn("Model provider error", { provider, status, detail: detail.slice(0, 300) });
+  // The provider's own wording is what tells a key limit from upstream capacity. Keys and echoed bodies are redacted.
+  log.warn("Model provider error", { provider, status, detail: safeMessage(detail) });
   const error = (code: string, message: string, httpStatus: number) => new ApiError(code, message, httpStatus, provider);
   if (status === 400 && CONTEXT_TOO_LARGE_RE.test(detail)) {
     return error("CONTEXT_TOO_LARGE", "The question and sources are too long for this model.", 400);

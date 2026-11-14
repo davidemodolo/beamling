@@ -24,6 +24,13 @@ test("the client IP comes only from the trusted proxy's X-Forwarded-For entry", 
   withEnv(t, { TRUSTED_PROXY_HOPS: "0" });
   assert.equal(key("6.6.6.6"), key("7.7.7.7"));
 
+  withEnv(t, { TRUSTED_PROXY_HOPS: "1" });
+  assert.equal(key("2001:db8:1:2:aaaa::1"), key("2001:db8:1:2::ffff"), "IPv6 clients are limited per /64");
+  assert.equal(key("2001:db8:1:2:aaaa::1"), key("2001:DB8:0001:0002:0:0:0:9"));
+  assert.notEqual(key("2001:db8:1:2::1"), key("2001:db8:1:3::1"));
+  assert.notEqual(key("2001:db8::1"), key("2001:db8:0:1::1"));
+  assert.equal(key("::ffff:10.0.0.1"), key("10.0.0.1"), "an IPv4-mapped address is its IPv4 client");
+
   const before = key("6.6.6.6, 10.0.0.1");
   withEnv(t, { AUTH_SECRET: randomBytes(32).toString("base64") });
   assert.notEqual(key("6.6.6.6, 10.0.0.1"), before, "IP hashes are keyed, not reversible by enumeration");

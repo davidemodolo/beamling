@@ -3,7 +3,7 @@ import Link from "next/link";
 import { LegalFooter } from "@/components/legal-footer";
 import { Wordmark } from "@/components/wordmark";
 import { redirect } from "next/navigation";
-import { getShutdown } from "@/lib/server/repo";
+import { getPublicShutdown } from "@/lib/server/repo";
 import { getCurrentUser } from "@/lib/server/session";
 import { isClosed, shutdownDateLabel } from "@/lib/server/shutdown";
 
@@ -14,7 +14,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   if (user) redirect("/");
   const params = await searchParams;
   const next = params.next && /^\/(onboarding|chat\/[0-9a-f-]{36})?$/i.test(params.next) ? params.next : "/";
-  const shutdown = await getShutdown().catch(() => null);
+  const shutdown = await getPublicShutdown().catch(() => null);
   const closed = isClosed(shutdown);
   return (
     <div className="onboard-shell">

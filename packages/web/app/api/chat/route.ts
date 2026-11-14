@@ -4,7 +4,8 @@ import { ClientDisconnectError, watchChat } from "@/lib/server/active-chats";
 import { analytics } from "@/lib/server/analytics";
 import { prepareChat, publicError, runChat, TIMEOUT_MS, type ChatEmit } from "@/lib/server/answer-pipeline";
 import { MAX_CONTEXT_IMAGES, MAX_IMAGES_PER_QUESTION } from "@/lib/attachments";
-import { cleanText, clientIpKey, json, MAX_BODY_BYTES, parseBody } from "@/lib/server/http";
+import { maxConcurrentChatsPerUser } from "@/lib/server/env";
+import { ApiError, cleanText, clientIpKey, json, MAX_BODY_BYTES, parseBody } from "@/lib/server/http";
 import { imageUpload, MAX_BASE64_CHARS } from "@/lib/server/image-upload";
 import { MAX_QUESTION_CHARS, QUESTIONS_PER_DAY, QUESTIONS_PER_HOUR } from "@/lib/legal";
 import { acceptingNewStreams, consumeRateLimit, questionLimitKeys } from "@/lib/server/repo";
@@ -58,6 +59,28 @@ const schema = z
     message: "A retry needs its conversation.",
   });
 
+/**
+ * Chat requests being read or prepared on this instance, per account. Bodies carry images, so an
+ * account may only have as many in memory as it may have answers running.
+ */
+const starting = new Map<string, number>();
+
+function beginStart(userId: string): () => void {
+  const count = starting.get(userId) ?? 0;
+  if (count >= maxConcurrentChatsPerUser()) {
+    throw new ApiError("SERVER_BUSY", "Your previous question is still starting. Try again in a moment.", 429);
+  }
+  starting.set(userId, count + 1);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const left = (starting.get(userId) ?? 1) - 1;
+    if (left > 0) starting.set(userId, left);
+    else starting.delete(userId);
+  };
+}
+
 const encoder = new TextEncoder();
 
 function event(name: string, data: unknown): Uint8Array {
@@ -78,12 +101,21 @@ export const POST = apiRoute(async ({ request, user }) => {
       { status: 503, headers: { "Retry-After": "60" } },
     );
   }
-  const input = await parseBody(request, schema, CHAT_BODY_BYTES);
+  // Limits come before the body: it can be megabytes of images, and a spent budget must not buffer it.
   const keys = questionLimitKeys(user.id);
   await consumeRateLimit(keys.hour, QUESTIONS_PER_HOUR, 3600);
   await consumeRateLimit(keys.day, QUESTIONS_PER_DAY, 86_400);
   await consumeRateLimit(`chat-ip:${clientIpKey(request.headers)}`, CHATS_PER_IP_PER_HOUR, 3600);
-  const prepared = await prepareChat({ userId: user.id, ...input });
+  const started = beginStart(user.id);
+  let input: z.infer<typeof schema>;
+  let prepared: Awaited<ReturnType<typeof prepareChat>>;
+  try {
+    input = await parseBody(request, schema, CHAT_BODY_BYTES);
+    prepared = await prepareChat({ userId: user.id, ...input });
+  } finally {
+    // From here the per-account answer limit (enforced by prepareChat) bounds what stays in memory.
+    started();
+  }
   analytics.capture(user.id, "question_asked", {
     mode: prepared.mode,
     search_provider: prepared.searchProvider,

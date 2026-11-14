@@ -59,6 +59,7 @@ export {
 export {
   accountsToRetire,
   cancelShutdown,
+  getPublicShutdown,
   getShutdown,
   markShutdownNotified,
   scheduleShutdown,
