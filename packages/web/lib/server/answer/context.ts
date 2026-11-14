@@ -15,7 +15,7 @@ export const searchCostPerRequest = (provider: SearchProvider): number => PROVID
 export const QUICK_SOURCE_LIMIT = 8;
 export const DEEP_SOURCE_LIMIT = 20;
 export const DEEP_RESULTS_PER_QUERY = 6;
-export const DEEPER_SOURCE_LIMIT = 60;
+export const DEEPER_SOURCE_LIMIT = 360;
 export const SEARCH_CONCURRENCY = 2;
 /** Hard caps from the spec; on timeout the partial answer is kept and stored as stopped. */
 export const TIMEOUT_MS: Record<Mode, number> = { quick: 60_000, deep: 180_000, deeper: 360_000 };
