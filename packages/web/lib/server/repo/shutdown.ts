@@ -28,16 +28,19 @@ export async function getShutdown(): Promise<Shutdown | null> {
 }
 
 const PUBLIC_TTL_MS = 60_000;
-let publicCache: { at: number; value: Shutdown | null } | undefined;
+// Pages and route handlers are bundled separately, so the cache lives on globalThis: a schedule or
+// cancel in a route must clear what the pages read.
+const publicCache = globalThis as { __beamlingPublicShutdown?: { at: number; value: Shutdown | null } };
 
 /**
  * The scheduled shutdown for signed-out pages, read at most once a minute so their visitors cannot
  * keep the database awake. Decisions (sign-in, sign-up) use getShutdown().
  */
 export async function getPublicShutdown(): Promise<Shutdown | null> {
-  if (publicCache && Date.now() - publicCache.at < PUBLIC_TTL_MS) return publicCache.value;
+  const cached = publicCache.__beamlingPublicShutdown;
+  if (cached && Date.now() - cached.at < PUBLIC_TTL_MS) return cached.value;
   const value = await getShutdown();
-  publicCache = { at: Date.now(), value };
+  publicCache.__beamlingPublicShutdown = { at: Date.now(), value };
   return value;
 }
 
@@ -53,7 +56,7 @@ export async function scheduleShutdown(scheduledAt: Date, reason: string | null,
       });
     await tx.update(users).set({ shutdownNotifiedAt: null });
   });
-  publicCache = undefined;
+  publicCache.__beamlingPublicShutdown = undefined;
   return { scheduledAt, reason, notify };
 }
 
@@ -81,7 +84,7 @@ export async function withShutdownLock(work: () => Promise<void>): Promise<boole
 
 export async function cancelShutdown(): Promise<void> {
   await db.delete(systemFlags).where(eq(systemFlags.key, SHUTDOWN));
-  publicCache = undefined;
+  publicCache.__beamlingPublicShutdown = undefined;
 }
 
 /** Accounts that have not been sent the shutdown notice yet. */
