@@ -51,7 +51,7 @@ The server never fetches result pages, crawls or loads remote media. Provider ca
 | Key rotation | KMS rotation with lazy re-wrap; env adapter has a previous-key list and re-wrap script |
 | Quick | Research loop with a one-query budget |
 | Deep | Planner, 3–5 sub-queries, bounded concurrency, optional gap pass |
-| Deeper | AI SDK `ToolLoopAgent`, 60-search/60-source cap |
+| Deeper | AI SDK `ToolLoopAgent`, 60-search/360-source cap |
 | Retrieval | Per-answer provider, freshness filter, Brave per-key spacing, 429 retry |
 | Sources | URL validation, snippet required, canonical dedupe, site diversity, stable numbering |
 | Citations | Streamed `[n]` parsing, sanitization, click-to-source, uncited warning |

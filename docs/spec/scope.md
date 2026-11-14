@@ -102,7 +102,7 @@ First end-to-end BYOK slice: OpenRouter or DeepSeek generation; Brave, Tavily, E
 **Shared search rules**
 
 - Clamp queries per provider; 400 characters / 50 words where none is published.
-- Budgets: Quick ≤ 8 sources. Deep ≤ 6 results per sub-query, ≤ 20 sources, ≤ 7 searches. Deeper ≤ 60 sources and 60 searches.
+- Budgets: Quick ≤ 8 sources. Deep ≤ 6 results per sub-query, ≤ 20 sources, ≤ 7 searches. Deeper ≤ 360 sources and 60 searches.
 - A source needs a URL and a non-empty snippet; with none, return the canned insufficient-sources answer ([pipeline](pipeline.md#stages)).
 - Serialize per key (Brave Free 1,100 ms, Brave Paid plan interval, Tavily/Exa per plan). Deep concurrency 2, within the provider limit.
 - On `429`, retry once honoring `Retry-After`, then continue.

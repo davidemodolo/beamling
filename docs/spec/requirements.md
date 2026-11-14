@@ -58,7 +58,7 @@ Priority: P0 = Alpha 1 target, P1 = private alpha/v1, P2 = later. Priority is no
 - **FR-21 (P0):** Explicit message when OpenRouter rejects the key, lacks credit or rate-limits; search providers follow the same contract.
 - **FR-22 (P0):** The selected OpenRouter model id never changes. Resolved model and upstream provider, when returned, are recorded and shown.
 - **FR-23 (P0):** Quick, Deep or Deeper mode.
-- **FR-24 (P0):** Quick: one search, concise answer. Deep: planner, 3–5 sub-queries, optional gap pass of ≤ 2 searches, longer report. Deeper: the model uses a search tool, 1–4 queries per step, until it judges evidence sufficient; hard budget 60 searches and 60 sources.
+- **FR-24 (P0):** Quick: one search, concise answer. Deep: planner, 3–5 sub-queries, optional gap pass of ≤ 2 searches, longer report. Deeper: the model uses a search tool, 1–4 queries per step, until it judges evidence sufficient; hard budget 60 searches and 360 sources.
 - **FR-25 (P1):** Three follow-up questions after an answer.
 - **FR-26 (P1):** A "sources conflict" note when sources disagree on a material fact.
 - **FR-43 (P0):** Animated working state for `queued`, `searching`, `reading`, `writing`, `done`, `stopped`, `no-sources`, `error`.

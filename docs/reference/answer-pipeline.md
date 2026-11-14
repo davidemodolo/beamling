@@ -92,10 +92,10 @@ question + recent conversation
   → ToolLoopAgent
       tool: search({ queries: string[1..4] })
       → concurrency 2, 6 results per query
-      → rank/dedupe/append, stable positions, max 60 sources
+      → rank/dedupe/append, stable positions, max 360 sources
       → compact result (8 summaries + counts)
       ← model searches again or finishes
-  → stop on text, 60 searches, 60 sources, or 24 steps
+  → stop on text, 60 searches, 360 sources, or 24 steps
   → synthesis over all sources + model stream
 ```
 
@@ -103,7 +103,7 @@ Loop controls:
 
 - First step forces `toolChoice: { type: "tool", toolName: "search" }`.
 - 1–4 queries per step; repeats (case-insensitive, whitespace-normalized) are filtered.
-- `stopWhen`: `isStepCount(24)` plus a stop at 60 searches or 60 sources.
+- `stopWhen`: `isStepCount(24)` plus a stop at 60 searches or 360 sources.
 - Budget is reserved synchronously per query, so parallel calls cannot exceed 60; once exhausted the tool tells the model to finish.
 - Terminal credential/plan/quota errors are rethrown, not replaced by `SEARCH_FAILED`.
 - Each search emits `search` and `progress` SSE events; the writer keeps the citation and `truncated` contract.
