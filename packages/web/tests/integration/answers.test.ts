@@ -244,6 +244,18 @@ test("research stops at its time share and the answer uses the sources found", {
   assert.match(answer?.content ?? "", /\[1\]/);
 });
 
+test("research past its share keeps going until a search has returned results", { skip }, async (t) => {
+  // Every fixture step takes 40 ms, so the 10 ms research share ends before the only search does.
+  withEnv(t, { BEAMLING_FAKE_DELAY_MS: "40" });
+  const userId = await createAccount(t);
+  const { events, prepared } = await ask(userId, { question: "Slow model", mode: "quick" }, undefined, { researchMs: 10 });
+  assert.equal(events.at(-1)?.name, "done");
+  const { answer } = await storedAnswer(userId, prepared.conversationId);
+  assert.equal(answer?.status, "complete");
+  assert.equal(answer?.noSources, false, "a slow start is not reported as a search without results");
+  assert.ok((answer?.sources?.length ?? 0) > 0);
+});
+
 test("NUL characters never reach Postgres", { skip }, async (t) => {
   const { createConversation, createExchange } = await import("../../lib/server/repo");
   const userId = await createAccount(t);

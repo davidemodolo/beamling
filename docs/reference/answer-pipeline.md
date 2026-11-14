@@ -196,7 +196,7 @@ The client renders valid `[n]` as buttons that highlight the source card or open
 |---|---|---|
 | Stop on same instance | In-memory controller aborts | `stopped`, partial kept |
 | Stop on another instance | `POST /api/chat/stop` sets `stop_requested`; runner polls every 1.5 s | `stopped`, partial kept |
-| Research past half the limit | Searches in flight are cancelled (trace `failed`); settled results are kept and the answer is written from them; stage detail `Research time is up · reading N sources` | `complete` |
+| Research past half the limit, at least one search returned results | Searches in flight are cancelled (trace `failed`); settled results are kept and the answer is written from them; stage detail `Research time is up · reading N sources` | `complete` |
 | Quick > 60 s | Timeout | `stopped`, `GENERATION_TIMEOUT` |
 | Deep > 180 s | Timeout | `stopped`, `GENERATION_TIMEOUT` |
 | Deeper > 360 s | Timeout | `stopped`, `GENERATION_TIMEOUT` |
@@ -204,7 +204,7 @@ The client renders valid `[n]` as buttons that highlight the source card or open
 | Conversation or account deleted | Local abort; others see it on next poll | Outcome storage is a no-op |
 | Shutdown | `SIGTERM`/`SIGINT` aborts with `ShutdownError`; waits up to 8 s, then marks leftovers | `error`, `INTERRUPTED` |
 
-Research share: `RESEARCH_SHARE = 0.5` of the mode limit, from the run start (`answer/context.ts`), for every phase that gathers sources (Deep planner, retrieval, gap fill; Quick and Deeper loops).
+Research share: `RESEARCH_SHARE = 0.5` of the mode limit, from the run start (`answer/context.ts`), for every phase that gathers sources (Deep planner, retrieval, gap fill; Quick and Deeper loops). Until a search has returned results the cut is rechecked every 500 ms instead of applied, so a slow model ends at the mode limit (`GENERATION_TIMEOUT`, retriable), not with an empty source list.
 
 Each run logs one `answer` line when its outcome is stored (`info`, `warn` on `error`): message id, keyed user hash, mode, status, error code, selected/resolved model, upstream and search provider, `durationMs`, `sourcesMs` (time to gather sources), search requests and failures, source count, tokens, answer length in characters, `truncated`, `degraded`, `researchCut`, `stored`. Never the question, queries, sources or text.
 

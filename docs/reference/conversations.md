@@ -135,7 +135,7 @@ A second concurrent answer in one conversation hits the partial unique index: `G
 
 ## Cleanup
 
-`startServer()` runs cleanup at start and hourly (on Cloud Run, only while serving):
+`runCleanup()` (`lib/server/cleanup.ts`) runs at start and hourly, one run at a time per process. `GET /api/health` starts a run when the last one is over an hour old and waits up to 20 s for the run in flight, so on Cloud Run the hourly watchdog probe gives it CPU. Each run:
 
 - Delete accounts unseen for 24 months, or older than 7 days without accepted terms (max 50 per run, `inactive_account_deleted` audit event).
 - Delete conversations with `updated_at` older than 60 days (`CONVERSATION_RETENTION_DAYS`), pinned or not, max 1,000 per run.

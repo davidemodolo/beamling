@@ -43,7 +43,7 @@ GET /api/auth/callback/google
 - Token: 32 random bytes, base64url. The database stores only its SHA-256 hex.
 - Cookie: `HttpOnly`, `SameSite=Lax`, `Path=/`, `Max-Age` until the stored expiry. Named `__Host-beamling_session` with Secure cookies, `beamling_session` otherwise.
 - Expiry slides to 30 days (`SESSION_TTL_DAYS`) after the last renewal, capped at 90 days (`SESSION_MAX_AGE_DAYS`) after creation. `getCurrentUser` renews at most daily, updating `users.last_seen_at` and the cookie.
-- No valid session on a protected route: `UNAUTHENTICATED` (401).
+- No valid session on a protected route: `UNAUTHENTICATED` (401). A cookie that is not 43 base64url characters is refused without a database query.
 - `/chat/:id` and `/onboarding` redirect signed-out users to `/login`; `/` shows them the landing page.
 
 ## Account routes
@@ -64,5 +64,5 @@ GET /api/auth/callback/google
 
 ## IP handling
 
-- `clientIpKey()` picks the IP from `X-Forwarded-For` using `TRUSTED_PROXY_HOPS` (one hop: last entry). Fewer entries than hops: `unknown`.
+- `clientIpKey()` picks the IP from `X-Forwarded-For` using `TRUSTED_PROXY_HOPS` (one hop: last entry). Fewer entries than hops: `unknown`. IPv6 addresses are reduced to their /64; IPv4-mapped ones to the IPv4 address.
 - The IP is HMACed with the `ip-hash` HKDF subkey of `AUTH_SECRET` and truncated to 32 characters for `rate_limits`.

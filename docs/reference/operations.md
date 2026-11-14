@@ -63,7 +63,7 @@ Migrations are a release step, not run at app start.
 ## Health and shutdown
 
 - `/api/live`: DB-free liveness, `{ "ok": true }`.
-- `/api/health`: readiness cached five seconds: `select 1`, `beamling_migrations` table, KMS wrap/unwrap.
+- `/api/health`: readiness cached 60 seconds when healthy, five when not: `select 1`, `beamling_migrations` table, KMS wrap/unwrap. Also carries a due [cleanup](conversations.md#cleanup).
   - Healthy: 200 `{ "ok": true, "database": "up", "schema": "up", "kms": "up", "version": "<version>", "commit": "...", "builtAt": "..." }`.
   - Unhealthy: 503, failing component `down`, no error details.
 - Both unauthenticated with `Cache-Control: no-store`. `/status` shows the same state.
@@ -109,7 +109,7 @@ Cloud Run in `europe-west1`, Neon Postgres in Frankfurt, Cloud KMS key in `europ
   4. smoke-tests `/api/health`.
   Deploys never change IAM; `allUsers` → `run.invoker` is granted once by setup.
 - **GitHub settings:** environment `production` with variables `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_DEPLOY_SERVICE_ACCOUNT`, `OIDC_CLIENT_ID` and secret `SIGNUP_ALLOWED_EMAILS`; repository variables `GCP_DEPLOY_ENABLED` and optional `PUBLIC_APP_URL` (default `https://beamling.app`). The GHCR package must be public.
-- **Background work:** idle instances have no CPU, so hourly [cleanup](conversations.md#cleanup) runs only while serving.
+- **Background work:** idle instances have no CPU, so [cleanup](conversations.md#cleanup) completes inside the watchdog's hourly `/api/health` request.
 - **Logs:** JSON on stdout with `severity`; `_Default` sink to EU bucket `beamling-eu` (`europe-west1`, 30 days), matching `LEGAL_LOG_RETENTION_DAYS=30`. Cloud Run request logs with status below 500 are excluded (`run-requests-ok`).
 - **Spend:** max one instance, plus `deploy/gcp/budgets.sh`: a €5 Cloud Run spend cap (pauses new requests until the 1st or a manual lift) and a €5 account email alert.
 - **Domain:** `beamling.app` via Cloud Run domain mapping, Google-managed TLS.

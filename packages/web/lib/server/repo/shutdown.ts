@@ -27,6 +27,20 @@ export async function getShutdown(): Promise<Shutdown | null> {
   return row?.scheduledAt ? { scheduledAt: row.scheduledAt, reason: row.reason, notify: row.notify } : null;
 }
 
+const PUBLIC_TTL_MS = 60_000;
+let publicCache: { at: number; value: Shutdown | null } | undefined;
+
+/**
+ * The scheduled shutdown for signed-out pages, read at most once a minute so their visitors cannot
+ * keep the database awake. Decisions (sign-in, sign-up) use getShutdown().
+ */
+export async function getPublicShutdown(): Promise<Shutdown | null> {
+  if (publicCache && Date.now() - publicCache.at < PUBLIC_TTL_MS) return publicCache.value;
+  const value = await getShutdown();
+  publicCache = { at: Date.now(), value };
+  return value;
+}
+
 /** Schedules the shutdown. Rescheduling resets delivery, so every account learns the new date. */
 export async function scheduleShutdown(scheduledAt: Date, reason: string | null, notify: boolean): Promise<Shutdown> {
   await db.transaction(async (tx) => {
@@ -39,6 +53,7 @@ export async function scheduleShutdown(scheduledAt: Date, reason: string | null,
       });
     await tx.update(users).set({ shutdownNotifiedAt: null });
   });
+  publicCache = undefined;
   return { scheduledAt, reason, notify };
 }
 
@@ -66,6 +81,7 @@ export async function withShutdownLock(work: () => Promise<void>): Promise<boole
 
 export async function cancelShutdown(): Promise<void> {
   await db.delete(systemFlags).where(eq(systemFlags.key, SHUTDOWN));
+  publicCache = undefined;
 }
 
 /** Accounts that have not been sent the shutdown notice yet. */

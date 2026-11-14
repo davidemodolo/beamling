@@ -151,6 +151,21 @@ export function assertSameOrigin(request: Request): void {
  * before it is client-controlled. A request with fewer entries than trusted hops did not come
  * through the proxies and gets no address.
  */
+/**
+ * The address a limit applies to. One IPv6 subscriber holds a whole /64 and can change address
+ * within it at will, so IPv6 is limited by its /64 prefix.
+ */
+function limitAddress(ip: string): string {
+  // An IPv4 address written as IPv6 (::ffff:1.2.3.4) is still one IPv4 client.
+  const mapped = /(\d+\.\d+\.\d+\.\d+)$/.exec(ip);
+  if (mapped) return mapped[1];
+  if (!ip.includes(":")) return ip;
+  const [head, tail] = ip.toLowerCase().split("::");
+  const groups = head ? head.split(":") : [];
+  if (tail !== undefined) groups.push(...Array(Math.max(0, 8 - groups.length - (tail ? tail.split(":").length : 0))).fill("0"));
+  return `${groups.slice(0, 4).map((group) => group.replace(/^0+(?=.)/, "")).join(":")}::/64`;
+}
+
 export function clientIpKey(headers: Headers): string {
   const forwarded = (headers.get("x-forwarded-for") ?? "")
     .split(",")
@@ -158,7 +173,7 @@ export function clientIpKey(headers: Headers): string {
     .filter(Boolean);
   const hops = trustedProxyHops();
   const ip = hops > 0 && forwarded.length >= hops ? forwarded[forwarded.length - hops] : "unknown";
-  return hmacToken(`ip:${ip}`);
+  return hmacToken(`ip:${limitAddress(ip)}`);
 }
 
 /** Postgres error code, unwrapping drizzle's query error wrapper. */

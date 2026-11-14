@@ -32,14 +32,26 @@ class ResearchTimeUp extends Error {
   override name = "ResearchTimeUp";
 }
 
+/** How often a research run past its share checks whether a first result has arrived. */
+const RESEARCH_RECHECK_MS = 500;
+
 /**
  * Gathers sources within the research share of the time limit. When it runs out, searches in
- * flight are cancelled and the answer is written from the sources already found.
+ * flight are cancelled and the answer is written from the sources already found. Until a search
+ * has returned results there is nothing to write from, so research continues: a slow model then
+ * ends at the answer's own time limit, which can be retried, not with an empty source list.
  */
 async function gatherSources(ctx: RunContext, state: RunState, researchMs: number): Promise<string[]> {
   const research = new AbortController();
   const remaining = ctx.prepared.startedAt + researchMs - Date.now();
-  const timer = setTimeout(() => research.abort(new ResearchTimeUp()), Math.max(0, remaining));
+  const cut = () => {
+    if (state.searches.some((trace) => trace.status === "done" && (trace.results ?? 0) > 0)) {
+      research.abort(new ResearchTimeUp());
+    } else {
+      timer = setTimeout(cut, RESEARCH_RECHECK_MS);
+    }
+  };
+  let timer = setTimeout(cut, Math.max(0, remaining));
   try {
     return await collectSources({ ...ctx, signal: AbortSignal.any([ctx.signal, research.signal]) }, state);
   } catch (error) {

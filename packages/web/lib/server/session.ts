@@ -18,6 +18,8 @@ export interface SessionUser {
 }
 
 const DAY_MS = 86_400_000;
+/** The shape of newSessionToken(): anything else is refused without a database query. */
+const SESSION_TOKEN = /^[A-Za-z0-9_-]{43}$/;
 
 /** Idle expiry, capped at the absolute lifetime of a session created at `createdAt`. */
 function expiry(createdAt: Date = new Date()): Date {
@@ -79,7 +81,7 @@ async function readSession(token: string) {
 export async function getCurrentUser(): Promise<SessionUser | null> {
   const store = await cookies();
   const token = store.get(sessionCookieName())?.value;
-  if (!token) return null;
+  if (!token || !SESSION_TOKEN.test(token)) return null;
   const session = await readSession(token);
   if (!session) return null;
 

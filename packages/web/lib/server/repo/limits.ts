@@ -3,12 +3,31 @@ import { db } from "../db";
 import { ApiError, clientIpKey } from "../http";
 import { providerSlots, rateLimits } from "../schema";
 
+function rateLimited(): ApiError {
+  return new ApiError("RATE_LIMITED", "Too many requests. Try again later.", 429);
+}
+
+// Keys this process already saw over their limit, until their window ends: a client that keeps
+// hammering a spent limit is refused without another database write.
+const EXHAUSTED_MAX = 5_000;
+const exhausted = new Map<string, number>();
+
+function rememberExhausted(key: string, retryMs: number): void {
+  if (exhausted.size >= EXHAUSTED_MAX) exhausted.delete(exhausted.keys().next().value!);
+  exhausted.set(key, Date.now() + retryMs);
+}
+
 /** Fixed-window counter in a single atomic upsert, so concurrent requests cannot both pass the limit. */
 export async function consumeRateLimit(
   key: string,
   limit: number,
   windowSeconds: number,
 ): Promise<void> {
+  const blockedUntil = exhausted.get(key);
+  if (blockedUntil !== undefined) {
+    if (blockedUntil > Date.now()) throw rateLimited();
+    exhausted.delete(key);
+  }
   const window = sql`make_interval(secs => ${windowSeconds})`;
   const expired = sql`${rateLimits.expiresAt} <= clock_timestamp()`;
   const [row] = await db
@@ -27,9 +46,13 @@ export async function consumeRateLimit(
         expiresAt: sql`case when ${expired} then clock_timestamp() + ${window} else ${rateLimits.expiresAt} end`,
       },
     })
-    .returning({ count: rateLimits.count });
+    .returning({
+      count: rateLimits.count,
+      retryMs: sql<number>`(extract(epoch from (${rateLimits.expiresAt} - clock_timestamp())) * 1000)::float8`,
+    });
   if (row.count > limit) {
-    throw new ApiError("RATE_LIMITED", "Too many requests. Try again later.", 429);
+    rememberExhausted(key, Math.max(0, Number(row.retryMs)));
+    throw rateLimited();
   }
 }
 
