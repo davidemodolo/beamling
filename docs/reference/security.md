@@ -36,7 +36,7 @@ frame-ancestors 'none'
 - A question asked from the address bar travels in the URL fragment, so it is in no request log ([Address-bar search](browser.md#address-bar-search)).
 - Route ids must be UUIDs; Drizzle parameterizes queries.
 - Control characters stripped from questions and stored text; NUL removed from provider output.
-- Markdown uses a custom React renderer; raw HTML is never parsed.
+- Markdown uses a custom React renderer; raw HTML is never parsed. Code highlighting builds React nodes from a token tree. Charts are validated JSON drawn by React. Mermaid diagrams run in strict mode without HTML labels, and their SVG is sanitized with DOMPurify before insertion; the CSP's `img-src` blocks remote URLs in diagram styles ([Visuals and documents](browser.md#visuals-and-documents)).
 - Links: `http:`/`https:` only, no embedded credentials. Source URLs are checked before display and prompting.
 - Snippets are sanitized for the prompt ([Prompt construction](answer-pipeline.md#prompt-construction)); planner output is data only.
 

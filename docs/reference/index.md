@@ -62,7 +62,7 @@ The server never fetches result pages, crawls or loads remote media. Provider ca
 | Models | Per-provider allowlist (six via OpenRouter), default Nemotron 3.5 Super VL (free) |
 | Costs | Generation cost (OpenRouter-reported or DeepSeek-estimated), list-price search cost, tokens, latency, search count |
 | Transparency | Stored search trace and encrypted provider reasoning, both collapsed |
-| Markdown | Tables, headings, lists, quotes, code, citations |
+| Markdown | Tables, headings, lists, quotes, citations; code with copy and highlighting, charts, Mermaid diagrams, documents in a side panel |
 | Settings | Default model, search provider and mode; keys, limits, account |
 | Account deletion | Immediate hard delete; automatic after 24 months inactive or 7 days without terms acceptance |
 | Data rights | JSON export, analytics objection with erasure, account deletion |

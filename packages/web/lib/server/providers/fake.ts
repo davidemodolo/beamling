@@ -11,6 +11,35 @@ const PARTIAL_SEARCH = "[fixture:partial-search]";
 const FAILING_QUERY = "fixture failing search";
 const SLOW_SEARCH = "[fixture:slow-search]";
 const HANGING_QUERY = "fixture hanging search";
+const VISUALS = "[fixture:visuals]";
+
+/** Appended with [fixture:visuals]: a code block, a chart, a diagram, a broken chart and a document. */
+const VISUALS_CONTENT = [
+  "",
+  "```ts",
+  "const answer: number = 42; // fixture",
+  "```",
+  "",
+  "```chart",
+  '{"type":"bar","title":"Fixture chart","x":"year","series":[{"key":"value","label":"Value"}],"data":[{"year":"2024","value":3},{"year":"2025","value":5}]}',
+  "```",
+  "",
+  "```mermaid",
+  "flowchart LR",
+  "  A[Question] --> B[Sources] --> C[Answer]",
+  "```",
+  "",
+  "```chart",
+  '{"type":"bar","data":"not a chart"}',
+  "```",
+  "",
+  '<document title="Fixture plan">',
+  "## Steps",
+  "",
+  "- First step from the overview [1]",
+  "- Second step",
+  "</document>",
+].join("\n");
 
 function delay(ms: number): number {
   return Number(process.env.BEAMLING_FAKE_DELAY_MS ?? ms);
@@ -129,7 +158,8 @@ export async function fakeChat(options: {
   const content =
     (images ? `The model saw ${images === 1 ? "1 image" : `${images} images`}. ` : "") +
     (files ? `The model saw ${files === 1 ? "1 file" : `${files} files`}. ` : "") +
-    "This is a fixture answer for local testing. It demonstrates the streaming pipeline, source numbering and citations [1]. The second source adds a recent development [2], while the third records a limitation [3].\n\n| Source | Finding |\n| --- | --- |\n| Overview | Fixture baseline |\n| Recent | Newer detail |";
+    "This is a fixture answer for local testing. It demonstrates the streaming pipeline, source numbering and citations [1]. The second source adds a recent development [2], while the third records a limitation [3].\n\n| Source | Finding |\n| --- | --- |\n| Overview | Fixture baseline |\n| Recent | Newer detail |" +
+    (question.includes(VISUALS) ? `\n${VISUALS_CONTENT}` : "");
   for (const word of content.split(" ")) {
     aborted(options.signal);
     options.onDelta?.(`${word} `);

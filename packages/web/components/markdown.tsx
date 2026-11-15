@@ -2,6 +2,11 @@
 
 import { memo, useMemo, type MouseEvent, type ReactNode } from "react";
 import { isSafeHttpUrl } from "@/lib/url";
+import { DOCUMENT_CLOSE, DOCUMENT_OPEN, VISUAL_LIMITS, documentTitle, fenceLanguage, parseChart } from "@/lib/visuals";
+import { ChartBlock } from "./visuals/chart-block";
+import { CodeBlock } from "./visuals/code-block";
+import { DocumentCard } from "./visuals/document";
+import { MermaidBlock } from "./visuals/mermaid-block";
 
 interface MarkdownProps {
   text: string;
@@ -10,6 +15,45 @@ interface MarkdownProps {
   streaming?: boolean;
   /** When set, only these exact hrefs are rendered as links. Model output is otherwise plain text. */
   allowedLinks?: readonly string[];
+  /** Set on answers: a <document> block becomes a card that opens the document panel. Keys the document. */
+  documentKey?: string;
+}
+
+interface ParseContext {
+  citations: number;
+  allowedLinks: ReadonlySet<string>;
+  allowedList?: readonly string[];
+  documentKey?: string;
+  onCitation?: (position: number) => void;
+  /** The text is still arriving: an unclosed fence or document may be completed later. */
+  streaming: boolean;
+  visuals: number;
+  documents: number;
+}
+
+const VISUAL_LANGUAGES = new Set(["mermaid", "chart"]);
+
+/** A fenced block: code, or a chart or diagram once the fence is closed and within the limits. */
+function fencedBlock(language: string, code: string, closed: boolean, key: string, ctx: ParseContext): ReactNode {
+  if (!VISUAL_LANGUAGES.has(language) || (!closed && !ctx.streaming)) return <CodeBlock key={key} code={code} language={language} closed={closed || !ctx.streaming} />;
+  if (!closed) {
+    return (
+      <div key={key} className="visual visual-pending">
+        Drawing…
+      </div>
+    );
+  }
+  if (ctx.visuals >= VISUAL_LIMITS.perAnswer || code.length > VISUAL_LIMITS.blockChars) {
+    return <CodeBlock key={key} code={code} language={language} note="Too large to draw" />;
+  }
+  if (language === "chart") {
+    const spec = parseChart(code);
+    if (!spec) return <CodeBlock key={key} code={code} language="json" note="Could not draw this chart" />;
+    ctx.visuals++;
+    return <ChartBlock key={key} spec={spec} />;
+  }
+  ctx.visuals++;
+  return <MermaidBlock key={key} source={code} />;
 }
 
 const HR = /^---+$/;
@@ -142,7 +186,8 @@ function tableBlock(lines: string[], start: number, key: number, citations: numb
   return { node, next: i };
 }
 
-function parse(text: string, citations: number, allowedLinks: ReadonlySet<string>): ReactNode[] {
+function parse(text: string, ctx: ParseContext): ReactNode[] {
+  const { citations, allowedLinks } = ctx;
   const lines = text.split("\n");
   const blocks: ReactNode[] = [];
   let i = 0;
@@ -156,14 +201,40 @@ function parse(text: string, citations: number, allowedLinks: ReadonlySet<string
     }
 
     if (line.startsWith("```")) {
+      const language = fenceLanguage(line);
       const code: string[] = [];
       i++;
       while (i < lines.length && !lines[i].startsWith("```")) code.push(lines[i++]);
+      const closed = i < lines.length;
+      i++;
+      blocks.push(fencedBlock(language, code.join("\n"), closed, `k${key++}`, ctx));
+      continue;
+    }
+
+    const opening = ctx.documentKey ? DOCUMENT_OPEN.exec(line.trim()) : null;
+    if (opening) {
+      const body: string[] = [];
+      let fenced = false;
+      i++;
+      while (i < lines.length && (fenced || !DOCUMENT_CLOSE.test(lines[i].trim()))) {
+        if (lines[i].startsWith("```")) fenced = !fenced;
+        body.push(lines[i++]);
+      }
+      const open = i >= lines.length && ctx.streaming;
       i++;
       blocks.push(
-        <pre key={`k${key++}`}>
-          <code>{code.join("\n")}</code>
-        </pre>,
+        <DocumentCard
+          key={`k${key++}`}
+          doc={{
+            key: `${ctx.documentKey}:${ctx.documents++}`,
+            title: documentTitle(opening[1]),
+            markdown: body.join("\n"),
+            open,
+            citations,
+            allowedLinks: ctx.allowedList,
+            onCitation: ctx.onCitation,
+          }}
+        />,
       );
       continue;
     }
@@ -238,7 +309,8 @@ function parse(text: string, citations: number, allowedLinks: ReadonlySet<string
       !/^\d+\.\s+/.test(lines[i]) &&
       !HR.test(lines[i].trim()) &&
       !lines[i].startsWith("> ") &&
-      !lines[i].startsWith("```")
+      !lines[i].startsWith("```") &&
+      !DOCUMENT_OPEN.test(lines[i].trim())
     ) {
       paragraph.push(lines[i++]);
     }
@@ -248,20 +320,29 @@ function parse(text: string, citations: number, allowedLinks: ReadonlySet<string
   return blocks;
 }
 
-/** A small, safe markdown subset: headings, lists, quotes, code, bold, italics and [n] citations. */
+/**
+ * A small, safe markdown subset: headings, lists, quotes, code, bold, italics and [n] citations,
+ * plus ```chart and ```mermaid visuals and, on answers, <document> blocks.
+ */
 export const Markdown = memo(function Markdown({
   text,
   citations = 0,
   onCitation,
   streaming,
   allowedLinks,
+  documentKey,
 }: MarkdownProps) {
   // The parse only depends on the text, so citation clicks are handled by delegation instead of per-button closures.
   const allowed = useMemo(
     () => new Set((allowedLinks ?? []).map(linkHref).filter((href): href is string => href !== null)),
     [allowedLinks],
   );
-  const blocks = useMemo(() => parse(text, citations, allowed), [text, citations, allowed]);
+  const blocks = useMemo(
+    () => parse(text, { citations, allowedLinks: allowed, allowedList: allowedLinks, documentKey, onCitation: documentKey ? onCitation : undefined, streaming: !!streaming, visuals: 0, documents: 0 }),
+    // onCitation only reaches documents, which are keyed: other blocks use the click delegation below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [text, citations, allowed, documentKey, documentKey ? onCitation : null, !!streaming],
+  );
 
   const onClick = (event: MouseEvent<HTMLDivElement>) => {
     const button = (event.target as HTMLElement).closest<HTMLElement>("[data-citation]");

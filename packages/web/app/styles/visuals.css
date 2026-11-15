@@ -1,0 +1,329 @@
+/* ---------- code blocks, charts, diagrams, documents ---------- */
+
+:root {
+  --viz-1: #ffc86b;
+  --viz-2: #6ee7f9;
+  --viz-3: #4ade80;
+  --viz-4: #f472b6;
+  --viz-5: #a78bfa;
+  --viz-6: #fb923c;
+  --code-keyword: #f0a7d0;
+  --code-string: #b5e08a;
+  --code-comment: #7d7d84;
+  --code-number: #ffc86b;
+  --code-title: #7dd3fc;
+  --code-type: #c4b5fd;
+  --code-attr: #fdba74;
+}
+
+.answer-prose .code-block {
+  margin: 14px 0 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--ink);
+  overflow: hidden;
+}
+.code-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 4px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 11px;
+  color: var(--muted);
+}
+.code-head .spacer {
+  flex: 1;
+}
+.code-lang {
+  font-family: var(--font-code);
+}
+.code-note {
+  color: var(--warning);
+}
+.code-copy {
+  gap: 5px;
+  height: 24px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+.answer-prose .code-block pre {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-doctag,
+.hljs-section {
+  color: var(--code-keyword);
+}
+.hljs-string,
+.hljs-regexp,
+.hljs-addition,
+.hljs-template-tag {
+  color: var(--code-string);
+}
+.hljs-comment,
+.hljs-quote,
+.hljs-meta {
+  color: var(--code-comment);
+  font-style: italic;
+}
+.hljs-number,
+.hljs-literal,
+.hljs-symbol,
+.hljs-bullet {
+  color: var(--code-number);
+}
+.hljs-title,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class {
+  color: var(--code-title);
+}
+.hljs-type,
+.hljs-built_in,
+.hljs-class {
+  color: var(--code-type);
+}
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-params,
+.hljs-property {
+  color: var(--code-attr);
+}
+.hljs-deletion {
+  color: var(--error);
+}
+.hljs-emphasis {
+  font-style: italic;
+}
+.hljs-strong {
+  font-weight: 650;
+}
+
+/* Charts and diagrams sit in the answer like a table. */
+.answer-prose .visual {
+  margin: 16px 0 0;
+  padding: 14px 14px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--surface) 70%, transparent);
+}
+.answer-prose .visual figcaption {
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.answer-prose .visual-pending {
+  padding: 22px 14px;
+  color: var(--muted);
+  font-size: 12.5px;
+  text-align: center;
+}
+.chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.chart-frame {
+  width: 100%;
+}
+.chart-axis line {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.chart-axis line.zero {
+  stroke: var(--line-strong);
+}
+.chart-axis text {
+  fill: var(--muted);
+  font-size: 11px;
+  font-family: var(--font-ui);
+}
+.chart rect,
+.chart circle,
+.chart path {
+  transition: opacity 0.15s ease;
+}
+.chart rect:hover,
+.chart circle:hover,
+.chart path:hover {
+  opacity: 0.8;
+}
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--muted);
+}
+.answer-prose .chart-legend li {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.chart-legend i {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+}
+.chart-legend span {
+  font-family: var(--font-code);
+  font-size: 11px;
+}
+.chart-pie {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  flex-wrap: wrap;
+}
+.chart-pie svg {
+  width: min(200px, 100%);
+}
+.chart-pie .chart-legend {
+  flex-direction: column;
+  margin: 0;
+}
+.diagram-svg {
+  overflow-x: auto;
+  text-align: center;
+}
+.diagram-svg svg {
+  display: inline-block;
+  max-width: none;
+}
+.visual-data {
+  margin-top: 8px;
+  font-size: 12px;
+}
+.visual-data summary {
+  cursor: pointer;
+  color: var(--muted);
+  width: fit-content;
+}
+.visual-data .answer-table-wrap,
+.visual-data .code-block {
+  margin-top: 8px;
+}
+
+/* Documents */
+.document-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(420px, 100%);
+  margin: 14px 0 0;
+  padding: 11px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.document-card:hover,
+.document-card.active {
+  border-color: color-mix(in oklab, var(--beam) 55%, transparent);
+  background: var(--raised);
+}
+.document-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 9px;
+  background: color-mix(in oklab, var(--beam) 14%, transparent);
+  color: var(--beam);
+}
+.document-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.document-text strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13.5px;
+}
+.document-text span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.document-inline h3 {
+  margin-top: 16px;
+}
+.chat-layout.with-document {
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+}
+.document-pane {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--line);
+  background: color-mix(in oklab, var(--surface) 55%, transparent);
+}
+.document-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 10px 9px 16px;
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+.document-head h2 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 650;
+}
+.document-head .spacer {
+  flex: 1;
+}
+.document-head .btn.active {
+  background: var(--active);
+}
+.document-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.document-page {
+  width: min(720px, 100%);
+  margin: 0 auto;
+  padding: 22px 26px 40px;
+}
+.document-scroll > .code-block {
+  margin: 14px;
+}
+.document-sheet {
+  height: 92dvh;
+  max-height: 92dvh;
+}
+.document-sheet .document-page {
+  padding: 16px 18px 32px;
+}
+
+@media (max-width: 900px) {
+  .chat-layout.with-document {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .document-pane {
+    display: none;
+  }
+}

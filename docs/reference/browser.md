@@ -89,12 +89,22 @@ The AI-generated disclosure appears in the composer hint, the welcome step and t
 
 Markdown is intentionally small:
 
-- Headings `##`–`####`, paragraphs, lists, blockquotes, horizontal rules, fenced code.
+- Headings `##`–`####`, paragraphs, lists, blockquotes, horizontal rules, fenced code ([Visuals and documents](#visuals-and-documents)).
 - GitHub tables with alignment, inline formatting and horizontal scroll.
 - Inline code, bold, italics, links. No raw HTML.
 - Links must be `http:`/`https:` **and** match a retrieved source URL exactly; others render as plain text. This blocks model-authored phishing links.
 - `[n]` is a citation button only when `n` is within the source count.
 - Citation clicks use event delegation on `data-citation`.
+
+## Visuals and documents
+
+Fenced blocks and document markers in an answer (`components/markdown.tsx`, `components/visuals/`, `lib/visuals.ts`):
+
+- **Code**: the language after the fence is shown with a **Copy** button. Highlighting uses highlight.js grammars through lowlight for 21 common languages, loaded on first use, and only once the block is closed; without a known language the code stays plain. Tokens become React spans, never HTML.
+- **Charts** (` ```chart `): JSON validated with Zod (`bar`, `line` or `pie`, up to 200 rows and 6 series, numbers only, pie non-negative with one series), drawn as SVG at the real width, with native tooltips and a **Data** table.
+- **Diagrams** (` ```mermaid `): Mermaid, loaded on first use, in strict security mode without HTML labels; the SVG is sanitized again with DOMPurify (no links, images, `foreignObject` or scripts). Natural size, scrolled sideways when wide, with a **Source** toggle.
+- Limits: 20,000 characters per visual, 4 per answer. Over a limit, invalid or failed, the block shows as code with a short note. While the answer streams, an unclosed visual shows "Drawing…".
+- **Documents** (`<document title="...">` to `</document>` on their own lines): a card in the answer. The panel opens on the left of the chat, by itself while a document is being written (desktop) or from the card; on phones it is a sheet. It has a preview with working citations, a **Markdown** source view, copy and **Download .md** (built in the browser). One side panel at a time: the sources panel hides the document. Reasoning and the panel itself render the tags as text.
 
 Dialogs render into `document.body`, so the sidebar's backdrop filter and the drawer's animation cannot clip them.
 

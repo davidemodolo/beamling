@@ -106,4 +106,5 @@ With `BEAMLING_FAKE_PROVIDERS=1` (tests and offline dev, no network calls):
 - `[fixture:broken-plan]` in a Deep question forces planner fallback.
 - `[fixture:bad-plan]` fails the first plan to exercise repair.
 - `[fixture:partial-search]` makes one Deep search fail.
+- `[fixture:visuals]` appends a code block, a chart, a diagram, a broken chart and a document to the answer.
 - A question containing `no sources` returns no results.

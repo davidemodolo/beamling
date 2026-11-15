@@ -11,6 +11,7 @@ import { useThreadScroll } from "./chat/use-thread-scroll";
 import { EmptyState, LoadErrorState, NotFoundState, Thread, ThreadSkeleton, UserBubble, WorkingAnswer } from "./chat-thread";
 import { Composer } from "./composer";
 import { SourcesPanel, SourcesSheet } from "./sources";
+import { DocumentPane, DocumentPanelProvider, type OpenDocument } from "./visuals/document";
 import { Icon } from "./ui/icon";
 import { useAnswerStreams, type LiveAnswer } from "@/lib/answer-streams";
 import { toAttachment, toFileAttachment } from "@/lib/attachments";
@@ -107,6 +108,24 @@ function ChatPane({ conversationId, search }: ChatViewProps) {
   );
 
   const sources = useSourcesPanel({ live, messages, searchProvider, isMobile, showToast });
+
+  // The document panel belongs to the conversation it was opened in.
+  const [openDoc, setOpenDoc] = useState<{ conversation: string | null; doc: OpenDocument } | null>(null);
+  // One side panel at a time: opening a document hides the sources panel, and the sources panel hides the document.
+  const doc = openDoc && openDoc.conversation === activeId && !(sources.panelOpen && !isMobile) ? openDoc.doc : null;
+  const closeSourcesPanel = sources.closePanel;
+  const documentPanel = useMemo(
+    () => ({
+      current: doc,
+      open: (next: OpenDocument) => {
+        setOpenDoc({ conversation: activeId, doc: next });
+        closeSourcesPanel();
+      },
+      update: (next: OpenDocument) => setOpenDoc((value) => (value?.doc.key === next.key ? { ...value, doc: next } : value)),
+      autoOpen: !isMobile,
+    }),
+    [doc, activeId, isMobile, closeSourcesPanel],
+  );
   const { threadRef, onScroll: onThreadScroll, stick, release } = useThreadScroll({
     liveText: live?.content,
     liveStage: live?.stage,
@@ -311,7 +330,9 @@ function ChatPane({ conversationId, search }: ChatViewProps) {
         onOpenSettings={() => openSettings()}
       />
 
-      <div className={`chat-layout ${sources.panelOpen ? "with-sources" : ""}`}>
+      <DocumentPanelProvider value={documentPanel}>
+      <div className={`chat-layout ${sources.panelOpen ? "with-sources" : ""}${doc && !isMobile ? " with-document" : ""}`}>
+        {doc && !isMobile ? <DocumentPane doc={doc} onClose={() => setOpenDoc(null)} sheet={false} /> : null}
         <div className="thread-scroll" ref={threadRef} onScroll={onThreadScroll}>
           <p className="sr-only" aria-live="polite">
             {activeId ? streams.announcements[activeId] ?? "" : ""}
@@ -379,6 +400,8 @@ function ChatPane({ conversationId, search }: ChatViewProps) {
           />
         ) : null}
       </div>
+      {doc && isMobile ? <DocumentPane doc={doc} onClose={() => setOpenDoc(null)} sheet /> : null}
+      </DocumentPanelProvider>
 
       <Composer
         value={input}
