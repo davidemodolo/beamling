@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { BeamlingHandle } from "@beamling/mascot/react";
 import { STAGE_LABEL, type LiveAnswer } from "@/lib/answer-streams";
 import { MAX_QUESTION_CHARS } from "@/lib/legal";
@@ -150,6 +150,7 @@ export function WorkingAnswer({
 }) {
   const mascotRef = useRef<BeamlingHandle>(null);
   const hasSources = live.sources.length > 0;
+  const links = useMemo(() => live.sources.map((source) => source.url), [live.sources]);
   // The search running now: the mascot turns its beam to it.
   const query = live.stage === "searching" ? live.searches.findLast((trace) => trace.status === "searching")?.query : undefined;
 
@@ -197,7 +198,7 @@ export function WorkingAnswer({
       </div>
       {live.content ? (
         <div className="assistant-body">
-          <Markdown text={live.content} citations={live.sources.length} onCitation={onCitation} streaming allowedLinks={live.sources.map((source) => source.url)} documentKey={live.messageId ?? "live"} />
+          <Markdown text={live.content} citations={live.sources.length} onCitation={onCitation} streaming allowedLinks={links} sources={live.sources} documentKey={live.messageId ?? "live"} />
         </div>
       ) : (
         <div className="skeleton-answer" aria-hidden="true">

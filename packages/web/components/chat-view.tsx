@@ -332,7 +332,6 @@ function ChatPane({ conversationId, search }: ChatViewProps) {
 
       <DocumentPanelProvider value={documentPanel}>
       <div className={`chat-layout ${sources.panelOpen ? "with-sources" : ""}${doc && !isMobile ? " with-document" : ""}`}>
-        {doc && !isMobile ? <DocumentPane doc={doc} onClose={() => setOpenDoc(null)} sheet={false} /> : null}
         <div className="thread-scroll" ref={threadRef} onScroll={onThreadScroll}>
           <p className="sr-only" aria-live="polite">
             {activeId ? streams.announcements[activeId] ?? "" : ""}
@@ -388,6 +387,7 @@ function ChatPane({ conversationId, search }: ChatViewProps) {
           </div>
         </div>
 
+        {doc && !isMobile ? <DocumentPane doc={doc} onClose={() => setOpenDoc(null)} sheet={false} /> : null}
         {sources.panelOpen ? (
           <SourcesPanel
             sources={sources.sources}

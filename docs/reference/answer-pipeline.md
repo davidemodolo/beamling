@@ -198,7 +198,7 @@ The three writer prompts end with the same visuals rules (`VISUAL_RULES`):
 - A chart as a fenced ` ```chart ` JSON block (bar, line or pie), only for numbers from the sources, cited in the sentence before it, never estimated.
 - A diagram as a fenced ` ```mermaid ` block (flowchart, sequence, timeline, mindmap), short plain labels, no links or styling.
 - At most 2 visuals, only when clearer than text.
-- Only when the user asks for a document: one sentence, then the document between `<document title="...">` and `</document>` lines. Same grounding rules; it may exceed the length target.
+- Only when the user asks for a document: one sentence, then the document between `<document title="...">` and `</document>` lines. Inside: `##`/`###` headings, lists and tables, no repeated title, `[n]` citations and no sources list (the browser appends the cited sources). Same grounding rules; it may exceed the length target.
 
 These are plain text in the stored answer; nothing extra is stored or sent. The browser draws them ([Visuals and documents](browser.md#visuals-and-documents)).
 
