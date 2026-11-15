@@ -120,7 +120,8 @@ VISUALS AND DOCUMENTS
 - Every value in a chart must come from the sources, cited in the sentence before it. Never estimate or invent values to fill a chart.
 - For a process, a sequence of steps, a timeline or relationships, you may add one small diagram as a fenced \`\`\`mermaid block (flowchart, sequenceDiagram, timeline or mindmap). Short plain-text labels, no links, no styling, no citations inside.
 - Use a visual only when it makes the answer clearer than text, at most 2 per answer. Never use one for a single number or a short list.
-- Only when the user asks for a document (a report, plan, letter, guide or notes to keep), write one sentence, then the document between a line <document title="Short title"> and a line </document>, and nothing after it. The document follows the same grounding and citation rules and may be longer than the usual target. Never use these tags otherwise.`;
+- Only when the user asks for a document (a report, plan, letter, guide or notes to keep), write one sentence, then the document between a line <document title="Short title"> and a line </document>, and nothing after it. Never use these tags otherwise.
+- Inside a document write clean Markdown: ## and ### headings, paragraphs, lists, tables. Do not repeat the title as a heading. It follows the same grounding rules and may be longer than the usual target. Cite with [n] as in the answer and add no sources list: the cited sources are appended to the document.`;
 
 export function quickPrompt(input: {
   question: string;

@@ -1,18 +1,18 @@
 "use client";
 
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useFocusTrap } from "@/lib/hooks/use-focus-trap";
-import { documentFileName, type AnswerDocument } from "@/lib/visuals";
+import { isSafeHttpUrl } from "@/lib/url";
+import { citedPositions, documentBody, documentFileName, documentMarkdown, type AnswerDocument, type DocumentSource } from "@/lib/visuals";
 import { Markdown } from "../markdown";
 import { Icon } from "../ui/icon";
 import { CodeBlock, CopyButton } from "./code-block";
 
-/** What the panel shows: a document plus how to resolve its citations. */
+/** What the panel shows: a document plus the answer's sources its citations point to. */
 export interface OpenDocument extends AnswerDocument {
   key: string;
-  citations: number;
+  sources: readonly DocumentSource[];
   allowedLinks?: readonly string[];
-  onCitation?: (position: number) => void;
 }
 
 interface DocumentPanel {
@@ -35,8 +35,9 @@ export function DocumentCard({ doc }: { doc: OpenDocument }) {
 
   useEffect(() => {
     if (!panel) return;
-    if (panel.current?.key === doc.key) {
-      if (panel.current.markdown !== doc.markdown || panel.current.open !== doc.open) panel.update(doc);
+    const current = panel.current;
+    if (current?.key === doc.key) {
+      if (current.markdown !== doc.markdown || current.open !== doc.open || current.sources !== doc.sources) panel.update(doc);
     } else if (doc.open && panel.autoOpen && !opened.current) {
       panel.open(doc);
     }
@@ -46,8 +47,7 @@ export function DocumentCard({ doc }: { doc: OpenDocument }) {
   if (!panel) {
     return (
       <div className="document-inline">
-        <h3>{doc.title}</h3>
-        <Markdown text={doc.markdown} citations={doc.citations} allowedLinks={doc.allowedLinks} />
+        <DocumentPage doc={doc} />
       </div>
     );
   }
@@ -58,14 +58,15 @@ export function DocumentCard({ doc }: { doc: OpenDocument }) {
       </span>
       <span className="document-text">
         <strong>{doc.title}</strong>
-        <span>{doc.open ? "Writing document…" : isOpen ? "Open in the panel" : "Document · open"}</span>
+        <span>{doc.open ? "Writing document…" : isOpen ? "Open beside the chat" : "Document · open"}</span>
       </span>
+      <Icon name="panel-right" size={15} className="document-card-go" />
     </button>
   );
 }
 
 function download(doc: OpenDocument) {
-  const url = URL.createObjectURL(new Blob([`# ${doc.title}\n\n${doc.markdown.trim()}\n`], { type: "text/markdown;charset=utf-8" }));
+  const url = URL.createObjectURL(new Blob([documentMarkdown(doc, doc.sources)], { type: "text/markdown;charset=utf-8" }));
   const link = document.createElement("a");
   link.href = url;
   link.download = documentFileName(doc.title);
@@ -73,17 +74,62 @@ function download(doc: OpenDocument) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function domain(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+/** The rendered document: title, text with citations linking to their sources, and the cited sources. */
+function DocumentPage({ doc }: { doc: OpenDocument }) {
+  const body = useMemo(() => documentBody(doc.title, doc.markdown), [doc.title, doc.markdown]);
+  const cited = useMemo(() => citedPositions(body, doc.sources).filter((source) => isSafeHttpUrl(source.url)), [body, doc.sources]);
+  return (
+    <article className="document-page">
+      <h1 className="document-title">{doc.title}</h1>
+      <Markdown text={body} sources={doc.sources} linkCitations streaming={doc.open} allowedLinks={doc.allowedLinks} />
+      {cited.length && !doc.open ? (
+        <section className="document-sources" aria-label="Sources">
+          <h2>Sources</h2>
+          <ol>
+            {cited.map((source) => (
+              <li key={source.position}>
+                <span className="document-source-n">{source.position}</span>
+                <a href={source.url} target="_blank" rel="noopener noreferrer">
+                  {source.title || domain(source.url)}
+                </a>
+                <span className="document-source-domain">{domain(source.url)}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
+    </article>
+  );
+}
+
 function DocumentBody({ doc, onClose, closeLabel }: { doc: OpenDocument; onClose: () => void; closeLabel: string }) {
   const [source, setSource] = useState(false);
+  const markdown = useMemo(() => documentMarkdown(doc, doc.sources), [doc]);
   return (
     <>
       <div className="document-head">
-        <h2 title={doc.title}>{doc.title}</h2>
+        <span className="document-kind">
+          <Icon name={doc.open ? "loader" : "file"} size={13} className={doc.open ? "spin" : undefined} />
+          <span className="document-kind-label">{doc.open ? "Writing document…" : "Document"}</span>
+        </span>
         <span className="spacer" />
-        <button type="button" className={`btn btn-ghost btn-sm${source ? " active" : ""}`} onClick={() => setSource(!source)} aria-pressed={source}>
-          {source ? "Preview" : "Markdown"}
-        </button>
-        <CopyButton text={doc.markdown.trim()} label="Copy document" />
+        <div className="document-tabs" role="group" aria-label="View">
+          <button type="button" className={`btn btn-ghost btn-sm${source ? "" : " active"}`} onClick={() => setSource(false)} aria-pressed={!source}>
+            Preview
+          </button>
+          <button type="button" className={`btn btn-ghost btn-sm${source ? " active" : ""}`} onClick={() => setSource(true)} aria-pressed={source}>
+            Markdown
+          </button>
+        </div>
+        <CopyButton text={markdown} label="Copy document" />
         <button type="button" className="btn btn-ghost btn-icon btn-sm" onClick={() => download(doc)} aria-label="Download as Markdown" title="Download .md" disabled={doc.open}>
           <Icon name="download" size={14} />
         </button>
@@ -92,19 +138,13 @@ function DocumentBody({ doc, onClose, closeLabel }: { doc: OpenDocument; onClose
         </button>
       </div>
       <div className="document-scroll">
-        {source ? (
-          <CodeBlock code={doc.markdown.trim()} language="markdown" closed={!doc.open} />
-        ) : (
-          <div className="document-page">
-            <Markdown text={doc.markdown} citations={doc.citations} onCitation={doc.onCitation} streaming={doc.open} allowedLinks={doc.allowedLinks} />
-          </div>
-        )}
+        {source ? <CodeBlock code={markdown.trimEnd()} language="markdown" closed={!doc.open} /> : <DocumentPage doc={doc} />}
       </div>
     </>
   );
 }
 
-/** The document beside the chat (desktop) or as a full-height sheet (phone). */
+/** The document beside the chat on its right (desktop) or as a full-height sheet (phone). */
 export function DocumentPane({ doc, onClose, sheet }: { doc: OpenDocument; onClose: () => void; sheet: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   useFocusTrap(ref, sheet, onClose);
@@ -121,7 +161,9 @@ export function DocumentPane({ doc, onClose, sheet }: { doc: OpenDocument; onClo
   }
   return (
     <aside className="document-pane" aria-label={`Document: ${doc.title}`}>
-      <DocumentBody doc={doc} onClose={onClose} closeLabel="Hide document" />
+      <div className="document-frame">
+        <DocumentBody doc={doc} onClose={onClose} closeLabel="Hide document" />
+      </div>
     </aside>
   );
 }

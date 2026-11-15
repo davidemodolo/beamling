@@ -1,8 +1,9 @@
 "use client";
 
 import { memo, useMemo, type MouseEvent, type ReactNode } from "react";
+import { parseInline, parseMarkdown, type Block, type Inline } from "@/lib/markdown";
 import { isSafeHttpUrl } from "@/lib/url";
-import { DOCUMENT_CLOSE, DOCUMENT_OPEN, VISUAL_LIMITS, documentTitle, fenceLanguage, parseChart } from "@/lib/visuals";
+import { VISUAL_LIMITS, parseChart, type DocumentSource } from "@/lib/visuals";
 import { ChartBlock } from "./visuals/chart-block";
 import { CodeBlock } from "./visuals/code-block";
 import { DocumentCard } from "./visuals/document";
@@ -17,14 +18,19 @@ interface MarkdownProps {
   allowedLinks?: readonly string[];
   /** Set on answers: a <document> block becomes a card that opens the document panel. Keys the document. */
   documentKey?: string;
+  /** The answer's sources, handed to documents. */
+  sources?: readonly DocumentSource[];
+  /** Citations link straight to their source instead of opening the sources panel (documents). */
+  linkCitations?: boolean;
 }
 
-interface ParseContext {
+interface RenderContext {
   citations: number;
   allowedLinks: ReadonlySet<string>;
   allowedList?: readonly string[];
   documentKey?: string;
-  onCitation?: (position: number) => void;
+  sources?: readonly DocumentSource[];
+  sourceAt?: ReadonlyMap<number, DocumentSource>;
   /** The text is still arriving: an unclosed fence or document may be completed later. */
   streaming: boolean;
   visuals: number;
@@ -33,8 +39,16 @@ interface ParseContext {
 
 const VISUAL_LANGUAGES = new Set(["mermaid", "chart"]);
 
+function linkHref(value: string): string | null {
+  try {
+    return new URL(value).href;
+  } catch {
+    return null;
+  }
+}
+
 /** A fenced block: code, or a chart or diagram once the fence is closed and within the limits. */
-function fencedBlock(language: string, code: string, closed: boolean, key: string, ctx: ParseContext): ReactNode {
+function fencedBlock(language: string, code: string, closed: boolean, key: string, ctx: RenderContext): ReactNode {
   if (!VISUAL_LANGUAGES.has(language) || (!closed && !ctx.streaming)) return <CodeBlock key={key} code={code} language={language} closed={closed || !ctx.streaming} />;
   if (!closed) {
     return (
@@ -56,296 +70,178 @@ function fencedBlock(language: string, code: string, closed: boolean, key: strin
   return <MermaidBlock key={key} source={code} />;
 }
 
-const HR = /^---+$/;
-
-function linkHref(value: string): string | null {
-  try {
-    return new URL(value).href;
-  } catch {
-    return null;
+function citation(position: number, key: string, ctx: RenderContext): ReactNode {
+  if (ctx.sourceAt) {
+    const source = ctx.sourceAt.get(position);
+    const href = source && isSafeHttpUrl(source.url) ? linkHref(source.url) : null;
+    if (!source || !href) return null;
+    return (
+      <a key={key} className="citation" href={href} target="_blank" rel="noopener noreferrer" title={source.title} aria-label={`Source ${position}: ${source.title}`}>
+        {position}
+      </a>
+    );
   }
-}
-
-function inline(text: string, key: string, citations: number, allowedLinks: ReadonlySet<string>): ReactNode[] {
-  const nodes: ReactNode[] = [];
-  const pattern = /(\*\*[^*]+\*\*|`[^`]+`|\*[^*\s][^*]*\*|\[[^\]]+\]\([^)\s]+\)|\[\d+\])/g;
-  let last = 0;
-  let match: RegExpExecArray | null;
-  let i = 0;
-  while ((match = pattern.exec(text))) {
-    if (match.index > last) nodes.push(text.slice(last, match.index));
-    const token = match[0];
-    const k = `${key}-${i++}`;
-    if (token.startsWith("**")) {
-      nodes.push(<strong key={k}>{inline(token.slice(2, -2), k, citations, allowedLinks)}</strong>);
-    } else if (token.startsWith("`")) {
-      nodes.push(<code key={k}>{token.slice(1, -1)}</code>);
-    } else if (token.startsWith("*")) {
-      nodes.push(<em key={k}>{inline(token.slice(1, -1), k, citations, allowedLinks)}</em>);
-    } else {
-      const link = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(token);
-      if (link) {
-        const href = isSafeHttpUrl(link[2]) ? linkHref(link[2]) : null;
-        if (href && allowedLinks.has(href)) {
-          nodes.push(
-            <a key={k} href={href} target="_blank" rel="noopener noreferrer">
-              {link[1]}
-            </a>,
-          );
-        } else {
-          nodes.push(link[1]);
-        }
-      } else {
-        const position = Number(token.slice(1, -1));
-        if (Number.isInteger(position) && position >= 1 && position <= citations) {
-          nodes.push(
-            <button key={k} type="button" className="citation" data-citation={position} aria-label={`Show source ${position}`}>
-              {position}
-            </button>,
-          );
-        } else {
-          // Not a source we know about: keep the text rather than silently dropping it.
-          nodes.push(token);
-        }
-      }
-    }
-    last = pattern.lastIndex;
-  }
-  if (last < text.length) nodes.push(text.slice(last));
-  return nodes;
-}
-
-
-function tableCells(line: string): string[] {
-  let value = line.trim();
-  if (value.startsWith("|")) value = value.slice(1);
-  if (value.endsWith("|")) value = value.slice(0, -1);
-  const cells: string[] = [];
-  let current = "";
-  let escaped = false;
-  for (const char of value) {
-    if (escaped) {
-      current += char === "|" ? "|" : `\\${char}`;
-      escaped = false;
-    } else if (char === "\\") {
-      escaped = true;
-    } else if (char === "|") {
-      cells.push(current.trim());
-      current = "";
-    } else {
-      current += char;
-    }
-  }
-  cells.push(current.trim());
-  return cells;
-}
-
-function tableAlignments(line: string): ("left" | "center" | "right")[] | null {
-  const cells = tableCells(line);
-  if (!cells.length || !cells.every((cell) => /^:?-{3,}:?$/.test(cell))) return null;
-  return cells.map((cell) =>
-    cell.startsWith(":") && cell.endsWith(":") ? "center" : cell.endsWith(":") ? "right" : "left",
+  if (!Number.isInteger(position) || position < 1 || position > ctx.citations) return null;
+  return (
+    <button key={key} type="button" className="citation" data-citation={position} aria-label={`Show source ${position}`}>
+      {position}
+    </button>
   );
 }
 
-function tableBlock(lines: string[], start: number, key: number, citations: number, allowedLinks: ReadonlySet<string>): { node: ReactNode; next: number } | null {
-  const header = tableCells(lines[start]);
-  const alignments = tableAlignments(lines[start + 1] ?? "");
-  if (!alignments || header.length !== alignments.length) return null;
-  const body: string[][] = [];
-  let i = start + 2;
-  while (i < lines.length && lines[i].trim() && lines[i].includes("|")) {
-    const row = tableCells(lines[i]);
-    if (row.length !== header.length) break;
-    body.push(row);
-    i++;
-  }
-  const align = (index: number) => ({ textAlign: alignments[index] });
-  const node = (
-    <div className="answer-table-wrap" key={`k${key}`}>
-      <table>
-        <thead>
-          <tr>
-            {header.map((cell, index) => (
-              <th key={index} style={align(index)}>{inline(cell, `th${key}-${index}`, citations, allowedLinks)}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {body.map((row, rowIndex) => (
-            <tr key={rowIndex}>
-              {row.map((cell, index) => (
-                <td key={index} style={align(index)}>{inline(cell, `td${key}-${rowIndex}-${index}`, citations, allowedLinks)}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-  return { node, next: i };
+function renderInline(nodes: Inline[], key: string, ctx: RenderContext): ReactNode[] {
+  return nodes.map((node, index) => {
+    const k = `${key}-${index}`;
+    switch (node.type) {
+      case "text":
+        return node.value;
+      case "code":
+        return <code key={k}>{node.value}</code>;
+      case "strong":
+        return <strong key={k}>{renderInline(node.children, k, ctx)}</strong>;
+      case "em":
+        return <em key={k}>{renderInline(node.children, k, ctx)}</em>;
+      case "del":
+        return <del key={k}>{renderInline(node.children, k, ctx)}</del>;
+      case "break":
+        return <br key={k} />;
+      case "link": {
+        const href = isSafeHttpUrl(node.href) ? linkHref(node.href) : null;
+        const children = renderInline(node.children, k, ctx);
+        if (!href || !ctx.allowedLinks.has(href)) return <span key={k}>{children}</span>;
+        return (
+          <a key={k} href={href} target="_blank" rel="noopener noreferrer">
+            {children}
+          </a>
+        );
+      }
+      case "cite": {
+        const parts = node.positions.map((position, n) => citation(position, `${k}-${n}`, ctx));
+        // Not a source we know about: keep the text rather than silently dropping it.
+        return parts.every(Boolean) ? parts : node.raw;
+      }
+    }
+  });
 }
 
-function parse(text: string, ctx: ParseContext): ReactNode[] {
-  const { citations, allowedLinks } = ctx;
-  const lines = text.split("\n");
-  const blocks: ReactNode[] = [];
-  let i = 0;
-  let key = 0;
+function inline(text: string, key: string, ctx: RenderContext): ReactNode[] {
+  return renderInline(parseInline(text), key, ctx);
+}
 
-  while (i < lines.length) {
-    const line = lines[i];
-    if (!line.trim()) {
-      i++;
-      continue;
-    }
-
-    if (line.startsWith("```")) {
-      const language = fenceLanguage(line);
-      const code: string[] = [];
-      i++;
-      while (i < lines.length && !lines[i].startsWith("```")) code.push(lines[i++]);
-      const closed = i < lines.length;
-      i++;
-      blocks.push(fencedBlock(language, code.join("\n"), closed, `k${key++}`, ctx));
-      continue;
-    }
-
-    const opening = ctx.documentKey ? DOCUMENT_OPEN.exec(line.trim()) : null;
-    if (opening) {
-      const body: string[] = [];
-      let fenced = false;
-      i++;
-      while (i < lines.length && (fenced || !DOCUMENT_CLOSE.test(lines[i].trim()))) {
-        if (lines[i].startsWith("```")) fenced = !fenced;
-        body.push(lines[i++]);
+function renderBlocks(blocks: Block[], key: string, ctx: RenderContext): ReactNode[] {
+  return blocks.map((block, index) => {
+    const k = `${key}-${index}`;
+    switch (block.type) {
+      case "heading": {
+        const Tag = `h${block.level}` as "h2";
+        return <Tag key={k}>{inline(block.text, k, ctx)}</Tag>;
       }
-      const open = i >= lines.length && ctx.streaming;
-      i++;
-      blocks.push(
-        <DocumentCard
-          key={`k${key++}`}
-          doc={{
-            key: `${ctx.documentKey}:${ctx.documents++}`,
-            title: documentTitle(opening[1]),
-            markdown: body.join("\n"),
-            open,
-            citations,
-            allowedLinks: ctx.allowedList,
-            onCitation: ctx.onCitation,
-          }}
-        />,
-      );
-      continue;
-    }
-
-    if (line.includes("|")) {
-      const table = tableBlock(lines, i, key, citations, allowedLinks);
-      if (table) {
-        key++;
-        blocks.push(table.node);
-        i = table.next;
-        continue;
+      case "paragraph":
+        return <p key={k}>{inline(block.text, k, ctx)}</p>;
+      case "hr":
+        return <hr key={k} />;
+      case "code":
+        return fencedBlock(block.language, block.code, block.closed, k, ctx);
+      case "quote":
+        return <blockquote key={k}>{renderBlocks(block.blocks, k, ctx)}</blockquote>;
+      case "list": {
+        const items = block.items.map((item, n) => (
+          <li key={n} className={item.checked === undefined ? undefined : "task-item"}>
+            {item.checked === undefined ? null : <input type="checkbox" checked={item.checked} disabled readOnly aria-label={item.checked ? "Done" : "Not done"} />}
+            {renderBlocks(item.blocks, `${k}-${n}`, ctx)}
+          </li>
+        ));
+        return block.ordered ? (
+          <ol key={k} start={block.start} style={block.start === 1 ? undefined : { counterReset: `step ${block.start - 1}` }}>
+            {items}
+          </ol>
+        ) : (
+          <ul key={k}>{items}</ul>
+        );
       }
+      case "table":
+        return (
+          <div className="answer-table-wrap" key={k}>
+            <table>
+              <thead>
+                <tr>
+                  {block.header.map((cell, n) => (
+                    <th key={n} style={{ textAlign: block.align[n] }}>
+                      {inline(cell, `${k}-h${n}`, ctx)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {block.rows.map((row, r) => (
+                  <tr key={r}>
+                    {row.map((cell, n) => (
+                      <td key={n} style={{ textAlign: block.align[n] }}>
+                        {inline(cell, `${k}-${r}-${n}`, ctx)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      case "document":
+        return (
+          <DocumentCard
+            key={k}
+            doc={{
+              key: `${ctx.documentKey}:${ctx.documents++}`,
+              title: block.title,
+              markdown: block.markdown,
+              open: !block.closed && ctx.streaming,
+              sources: ctx.sources ?? [],
+              allowedLinks: ctx.allowedList,
+            }}
+          />
+        );
     }
-
-    const heading = /^(#{2,4})\s+(.+)$/.exec(line);
-    if (heading) {
-      const level = heading[1].length;
-      const content = inline(heading[2], `h${key}`, citations, allowedLinks);
-      if (level === 2) blocks.push(<h2 key={`k${key++}`}>{content}</h2>);
-      else if (level === 3) blocks.push(<h3 key={`k${key++}`}>{content}</h3>);
-      else blocks.push(<h4 key={`k${key++}`}>{content}</h4>);
-      i++;
-      continue;
-    }
-
-    if (HR.test(line.trim())) {
-      blocks.push(<hr key={`k${key++}`} />);
-      i++;
-      continue;
-    }
-
-    if (/^[-*]\s+/.test(line)) {
-      const items: string[] = [];
-      while (i < lines.length && /^[-*]\s+/.test(lines[i])) items.push(lines[i++].replace(/^[-*]\s+/, ""));
-      blocks.push(
-        <ul key={`k${key++}`}>
-          {items.map((item, n) => (
-            <li key={n}>{inline(item, `u${key}-${n}`, citations, allowedLinks)}</li>
-          ))}
-        </ul>,
-      );
-      continue;
-    }
-
-    if (/^\d+\.\s+/.test(line)) {
-      const items: string[] = [];
-      while (i < lines.length && /^\d+\.\s+/.test(lines[i])) items.push(lines[i++].replace(/^\d+\.\s+/, ""));
-      blocks.push(
-        <ol key={`k${key++}`}>
-          {items.map((item, n) => (
-            <li key={n}>{inline(item, `o${key}-${n}`, citations, allowedLinks)}</li>
-          ))}
-        </ol>,
-      );
-      continue;
-    }
-
-    if (line.startsWith("> ")) {
-      const quote: string[] = [];
-      while (i < lines.length && lines[i].startsWith("> ")) quote.push(lines[i++].slice(2));
-      blocks.push(<blockquote key={`k${key++}`}>{inline(quote.join(" "), `q${key}`, citations, allowedLinks)}</blockquote>);
-      continue;
-    }
-
-    const paragraph: string[] = [line];
-    i++;
-    while (
-      i < lines.length &&
-      lines[i].trim() &&
-      !/^(#{2,4})\s+/.test(lines[i]) &&
-      !/^[-*]\s+/.test(lines[i]) &&
-      !/^\d+\.\s+/.test(lines[i]) &&
-      !HR.test(lines[i].trim()) &&
-      !lines[i].startsWith("> ") &&
-      !lines[i].startsWith("```") &&
-      !DOCUMENT_OPEN.test(lines[i].trim())
-    ) {
-      paragraph.push(lines[i++]);
-    }
-    blocks.push(<p key={`k${key++}`}>{inline(paragraph.join(" "), `p${key}`, citations, allowedLinks)}</p>);
-  }
-
-  return blocks;
+  });
 }
 
 /**
- * A small, safe markdown subset: headings, lists, quotes, code, bold, italics and [n] citations,
- * plus ```chart and ```mermaid visuals and, on answers, <document> blocks.
+ * Model output as Markdown (see lib/markdown.ts), with [n] citations, ```chart and ```mermaid
+ * visuals and, on answers, <document> blocks. Links render only for allowed hrefs.
  */
 export const Markdown = memo(function Markdown({
   text,
-  citations = 0,
+  citations,
   onCitation,
   streaming,
   allowedLinks,
   documentKey,
+  sources,
+  linkCitations,
 }: MarkdownProps) {
-  // The parse only depends on the text, so citation clicks are handled by delegation instead of per-button closures.
   const allowed = useMemo(
     () => new Set((allowedLinks ?? []).map(linkHref).filter((href): href is string => href !== null)),
     [allowedLinks],
   );
+  const tree = useMemo(() => parseMarkdown(text, { documents: !!documentKey }), [text, documentKey]);
   const blocks = useMemo(
-    () => parse(text, { citations, allowedLinks: allowed, allowedList: allowedLinks, documentKey, onCitation: documentKey ? onCitation : undefined, streaming: !!streaming, visuals: 0, documents: 0 }),
-    // onCitation only reaches documents, which are keyed: other blocks use the click delegation below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [text, citations, allowed, documentKey, documentKey ? onCitation : null, !!streaming],
+    () =>
+      renderBlocks(tree, "b", {
+        citations: citations ?? sources?.length ?? 0,
+        allowedLinks: allowed,
+        allowedList: allowedLinks,
+        documentKey,
+        sources,
+        sourceAt: linkCitations ? new Map((sources ?? []).map((source) => [source.position, source])) : undefined,
+        streaming: !!streaming,
+        visuals: 0,
+        documents: 0,
+      }),
+    [tree, citations, allowed, allowedLinks, documentKey, sources, linkCitations, streaming],
   );
 
+  // Citation clicks are handled by delegation instead of per-button closures.
   const onClick = (event: MouseEvent<HTMLDivElement>) => {
-    const button = (event.target as HTMLElement).closest<HTMLElement>("[data-citation]");
+    const button = (event.target as HTMLElement).closest<HTMLElement>("button[data-citation]");
     if (button) onCitation?.(Number(button.dataset.citation));
   };
 

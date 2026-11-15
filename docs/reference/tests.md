@@ -14,6 +14,7 @@
 | `packages/web/tests/integration/accounts.test.ts` | 13 | Sessions, account cleanup, export, analytics opt-out and erasure, sign-up cap, rate limits, Brave spacing, keys, shutdown |
 | `packages/web/tests/unit/images.test.ts` | 7 | Image type and signature checks, image markers in prompts, single entity decoding, model vision flags, text file validation, `<file>` blocks and their budget, address-bar fragment and auto-send rule |
 | `packages/web/tests/unit/visuals.test.ts` | 4 | Fence language, chart validation and limits, pie rules, document markers and file names |
+| `packages/web/tests/unit/markdown.test.ts` | 6 | Heading levels, nested and task lists across blank lines, quotes, fences, tables, documents, inline formatting and citations, document export with sources |
 | `packages/web/e2e/*.spec.ts` | 61 | 15 API checks, 34 UI flows, 12 route CSP/axe variants (below) |
 
 ## Running
@@ -59,7 +60,7 @@ UI:
 - Regenerate replaces the latest answer; editing the latest question rewrites it, replaces the answer and retitles the chat.
 - `/search`: a typed question from the fragment is sent; arriving from another site only fills the composer and sets the mode; `/opensearch.xml` carries the fragment template.
 - `/limits` does not scroll horizontally at phone width.
-- Visuals (`[fixture:visuals]`): a `ts` block is highlighted and copies its code; a chart and a diagram are drawn, a broken chart falls back to code; the document opens in the side panel, its citation opens the sources panel, and after a reload the card reopens it and downloads `fixture-plan.md`.
+- Visuals (`[fixture:visuals]`): a `ts` block is highlighted and copies its code; a chart and a diagram are drawn, a broken chart falls back to code; the document opens in a panel right of the chat with its title once, heading levels, nested and task lists, citations linking to the source and the cited sources listed; after a reload the card reopens it and downloads `fixture-plan.md` with reference links.
 - Setup offers sign-out and account deletion without any key.
 - Streams stay isolated per conversation and survive client-side navigation.
 - Stop keeps partial text; “Ask again” replaces the answer; reload mid-answer shows a stopped answer.

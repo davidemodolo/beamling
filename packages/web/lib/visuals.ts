@@ -89,3 +89,47 @@ export function documentFileName(title: string): string {
     .slice(0, 60);
   return `${base || "document"}.md`;
 }
+
+/** A source a document can cite, by its answer position. */
+export interface DocumentSource {
+  position: number;
+  title: string;
+  url: string;
+}
+
+/** The document text without a first "# heading" that only repeats its title. */
+export function documentBody(title: string, markdown: string): string {
+  const lines = markdown.replace(/^\s*\n/, "").split("\n");
+  const first = /^ {0,3}#\s+(.*?)\s*#*\s*$/.exec(lines[0] ?? "");
+  const same = (value: string) => value.replace(/[*_`]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+  if (first && same(first[1]) === same(title)) lines.shift();
+  return lines.join("\n").trim();
+}
+
+/** Source positions cited in a document, outside code, in order of position. */
+export function citedPositions(markdown: string, sources: readonly DocumentSource[]): DocumentSource[] {
+  const prose = markdown.replace(/^ {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:^ {0,3}\1[ \t]*$|(?![\s\S]))/gm, "").replace(/`[^`\n]+`/g, "");
+  const cited = new Set<number>();
+  for (const match of prose.matchAll(/\[\^?(\d{1,3}(?:\s*[,;]\s*\^?\d{1,3})*)\](?!\()/g)) {
+    for (const value of match[1].split(/[,;]/)) cited.add(Number(value.replace(/[\s^]/g, "")));
+  }
+  return sources.filter((source) => cited.has(source.position)).sort((a, b) => a.position - b.position);
+}
+
+/**
+ * The document as a standalone Markdown file: title, text and the cited sources. Reference
+ * definitions keep each [n] in the text a working link in any Markdown viewer.
+ */
+export function documentMarkdown(doc: { title: string; markdown: string }, sources: readonly DocumentSource[]): string {
+  const body = documentBody(doc.title, doc.markdown);
+  const cited = citedPositions(body, sources);
+  const parts = [`# ${doc.title}`, body];
+  if (cited.length) {
+    const label = (value: string) => value.replace(/[[\]]/g, "").replace(/\s+/g, " ").trim() || "Source";
+    parts.push(
+      `## Sources\n\n${cited.map((source) => `- [${source.position}] [${label(source.title)}](<${source.url}>)`).join("\n")}`,
+      cited.map((source) => `[${source.position}]: <${source.url}> "${label(source.title).replace(/"/g, "'")}"`).join("\n"),
+    );
+  }
+  return `${parts.filter(Boolean).join("\n\n")}\n`;
+}

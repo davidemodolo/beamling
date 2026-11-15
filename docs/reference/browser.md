@@ -87,13 +87,13 @@ Setup is complete with a model key (OpenRouter or DeepSeek) and a search key (Br
 
 The AI-generated disclosure appears in the composer hint, the welcome step and the terms.
 
-Markdown is intentionally small:
+Markdown is parsed by `lib/markdown.ts` into a tree that `components/markdown.tsx` renders as React elements:
 
-- Headings `##`–`####`, paragraphs, lists, blockquotes, horizontal rules, fenced code ([Visuals and documents](#visuals-and-documents)).
+- Headings `#`–`######` (also `===` titles), paragraphs with hard breaks, nested lists (kept across blank lines, with start numbers and `[ ]`/`[x]` tasks), blockquotes, horizontal rules, fenced code with backticks or tildes ([Visuals and documents](#visuals-and-documents)).
 - GitHub tables with alignment, inline formatting and horizontal scroll.
-- Inline code, bold, italics, links. No raw HTML.
+- Inline code, bold, italics, strikethrough, escapes, links. No raw HTML.
 - Links must be `http:`/`https:` **and** match a retrieved source URL exactly; others render as plain text. This blocks model-authored phishing links.
-- `[n]` is a citation button only when `n` is within the source count.
+- `[n]`, `[n, m]` and `[^n]` are citation buttons only when every `n` is within the source count; otherwise the text stays as written.
 - Citation clicks use event delegation on `data-citation`.
 
 ## Visuals and documents
@@ -104,7 +104,7 @@ Fenced blocks and document markers in an answer (`components/markdown.tsx`, `com
 - **Charts** (` ```chart `): JSON validated with Zod (`bar`, `line` or `pie`, up to 200 rows and 6 series, numbers only, pie non-negative with one series), drawn as SVG at the real width, with native tooltips and a **Data** table.
 - **Diagrams** (` ```mermaid `): Mermaid, loaded on first use, in strict security mode without HTML labels; the SVG is sanitized again with DOMPurify (no links, images, `foreignObject` or scripts). Natural size, scrolled sideways when wide, with a **Source** toggle.
 - Limits: 20,000 characters per visual, 4 per answer. Over a limit, invalid or failed, the block shows as code with a short note. While the answer streams, an unclosed visual shows "Drawing…".
-- **Documents** (`<document title="...">` to `</document>` on their own lines): a card in the answer. The panel opens on the left of the chat, by itself while a document is being written (desktop) or from the card; on phones it is a sheet. It has a preview with working citations, a **Markdown** source view, copy and **Download .md** (built in the browser). One side panel at a time: the sources panel hides the document. Reasoning and the panel itself render the tags as text.
+- **Documents** (`<document title="...">` to `</document>` on their own lines): a card in the answer. The panel is a separate page to the right of the chat, opened by itself while a document is being written (desktop) or from the card; on phones it is a sheet. The page shows the title once (a first `#` heading that repeats it is dropped), the text with citations linking straight to their source in a new tab, and the cited sources at the end. **Markdown** shows the file that **Copy** and **Download .md** produce (built in the browser): title, text and a sources list, with reference definitions so each `[n]` stays a link in any Markdown viewer. One side panel at a time: the sources panel hides the document. Reasoning and the panel itself render the tags as text.
 
 Dialogs render into `document.body`, so the sidebar's backdrop filter and the drawer's animation cannot clip them.
 

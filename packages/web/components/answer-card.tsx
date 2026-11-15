@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { memo, useCallback, useEffect, useRef, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 import type { BeamlingHandle } from "@beamling/mascot/react";
 import { describeAnswerError } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
@@ -156,6 +156,7 @@ export const AnswerCard = memo(function AnswerCard({ message, onCitation, onOpen
   const [toast, showToast] = useToast();
 
   const sources = message.sources;
+  const links = useMemo(() => sources?.map((source) => source.url), [sources]);
   const retry = onRetry ? () => onRetry(message.id) : undefined;
   const writing = message.status === "streaming" || message.status === "pending";
   const timedOut = message.status === "stopped" && message.errorCode === "GENERATION_TIMEOUT";
@@ -276,7 +277,7 @@ export const AnswerCard = memo(function AnswerCard({ message, onCitation, onOpen
             </div>
           </div>
         ) : (
-          <Markdown text={message.content} citations={sources?.length ?? 0} onCitation={cite} allowedLinks={sources?.map((source) => source.url)} documentKey={message.id} />
+          <Markdown text={message.content} citations={sources?.length ?? 0} onCitation={cite} allowedLinks={links} sources={sources} documentKey={message.id} />
         )}
 
         {!error && !writing ? (

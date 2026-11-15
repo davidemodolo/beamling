@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import {
@@ -762,11 +763,22 @@ test("answers draw code with a copy button, charts, diagrams and a document in a
   await expect(answer.locator(".diagram-svg script, .diagram-svg foreignObject")).toHaveCount(0);
   await expect(answer.locator(".code-note")).toHaveText("Could not draw this chart");
 
-  await expect(pane.locator(".document-head h2")).toHaveText("Fixture plan");
-  await expect(pane.locator("li")).toHaveCount(2);
-  await pane.locator(".citation").first().click();
-  await expect(page.locator("#sources-pane")).toBeVisible();
-  await expect(pane).toHaveCount(0);
+  // The panel is its own page to the right of the chat.
+  const [chatBox, paneBox] = await Promise.all([page.locator(".thread-scroll").boundingBox(), pane.boundingBox()]);
+  expect(paneBox!.x).toBeGreaterThan(chatBox!.x + chatBox!.width / 2);
+  await expect(pane.locator(".document-title")).toHaveText("Fixture plan");
+  // The repeated title heading is dropped; levels, nesting across blank lines and tasks are kept.
+  const prose = pane.locator(".answer-prose");
+  await expect(prose.locator("h1")).toHaveCount(0);
+  await expect(prose.locator("h2")).toHaveText("Steps");
+  await expect(prose.locator("h3")).toHaveText("Checks");
+  await expect(prose.locator("ol > li")).toHaveCount(2);
+  await expect(prose.locator("ol ul > li")).toHaveText("A detail under it");
+  await expect(prose.locator(".task-item input")).toBeChecked();
+  // Citations link to their source, and the cited sources are listed under the document.
+  await expect(prose.locator(".citation").first()).toHaveAttribute("href", "https://example.org/beamling-overview");
+  await expect(prose.locator(".citation").first()).toHaveAttribute("target", "_blank");
+  await expect(pane.locator(".document-sources li")).toHaveCount(1);
 
   // Stored answers reopen the document from its card.
   await page.reload();
@@ -776,7 +788,11 @@ test("answers draw code with a copy button, charts, diagrams and a document in a
   await expect(page.locator(".document-pane")).toBeVisible();
   const download = page.waitForEvent("download");
   await page.locator(".document-pane").getByRole("button", { name: "Download as Markdown" }).click();
-  expect((await download).suggestedFilename()).toBe("fixture-plan.md");
+  const file = await download;
+  expect(file.suggestedFilename()).toBe("fixture-plan.md");
+  const saved = await readFile((await file.path())!, "utf8");
+  expect(saved.startsWith("# Fixture plan\n\nA plan built from the overview [1].")).toBe(true);
+  expect(saved).toContain("[1]: <https://example.org/beamling-overview>");
 
   const results = await new AxeBuilder({ page }).include(".main-pane").analyze();
   const serious = results.violations.filter((violation) => violation.impact === "serious" || violation.impact === "critical");
