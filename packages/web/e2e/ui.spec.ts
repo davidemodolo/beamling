@@ -736,3 +736,50 @@ test("the limits page fits a phone screen without horizontal scrolling", async (
   const overflow = await page.locator(".limits-scroll").evaluate((el) => el.scrollWidth - el.clientWidth);
   expect(overflow).toBe(0);
 });
+
+test("answers draw code with a copy button, charts, diagrams and a document in a side panel", async ({ page, context }) => {
+  const problems = watchConsole(page);
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await connectKeys(page.request);
+  await page.goto("/");
+  await ask(page, "Show visuals [fixture:visuals]");
+  // The document opens beside the chat while it is written.
+  const pane = page.locator(".document-pane");
+  await expect(pane).toBeVisible({ timeout: 20_000 });
+  const answer = answers(page).last();
+  await expect(answer.locator(".answer-footer")).toBeVisible({ timeout: 20_000 });
+
+  const code = answer.locator(".code-block").first();
+  await expect(code.locator(".code-lang")).toHaveText("ts");
+  await expect(code.locator(".hljs-keyword").first()).toHaveText("const");
+  await code.getByRole("button", { name: "Copy code" }).click();
+  await expect(code.getByRole("button", { name: "Copied" })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("const answer: number = 42; // fixture");
+
+  await expect(answer.locator(".chart figcaption")).toHaveText("Fixture chart");
+  await expect(answer.locator(".chart svg rect")).toHaveCount(2);
+  await expect(answer.locator(".diagram-svg svg")).toBeVisible();
+  await expect(answer.locator(".diagram-svg script, .diagram-svg foreignObject")).toHaveCount(0);
+  await expect(answer.locator(".code-note")).toHaveText("Could not draw this chart");
+
+  await expect(pane.locator(".document-head h2")).toHaveText("Fixture plan");
+  await expect(pane.locator("li")).toHaveCount(2);
+  await pane.locator(".citation").first().click();
+  await expect(page.locator("#sources-pane")).toBeVisible();
+  await expect(pane).toHaveCount(0);
+
+  // Stored answers reopen the document from its card.
+  await page.reload();
+  const card = answers(page).last().locator(".document-card");
+  await expect(card).toContainText("Fixture plan");
+  await card.click();
+  await expect(page.locator(".document-pane")).toBeVisible();
+  const download = page.waitForEvent("download");
+  await page.locator(".document-pane").getByRole("button", { name: "Download as Markdown" }).click();
+  expect((await download).suggestedFilename()).toBe("fixture-plan.md");
+
+  const results = await new AxeBuilder({ page }).include(".main-pane").analyze();
+  const serious = results.violations.filter((violation) => violation.impact === "serious" || violation.impact === "critical");
+  expect(serious.map((violation) => `${violation.id}: ${violation.nodes.map((node) => node.target.join(" ")).join(", ")}`)).toEqual([]);
+  expect(problems).toEqual([]);
+});

@@ -89,6 +89,8 @@ export function useSourcesPanel(input: {
     setHidden((value) => !value);
   };
 
+  const closePanel = useCallback(() => setHidden(true), []);
+
   return {
     sources,
     providerName,
@@ -109,7 +111,7 @@ export function useSourcesPanel(input: {
       openPosition(sources, position);
     },
     selectSource: setActiveSource,
-    closePanel: () => setHidden(true),
+    closePanel,
     closeSheet: () => setSheetOpen(false),
   };
 }

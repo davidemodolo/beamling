@@ -10,6 +10,7 @@ import "./styles/form.css";
 import "./styles/app-frame.css";
 import "./styles/composer.css";
 import "./styles/sources.css";
+import "./styles/visuals.css";
 import "./styles/overlays.css";
 import "./styles/settings.css";
 import "./styles/onboarding.css";

@@ -4,6 +4,7 @@ export type IconName =
   | "plus"
   | "arrow-right"
   | "arrow-up"
+  | "download"
   | "stop"
   | "x"
   | "menu"
@@ -85,6 +86,7 @@ const paths: Record<IconName, ReactNode> = {
   ),
   "arrow-right": <path d="M5 12h14m-6-6 6 6-6 6" />,
   "arrow-up": <path d="M12 19V5m-6 6 6-6 6 6" />,
+  download: <path d="M12 4v11m-5-5 5 5 5-5M5 20h14" />,
   "panel-right": (
     <>
       <rect x="3" y="4" width="18" height="16" rx="2" />

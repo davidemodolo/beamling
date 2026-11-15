@@ -197,7 +197,7 @@ export function WorkingAnswer({
       </div>
       {live.content ? (
         <div className="assistant-body">
-          <Markdown text={live.content} citations={live.sources.length} onCitation={onCitation} streaming allowedLinks={live.sources.map((source) => source.url)} />
+          <Markdown text={live.content} citations={live.sources.length} onCitation={onCitation} streaming allowedLinks={live.sources.map((source) => source.url)} documentKey={live.messageId ?? "live"} />
         </div>
       ) : (
         <div className="skeleton-answer" aria-hidden="true">

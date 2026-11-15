@@ -276,7 +276,7 @@ export const AnswerCard = memo(function AnswerCard({ message, onCitation, onOpen
             </div>
           </div>
         ) : (
-          <Markdown text={message.content} citations={sources?.length ?? 0} onCitation={cite} allowedLinks={sources?.map((source) => source.url)} />
+          <Markdown text={message.content} citations={sources?.length ?? 0} onCitation={cite} allowedLinks={sources?.map((source) => source.url)} documentKey={message.id} />
         )}
 
         {!error && !writing ? (

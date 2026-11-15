@@ -23,6 +23,22 @@ const exceptions = {
       "Browser support data used at build time. Attribution is included on this page; the data is not part of Beamling's application source.",
     notice: "caniuse-lite data is maintained by the Can I Use project and licensed under CC BY 4.0 (https://caniuse.com).",
   },
+  "EPL-2.0": {
+    packages: ["elkjs"],
+    reason:
+      "A Mermaid dependency, used unmodified and only for diagrams that ask for the ELK layout. Taken under EPL-2.0 (offered as EPL-2.0 OR GPL-3.0-or-later).",
+    notice: "elkjs is distributed under the Eclipse Public License 2.0; its source code is available at https://github.com/kieler/elkjs.",
+  },
+  Unlicense: {
+    packages: ["robust-predicates"],
+    reason: "A Mermaid dependency (through d3) dedicated to the public domain.",
+    notice: "robust-predicates is released under the Unlicense (public domain), https://github.com/mourner/robust-predicates.",
+  },
+  Unknown: {
+    packages: ["khroma"],
+    reason: "A Mermaid dependency whose package metadata has no license field; its license file is MIT.",
+    notice: "khroma is licensed under the MIT License, per its license file (https://github.com/fabiospampinato/khroma).",
+  },
 };
 const licenseFileNames = new Set([
   "license",
