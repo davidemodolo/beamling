@@ -99,7 +99,8 @@ export default function PrivacyPage() {
         DeepSeek, and some hosts OpenRouter can route to, are in China. Choosing such a provider is your decision; check its
         terms before you use it. Beamling does not send your IP address, email or account
         identifier to them, does not route your traffic through a shared provider account, and does not sell your data or
-        use it to train models.
+        use it to train models. Pictures shown in answers are fetched by Beamling&apos;s server from the sites that host
+        them, so those sites see Beamling, not you.
       </p>
 
       <h2>Cookies</h2>
