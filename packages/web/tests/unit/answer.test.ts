@@ -138,3 +138,26 @@ test("shared stream events reject malformed payloads and ignore unknown names", 
   assert.deepEqual(parseStreamEvent("sources", sources), { event: "sources", data: sources });
   assert.equal(parseStreamEvent("sources", { not: "an array" }), null);
 });
+
+test("the picture rule and image marks appear only when a source has a picture", async () => {
+  const { quickPrompt } = await import("../../lib/server/prompts");
+  const source = { id: "s", position: 1, url: "https://example.org/a", domain: "example.org", title: "A", snippet: "Text." };
+  const without = quickPrompt({ question: "q", history: [], sources: [source] });
+  assert.doesNotMatch(without.system, /image="yes"/);
+  assert.doesNotMatch(without.user, /image="yes"/);
+  const withImage = quickPrompt({ question: "q", history: [], sources: [{ ...source, hasImage: true }] });
+  assert.match(withImage.system, /\(source:N\)/);
+  assert.match(withImage.user, /<source id="1"[^>]* image="yes">/);
+  assert.doesNotMatch(withImage.user, /imgs\.|imageUrl/);
+});
+
+test("history keeps a picture's caption, not its reference to old sources", async () => {
+  const { quickPrompt } = await import("../../lib/server/prompts");
+  const prompt = quickPrompt({
+    question: "q",
+    sources: [],
+    history: [{ id: "m", role: "assistant", content: "Here it is.\n\n![The tower](source:2)", createdAt: "2026-11-16T00:00:00.000Z" } as never],
+  });
+  assert.match(prompt.user, /The tower/);
+  assert.doesNotMatch(prompt.user, /source:2/);
+});

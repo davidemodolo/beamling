@@ -30,6 +30,8 @@ export interface Source {
   domain: string;
   snippet: string;
   publishedAt?: string;
+  /** The search result came with a picture; the browser loads it from /api/sources/{id}/image. */
+  hasImage?: boolean;
 }
 
 export interface Usage {

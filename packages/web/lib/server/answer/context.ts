@@ -77,7 +77,7 @@ export interface RunState {
   costUsd: number;
   searchRequests: number;
   searchFailures: number;
-  sources: Source[];
+  sources: RunSource[];
   searches: SearchTrace[];
   searchesReserved: number;
   content: string;
@@ -89,7 +89,19 @@ export interface RunState {
   upstreamProvider?: string;
 }
 
-export type SourceBatch = Omit<Source, "position">[];
+/** A source as a run keeps it: the picture's URL stays on the server (see `publicSources`). */
+export type RunSource = Source & { imageUrl?: string };
+
+export type SourceBatch = Omit<RunSource, "position">[];
+
+/** Sources as the browser receives them: whether there is a picture, never its URL. */
+export function publicSources(sources: readonly RunSource[]): Source[] {
+  return sources.map((source) => {
+    const copy: RunSource = { ...source };
+    delete copy.imageUrl;
+    return copy;
+  });
+}
 
 export function newRunState(): RunState {
   return {
@@ -213,6 +225,7 @@ async function searchSources(ctx: RunContext, query: string, count: number): Pro
     domain: result.domain,
     snippet: result.snippet,
     publishedAt: result.publishedAt,
+    ...(result.imageUrl ? { imageUrl: result.imageUrl, hasImage: true } : {}),
   }));
 }
 
@@ -256,7 +269,7 @@ export async function runSearches(
 }
 
 /** Ranks new results after the existing sources, without renumbering them, up to `limit` in total. */
-export function appendSources(state: RunState, batches: SourceBatch[], limit: number, perSite = 3): Source[] {
+export function appendSources(state: RunState, batches: SourceBatch[], limit: number, perSite = 3): RunSource[] {
   const added = rankSources(batches, {
     limit: limit - state.sources.length,
     perSite,

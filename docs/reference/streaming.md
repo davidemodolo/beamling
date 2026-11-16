@@ -21,7 +21,7 @@ Defined in `lib/stream-events.ts`, shared by server and client. The client ignor
 | `plan` | `{ queries: string[] }` | Deep, after planning |
 | `search` | `{ query, status: "searching" \| "done" \| "failed", results? }` | Each search start and end; feeds the search trace |
 | `progress` | `{ completed, total }` | After each batch search (not Deep's gap-review searches) |
-| `sources` | `Source[]` | Once, before writing |
+| `sources` | `Source[]` (`hasImage` when the result has a picture; never its URL) | Once, before writing |
 | `delta` | `{ text }` | Answer text |
 | `reasoning` | `{ text }` | Provider reasoning, if emitted |
 | `citation` | `{ position }` | First occurrence of a valid citation |

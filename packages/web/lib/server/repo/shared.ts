@@ -81,6 +81,7 @@ async function mapSource(userId: string, row: SourceRow): Promise<Source> {
     domain: domain ?? "",
     snippet: snippet ?? "",
     publishedAt: row.publishedAt ? iso(row.publishedAt) : undefined,
+    ...(row.imageUrl ? { hasImage: true } : {}),
   };
 }
 

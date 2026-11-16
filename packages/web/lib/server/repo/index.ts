@@ -18,6 +18,7 @@ export {
   deleteExpiredConversations,
   getConversation,
   getEarlierMessages,
+  getSourceImageUrl,
   listConversationPage,
   trimConversations,
   updateConversation,

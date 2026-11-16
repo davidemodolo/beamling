@@ -7,6 +7,8 @@ export interface RetrievedSource {
   domain: string;
   snippet: string;
   publishedAt?: string;
+  /** The result's picture as the provider gave it. Server only: never sent to the browser. */
+  imageUrl?: string;
 }
 
 export interface SearchResultFields {
@@ -14,6 +16,19 @@ export interface SearchResultFields {
   title?: unknown;
   snippet?: unknown;
   publishedAt?: unknown;
+  image?: unknown;
+}
+
+/** A result picture is kept only as a plain https URL; anything else is dropped, the source kept. */
+export function normalizedImageUrl(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.length > 2048 || !isSafeHttpUrl(value)) return undefined;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.username || url.password || (url.port && url.port !== "443")) return undefined;
+    return url.href;
+  } catch {
+    return undefined;
+  }
 }
 
 export interface SearchOptions {
@@ -127,7 +142,9 @@ export function normalizedSource(fields: SearchResultFields): RetrievedSource | 
   const snippet = plainText(typeof fields.snippet === "string" ? fields.snippet : "").slice(0, 1800);
   if (!snippet) return null;
   const domain = new URL(url).hostname.replace(/^www\./, "").slice(0, 255);
+  const imageUrl = normalizedImageUrl(fields.image);
   return {
+    ...(imageUrl ? { imageUrl } : {}),
     title: (plainText(typeof fields.title === "string" ? fields.title : "") || domain).slice(0, 300),
     url,
     domain,

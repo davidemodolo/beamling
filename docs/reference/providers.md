@@ -36,6 +36,7 @@ Shared rules for Brave, Tavily, Exa and DeepSeek search:
 - Errors: `401`/`403` `CREDENTIAL_INVALID`, `402` `INSUFFICIENT_CREDITS`, `429` `PROVIDER_RATE_LIMITED`, `408`/`5xx` `PROVIDER_UNAVAILABLE`, other `4xx` `PROVIDER_ERROR`. Provider-specific codes are listed per provider.
 - A `429` is retried once if the requested wait is at most 5 seconds (1 second when no `Retry-After`); otherwise the `429` is returned.
 - Snippets are tag-stripped and capped at 1,800 characters; results without a usable snippet are dropped.
+- A result's picture URL (below, per provider) is kept only if it is `https:` on port 443, without credentials and at most 2,048 characters; otherwise the picture is dropped and the result kept. It stays on the server ([Source pictures](security.md#source-pictures)).
 - Each successful search records one request and a list-price estimate in `credential_usage` (`searchCostUsd` in `provider-catalog.ts`):
 
 | Provider | Estimate per search |
@@ -70,7 +71,7 @@ Spacing per key, across instances:
 
 A `429` retry waits for `Retry-After`, else the first `X-RateLimit-Reset` value. Fixture searches record the same usage.
 
-Response mapping (`web.results[]`: `title`, `url`, `description`, `age`):
+Response mapping (`web.results[]`: `title`, `url`, `description`, `age`, `thumbnail.src` as the picture):
 
 - Title and description are tag-stripped and entity-decoded.
 - Results without a description are dropped.
@@ -81,7 +82,7 @@ Extra error: error detail "not included in the plan" or code `OPTION_NOT_IN_PLAN
 
 ## Tavily
 
-Retrieval: `POST https://api.tavily.com/search`, `Authorization: Bearer <key>`. Never requests raw content, images or a generated answer.
+Retrieval: `POST https://api.tavily.com/search`, `Authorization: Bearer <key>`. Never requests raw content, image descriptions or a generated answer. `include_images=true`; the first of a result's `images` is its picture.
 
 - Validation: `GET https://api.tavily.com/usage` (spends nothing). `401` → `CREDENTIAL_INVALID`; `key.usage` at or above a non-null `key.limit` → `QUOTA_EXCEEDED`.
 - Parameters: `search_depth=basic`, `max_results=1–20`, `include_published_date=true`, `safe_search=true`, `topic=news` only for recent-information questions.
@@ -96,7 +97,7 @@ Validation and retrieval: `POST https://api.exa.ai/search`, `x-api-key: <key>`.
 - Validation: a probe with `numResults=1`, `type="auto"`, `contents={"highlights":true}`.
 - Retrieval: `type="auto"`, `numResults=1–100`, `moderation=true`, `contents.highlights=true`.
 - Freshness maps to `startPublishedDate`. Never requests full text or a summary.
-- Maps `title`, `url`, `publishedDate` and the joined `highlights`.
+- Maps `title`, `url`, `publishedDate`, the joined `highlights` and `image` as the picture.
 
 ## DeepSeek
 
@@ -122,6 +123,7 @@ Content-Type: application/json
 - `count` is the mode's results per query (8 Quick, 6 Deep and Deeper), clamped to 1–50.
 - The query is shortened to 128 characters. Recent-information questions get an `after:YYYY-MM-DD` operator within the limit.
 - `summary` is the snippet, with `snippet` as fallback; `date` is the publication date.
+- Results carry no picture, so answers searched with DeepSeek show none.
 
 ## Provider notices
 
@@ -132,4 +134,4 @@ Catalog notices show on the provider's card in Settings → Models and under the
 
 ## Fixtures
 
-`lib/server/providers/fake.ts` mirrors the chat, search and validation interfaces. Selected by `isFakeProviders()`; used by local tests and Playwright. Output is deterministic, with marker-triggered failures for planner repair, plan failure, partial search and no sources.
+`lib/server/providers/fake.ts` mirrors the chat, search and validation interfaces. Selected by `isFakeProviders()`; used by local tests and Playwright. Output is deterministic, with marker-triggered failures for planner repair, plan failure, partial search and no sources. The first fixture source has a picture served from memory and the second one that fails; `[fixture:images]` in the question makes the answer show both.

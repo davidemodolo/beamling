@@ -39,10 +39,10 @@ type Candidate = Omit<Source, "position">;
  * rank, so every query contributes its best results first, exact duplicates are dropped by canonical
  * URL, and each site is capped at `perSite` until no other site has results left.
  */
-export function rankSources(
-  batches: Candidate[][],
+export function rankSources<T extends Candidate>(
+  batches: T[][],
   options: { limit: number; perSite: number; exclude?: Source[]; startPosition?: number },
-): Source[] {
+): (T & { position: number })[] {
   const seen = new Set((options.exclude ?? []).map((source) => canonicalUrl(source.url)));
   const perSite = new Map<string, number>();
   for (const source of options.exclude ?? []) {
@@ -50,7 +50,7 @@ export function rankSources(
     perSite.set(site, (perSite.get(site) ?? 0) + 1);
   }
 
-  const ordered: Candidate[] = [];
+  const ordered: T[] = [];
   const depth = Math.max(0, ...batches.map((batch) => batch.length));
   for (let rank = 0; rank < depth; rank++) {
     for (const batch of batches) {
@@ -63,8 +63,8 @@ export function rankSources(
     }
   }
 
-  const picked: Candidate[] = [];
-  const overflow: Candidate[] = [];
+  const picked: T[] = [];
+  const overflow: T[] = [];
   for (const candidate of ordered) {
     if (picked.length >= options.limit) break;
     const site = siteOf(candidate.domain);

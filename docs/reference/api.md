@@ -41,6 +41,7 @@ Errors use one envelope ([Error model](errors.md)):
 | `POST` | `/api/credentials/:id/validate` | Required | None | `{ credential }` |
 | `PATCH` | `/api/credentials/:id` | Required | `{ plan?, expiresOn?, budgetUsd? }` | `{ credential }` |
 | `DELETE` | `/api/credentials/:id` | Required | None | `{ ok: true, settings }` |
+| `GET` | `/api/sources/:id/image` | Required | UUID source id | The source's picture, fetched from its host and passed through ([Source pictures](security.md#source-pictures)); `IMAGE_NOT_FOUND` (404), `IMAGE_UNAVAILABLE` (502) |
 | `PATCH` | `/api/settings` | Required | `{ llmModel?, defaultSearchProvider?, defaultMode?, analyticsOptOut? }` | `{ settings }` |
 | `POST` | `/api/account/terms` | Required, terms not required | `{ version, confirmAge: true }` | `{ ok: true, version }` |
 | `GET` | `/api/account/export` | Required, terms not required | None | JSON attachment `beamling-export-<date>.json` |

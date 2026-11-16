@@ -232,6 +232,8 @@ export const sources = pgTable(
     domain: text("domain"),
     snippet: text("snippet"),
     publishedAt: timestamp("published_at", { withTimezone: true }),
+    // The search result's picture URL, encrypted; the image route fetches it for the owner.
+    imageUrl: text("image_url"),
   },
   (table) => [uniqueIndex("sources_message_position_idx").on(table.messageId, table.position)],
 );

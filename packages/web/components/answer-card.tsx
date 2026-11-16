@@ -5,6 +5,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, type ReactNode } from "r
 import type { BeamlingHandle } from "@beamling/mascot/react";
 import { describeAnswerError } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
+import { imageReferencesAsLinks } from "@/lib/visuals";
 import { useToast } from "@/lib/hooks/use-toast";
 import { llmModelName, modelInfo, providerInfo, searchProviderName } from "@/lib/provider-catalog";
 import type { ThreadMessage } from "@/lib/store";
@@ -162,7 +163,7 @@ export const AnswerCard = memo(function AnswerCard({ message, onCitation, onOpen
   const timedOut = message.status === "stopped" && message.errorCode === "GENERATION_TIMEOUT";
 
   const copy = async () => {
-    const copied = await copyText(message.content);
+    const copied = await copyText(imageReferencesAsLinks(message.content, sources ?? []));
     showToast(copied ? "Answer copied" : "Could not copy");
   };
 

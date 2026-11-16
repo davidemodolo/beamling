@@ -8,7 +8,12 @@ export const VISUAL_LIMITS = {
   perAnswer: 4,
   chartRows: 200,
   chartSeries: 6,
+  /** Pictures from the sources shown per answer; later ones are shown as their caption. */
+  imagesPerAnswer: 2,
 } as const;
+
+/** `![Caption](source:N)`: the picture of source N. The only image form answers can show. */
+export const IMAGE_REFERENCE = /!\[([^\]\n]{0,200})\]\(\s*source:(\d{1,3})\s*\)/g;
 
 /** The block language from an opening fence line such as "```ts title" ("" when none). */
 export function fenceLanguage(line: string): string {
@@ -95,6 +100,18 @@ export interface DocumentSource {
   position: number;
   title: string;
   url: string;
+  /** Set on stored and streamed sources; pictures load by source id. */
+  id?: string;
+  hasImage?: boolean;
+}
+
+/** Markdown with each picture reference replaced by a link to its source, for copies and downloads. */
+export function imageReferencesAsLinks(markdown: string, sources: readonly DocumentSource[]): string {
+  return markdown.replace(IMAGE_REFERENCE, (_match, caption: string, raw: string) => {
+    const source = sources.find((item) => item.position === Number(raw));
+    const label = caption.replace(/[[\]]/g, "").trim() || source?.title || "Picture";
+    return source ? `[${label}](<${source.url}>)` : label;
+  });
 }
 
 /** The document text without a first "# heading" that only repeats its title. */
@@ -121,7 +138,7 @@ export function citedPositions(markdown: string, sources: readonly DocumentSourc
  * definitions keep each [n] in the text a working link in any Markdown viewer.
  */
 export function documentMarkdown(doc: { title: string; markdown: string }, sources: readonly DocumentSource[]): string {
-  const body = documentBody(doc.title, doc.markdown);
+  const body = imageReferencesAsLinks(documentBody(doc.title, doc.markdown), sources);
   const cited = citedPositions(body, sources);
   const parts = [`# ${doc.title}`, body];
   if (cited.length) {
