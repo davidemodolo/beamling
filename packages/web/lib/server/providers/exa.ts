@@ -16,6 +16,7 @@ interface ExaResponse {
     url?: string;
     publishedDate?: string;
     highlights?: string[];
+    image?: string;
   }[];
   costDollars?: number;
 }
@@ -71,6 +72,7 @@ export async function searchExa(key: string, query: string, options: SearchOptio
       title: item.title,
       snippet: (item.highlights ?? []).join(" "),
       publishedAt: item.publishedDate,
+      image: item.image,
     })),
   );
 }

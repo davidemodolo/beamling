@@ -9,7 +9,7 @@ Implemented: KMS-backed envelope encryption, hashed session tokens, `APP_URL`-an
 | Secrets in logs | Credential compromise | Key/body redaction, allowlist logging, tests |
 | Analytics metadata leak | Usage patterns exposed | Server-side allowlist, HMAC IDs, no content/keys/error text, IP/GeoIP off, EU PostHog + DPA |
 | Database, backup or replica compromise | Content and credentials exposed | Per-workspace content encryption ([Workspace data encryption](keys.md#workspace-data-encryption-public-launch-target)), per-credential encryption ([Scheme](keys.md#scheme)); master key in KMS/env, not the database. Only minimized metadata is readable. |
-| SSRF via fetched pages (post-alpha) | Internal network access | No fetching in Alpha 1; later: rules below |
+| SSRF via fetched pages and source pictures | Internal network access | No page fetching in Alpha 1; source pictures and later pages follow the rules below |
 | Prompt injection in snippets | Manipulated answers | Delimited `<source>` blocks, instruction hierarchy, no tools from content, regression set |
 | XSS in model output | Session theft | Sanitized markdown, no raw HTML, link scheme allowlist |
 | CSRF | Unwanted actions | SameSite cookies, `APP_URL`-anchored origin checks |
@@ -20,7 +20,7 @@ Implemented: KMS-backed envelope encryption, hashed session tokens, `APP_URL`-an
 
 ## SSRF rules for page fetching
 
-Alpha 1 does not fetch pages. If a future adapter does:
+Alpha 1 does not fetch pages. It fetches only the pictures of an answer's sources, by source id, under narrower rules: `https` on port 443 only, 8 s, 2 MB, raster image types checked by signature (never SVG), nothing stored. A future page adapter follows:
 
 - `http`/`https` only.
 - Reject private, loopback, link-local, multicast, reserved ranges and `169.254.169.254` (and IPv6 equivalents).

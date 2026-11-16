@@ -799,3 +799,48 @@ test("answers draw code with a copy button, charts, diagrams and a document in a
   expect(serious.map((violation) => `${violation.id}: ${violation.nodes.map((node) => node.target.join(" ")).join(", ")}`)).toEqual([]);
   expect(problems).toEqual([]);
 });
+
+test("answers show source pictures through Beamling, hide failed ones and keep them after reload", async ({ page, playwright, baseURL }) => {
+  const problems = watchConsole(page);
+  await connectKeys(page.request);
+  await page.goto("/");
+  await ask(page, "Show pictures [fixture:images]");
+  const answer = answers(page).last();
+  await expect(answer.locator(".answer-footer")).toBeVisible({ timeout: 20_000 });
+
+  // The first picture loads from the route; the second fails and is hidden entirely.
+  const picture = answer.locator(".answer-image img");
+  await expect(picture).toHaveCount(1);
+  await expect(picture).toHaveAttribute("src", /^\/api\/sources\/[0-9a-f-]{36}\/image$/);
+  await expect.poll(() => picture.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+  await expect(answer.locator(".answer-image-caption")).toContainText("Fixture picture");
+  await expect(answer.getByText("Missing picture")).toHaveCount(0);
+
+  await answer.getByRole("button", { name: "Enlarge picture: Fixture picture" }).click();
+  const dialog = page.getByRole("dialog", { name: "Fixture picture" });
+  await expect(dialog.getByRole("link", { name: "Open source page" })).toHaveAttribute("href", "https://example.org/beamling-overview");
+  await dialog.getByRole("button", { name: "Close" }).click();
+
+  // The route serves only the owner's sources that have a picture.
+  const src = (await picture.getAttribute("src"))!;
+  const served = await page.request.get(src);
+  expect(served.status()).toBe(200);
+  expect(served.headers()["content-type"]).toBe("image/png");
+  expect(served.headers()["cache-control"]).toBe("private, max-age=604800, immutable");
+  expect(served.headers()["content-security-policy"]).toBe("default-src 'none'; frame-ancestors 'none'");
+  const id = page.url().split("/").at(-1)!;
+  const conversation = (await (await page.request.get(`/api/conversations/${id}`)).json()).conversation;
+  const sources = conversation.messages.at(-1).sources as { id: string; position: number; hasImage?: boolean; imageUrl?: string }[];
+  expect(sources.every((source) => source.imageUrl === undefined)).toBe(true);
+  const plain = sources.find((source) => !source.hasImage)!;
+  expect((await page.request.get(`/api/sources/${plain.id}/image`)).status()).toBe(404);
+  const other = await playwright.request.newContext({ baseURL });
+  expect((await other.get(src)).status()).toBe(401);
+  await signIn(other);
+  expect((await other.get(src)).status()).toBe(404);
+  await other.dispose();
+
+  await page.reload();
+  await expect(answers(page).last().locator(".answer-image img")).toHaveCount(1);
+  expect(problems).toEqual([]);
+});

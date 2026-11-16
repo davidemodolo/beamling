@@ -17,6 +17,7 @@ interface TavilyResponse {
     content?: string;
     published_date?: string;
     score?: number;
+    images?: (string | { url?: string })[];
   }[];
   usage?: { credits?: number };
 }
@@ -46,7 +47,7 @@ async function requestSearch(key: string, query: string, options: SearchOptions)
     search_depth: "basic",
     include_answer: false,
     include_raw_content: false,
-    include_images: false,
+    include_images: true,
     include_usage: true,
     include_published_date: true,
     safe_search: true,
@@ -92,6 +93,12 @@ export async function validateTavilyKey(key: string): Promise<void> {
   if (typeof usage === "number" && typeof limit === "number" && usage >= limit) throw tavilyError(433);
 }
 
+/** The result's first picture; Tavily gives a URL string, or an object when descriptions are on. */
+function tavilyImage(images: unknown): unknown {
+  const first: unknown = Array.isArray(images) ? images[0] : undefined;
+  return first && typeof first === "object" ? (first as { url?: unknown }).url : first;
+}
+
 export async function searchTavily(key: string, query: string, options: SearchOptions): Promise<RetrievedSource[]> {
   const response = await requestSearch(key, query, options);
   if (!response.ok) throw await readError(response);
@@ -102,6 +109,7 @@ export async function searchTavily(key: string, query: string, options: SearchOp
       title: item.title,
       snippet: item.content,
       publishedAt: item.published_date,
+      image: tavilyImage(item.images),
     })),
   );
 }

@@ -6,7 +6,7 @@ import type { Conversation, ConversationPage, ConversationSummary, Message, Mode
 import { db } from "../db";
 import { ApiError, isUuid } from "../http";
 import { conversations, messages, sources } from "../schema";
-import { encryptText } from "../workspace-key";
+import { decryptText, encryptText } from "../workspace-key";
 import { groupBy, mapMessage, mapSummary, type ConversationRow, type MessageRow } from "./shared";
 
 /** Opaque keyset cursor over (pinned, updated_at, id). */
@@ -281,4 +281,17 @@ export async function exportConversations(userId: string): Promise<(Conversation
       messages: (byConversation.get(row.id) ?? []).map((item) => item.message),
     })),
   );
+}
+
+/** The picture URL of one of the account's sources, decrypted; null when there is none. */
+export async function getSourceImageUrl(userId: string, sourceId: string): Promise<string | null> {
+  if (!isUuid(sourceId)) return null;
+  const [row] = await db
+    .select({ imageUrl: sources.imageUrl })
+    .from(sources)
+    .innerJoin(messages, eq(messages.id, sources.messageId))
+    .where(and(eq(sources.id, sourceId), eq(messages.userId, userId)))
+    .limit(1);
+  if (!row?.imageUrl) return null;
+  return decryptText(userId, "sources", sourceId, "image_url", row.imageUrl);
 }

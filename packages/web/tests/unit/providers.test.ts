@@ -466,3 +466,36 @@ test("DeepSeek models stream through the shared layer, thinking only for the ans
   await streamChat({ provider: "deepseek", adapter: deepSeekModels, purpose: "answer", key: "sk-ds", apiModel: "deepseek-flash", messages: [{ role: "user", content: "hi" }], maxTokens: 5 });
   assert.deepEqual(requests[1].thinking, { type: "enabled" });
 });
+
+test("each search adapter keeps the result picture as an https URL, never an unsafe one", async (t) => {
+  mockFetch(t, (url) => {
+    if (url.includes("brave")) {
+      return jsonResponse({
+        web: {
+          results: [
+            { title: "A", url: "https://example.org/a", description: "Snippet.", thumbnail: { src: "https://imgs.example.org/a.jpg" } },
+            { title: "B", url: "https://example.org/b", description: "Snippet.", thumbnail: { src: "http://imgs.example.org/b.jpg" } },
+            { title: "C", url: "https://example.org/c", description: "Snippet.", thumbnail: { src: "javascript:alert(1)" } },
+            { title: "D", url: "https://example.org/d", description: "Snippet.", thumbnail: { src: "https://imgs.example.org:8443/d.jpg" } },
+          ],
+        },
+      });
+    }
+    if (url.includes("tavily")) {
+      return jsonResponse({
+        results: [
+          { title: "T", url: "https://example.org/t", content: "Snippet.", images: ["https://imgs.example.org/t.png"] },
+          { title: "U", url: "https://example.org/u", content: "Snippet.", images: [{ url: "https://imgs.example.org/u.png" }] },
+        ],
+      });
+    }
+    return jsonResponse({ results: [{ title: "E", url: "https://example.org/e", highlights: ["Snippet."], image: "https://imgs.example.org/e.webp" }] });
+  });
+  const brave = await searchBrave("BSA-image-unique", "q", { count: 4 });
+  assert.deepEqual(brave.map((source) => source.imageUrl), ["https://imgs.example.org/a.jpg", undefined, undefined, undefined]);
+  assert.equal(brave.length, 4, "a bad picture drops the picture, not the source");
+  const tavily = await searchTavily("tvly-image-unique", "q", { count: 2 });
+  assert.deepEqual(tavily.map((source) => source.imageUrl), ["https://imgs.example.org/t.png", "https://imgs.example.org/u.png"]);
+  const exa = await searchExa("exa-image-unique", "q", { count: 1 });
+  assert.equal(exa[0].imageUrl, "https://imgs.example.org/e.webp");
+});

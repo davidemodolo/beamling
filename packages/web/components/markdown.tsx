@@ -4,6 +4,7 @@ import { memo, useMemo, type MouseEvent, type ReactNode } from "react";
 import { parseInline, parseMarkdown, type Block, type Inline } from "@/lib/markdown";
 import { isSafeHttpUrl } from "@/lib/url";
 import { VISUAL_LIMITS, parseChart, type DocumentSource } from "@/lib/visuals";
+import { AnswerImage } from "./visuals/answer-image";
 import { ChartBlock } from "./visuals/chart-block";
 import { CodeBlock } from "./visuals/code-block";
 import { DocumentCard } from "./visuals/document";
@@ -31,9 +32,12 @@ interface RenderContext {
   documentKey?: string;
   sources?: readonly DocumentSource[];
   sourceAt?: ReadonlyMap<number, DocumentSource>;
+  /** Sources by position, for pictures. */
+  imageAt: ReadonlyMap<number, DocumentSource>;
   /** The text is still arriving: an unclosed fence or document may be completed later. */
   streaming: boolean;
   visuals: number;
+  images: number;
   documents: number;
 }
 
@@ -89,6 +93,33 @@ function citation(position: number, key: string, ctx: RenderContext): ReactNode 
   );
 }
 
+/**
+ * A source's picture. Its caption alone when the source has no picture or the answer already shows
+ * VISUAL_LIMITS.imagesPerAnswer; a placeholder while streaming, since the route serves stored sources only.
+ */
+function answerImage(alt: string, position: number, key: string, ctx: RenderContext): ReactNode {
+  const source = ctx.imageAt.get(position);
+  if (!source?.hasImage || !source.id || ctx.images >= VISUAL_LIMITS.imagesPerAnswer) return alt;
+  ctx.images++;
+  if (ctx.streaming) {
+    return (
+      <span key={key} className="answer-image answer-image-pending">
+        Loading picture…
+      </span>
+    );
+  }
+  return (
+    <AnswerImage
+      key={key}
+      sourceId={source.id}
+      caption={alt}
+      sourceTitle={source.title}
+      sourceUrl={source.url}
+      cite={citation(position, `${key}-c`, ctx)}
+    />
+  );
+}
+
 function renderInline(nodes: Inline[], key: string, ctx: RenderContext): ReactNode[] {
   return nodes.map((node, index) => {
     const k = `${key}-${index}`;
@@ -115,6 +146,8 @@ function renderInline(nodes: Inline[], key: string, ctx: RenderContext): ReactNo
           </a>
         );
       }
+      case "image":
+        return answerImage(node.alt, node.position, k, ctx);
       case "cite": {
         const parts = node.positions.map((position, n) => citation(position, `${k}-${n}`, ctx));
         // Not a source we know about: keep the text rather than silently dropping it.
@@ -136,8 +169,18 @@ function renderBlocks(blocks: Block[], key: string, ctx: RenderContext): ReactNo
         const Tag = `h${block.level}` as "h2";
         return <Tag key={k}>{inline(block.text, k, ctx)}</Tag>;
       }
-      case "paragraph":
-        return <p key={k}>{inline(block.text, k, ctx)}</p>;
+      case "paragraph": {
+        const nodes = parseInline(block.text);
+        // A paragraph of pictures only is laid out as a block, not as a line of text.
+        const pictures = nodes.some((node) => node.type === "image") && nodes.every((node) => node.type === "image" || node.type === "break" || (node.type === "text" && !node.value.trim()));
+        return pictures ? (
+          <div key={k} className="answer-images">
+            {renderInline(nodes, k, ctx)}
+          </div>
+        ) : (
+          <p key={k}>{renderInline(nodes, k, ctx)}</p>
+        );
+      }
       case "hr":
         return <hr key={k} />;
       case "code":
@@ -233,7 +276,9 @@ export const Markdown = memo(function Markdown({
         sources,
         sourceAt: linkCitations ? new Map((sources ?? []).map((source) => [source.position, source])) : undefined,
         streaming: !!streaming,
+        imageAt: new Map((sources ?? []).map((source) => [source.position, source])),
         visuals: 0,
+        images: 0,
         documents: 0,
       }),
     [tree, citations, allowed, allowedLinks, documentKey, sources, linkCitations, streaming],

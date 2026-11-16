@@ -177,10 +177,12 @@ Snippet text, capped at 2,200 characters.
 </source>
 ```
 
+A source whose result has a picture gets ` image="yes"`; the picture's URL is never in the prompt.
+
 - `<source` / `</source` removed from snippets; attributes escape `&`, `"`, `<`, `>`.
 - Only provider snippets are sent, labeled untrusted data.
 
-History: last six messages (`HISTORY_MESSAGES`), first 1,200 chars each, with image markers, citation markers stripped (except in code and URLs) so old numbers cannot collide.
+History: last six messages (`HISTORY_MESSAGES`), first 1,200 chars each, with image markers, picture references reduced to their caption, citation markers stripped (except in code and URLs) so old numbers cannot collide.
 
 Prompt families:
 
@@ -199,6 +201,8 @@ The three writer prompts end with the same visuals rules (`VISUAL_RULES`):
 - A diagram as a fenced ` ```mermaid ` block (flowchart, sequence, timeline, mindmap), short plain labels, no links or styling.
 - At most 2 visuals, only when clearer than text.
 - Only when the user asks for a document: one sentence, then the document between `<document title="...">` and `</document>` lines. Inside: `##`/`###` headings, lists and tables, no repeated title, `[n]` citations and no sources list (the browser appends the cited sources). Same grounding rules; it may exceed the length target.
+
+When at least one source has a picture, one more rule: for a question about how something looks, the picture of a source about exactly that thing may go on its own line as `![Short caption](source:N)`, at most 2 per answer, never a URL and never a description (the model has not seen it).
 
 These are plain text in the stored answer; nothing extra is stored or sent. The browser draws them ([Visuals and documents](browser.md#visuals-and-documents)).
 

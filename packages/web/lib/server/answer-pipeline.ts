@@ -8,6 +8,7 @@ import { log } from "./log";
 import { NO_SOURCES_ANSWER } from "./prompts";
 import {
   newRunState,
+  publicSources,
   RESEARCH_SHARE,
   TIMEOUT_MS,
   updateTrace,
@@ -172,7 +173,7 @@ export async function runChat(
         ? `Research time is up · reading ${plural(state.sources.length, "source")}`
         : `Reading ${plural(state.sources.length, "source")}`,
     });
-    emit("sources", state.sources);
+    emit("sources", publicSources(state.sources));
     if (state.sources.length) await finishWithAnswer(ctx, state, recorder, queries);
     else await finishWithoutSources(ctx, state, recorder);
   } catch (error) {

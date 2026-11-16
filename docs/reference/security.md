@@ -37,8 +37,21 @@ frame-ancestors 'none'
 - Route ids must be UUIDs; Drizzle parameterizes queries.
 - Control characters stripped from questions and stored text; NUL removed from provider output.
 - Markdown uses a custom React renderer; raw HTML is never parsed. Code highlighting builds React nodes from a token tree. Charts are validated JSON drawn by React. Mermaid diagrams run in strict mode without HTML labels, and their SVG is sanitized with DOMPurify before insertion; the CSP's `img-src` blocks remote URLs in diagram styles ([Visuals and documents](browser.md#visuals-and-documents)).
+- Images in answers: only pictures of the answer's own sources, through Beamling ([Source pictures](#source-pictures)); the CSP is unchanged.
 - Links: `http:`/`https:` only, no embedded credentials. Source URLs are checked before display and prompting.
 - Snippets are sanitized for the prompt ([Prompt construction](answer-pipeline.md#prompt-construction)); planner output is data only.
+
+## Source pictures
+
+`GET /api/sources/:id/image` (`app/api/sources/[id]/image/route.ts`) is the only place the server fetches a URL that did not come from a provider API. It takes a source id, not a URL, so it is not an open proxy:
+
+- The source must belong to the signed-in account; its `image_url` is decrypted for the request.
+- `lib/server/safe-fetch.ts`: `https:` on port 443 only, no credentials in the URL, no `localhost`/`.internal` names. DNS is resolved by the request's own lookup and every address must be public (private, loopback, link-local, metadata, CGNAT, multicast, reserved and documentation ranges refused, IPv4-mapped and NAT64 IPv6 included), so the connection uses the checked address. At most 3 redirects, each checked again; 8 seconds in total; only `Accept` and a generic `User-Agent` are sent, no cookies or referrer.
+- The body must be at most 2 MB (`Content-Length` and a running count) and start with a JPEG, PNG, WebP, GIF or AVIF signature; SVG, HTML and XML are refused. The served type is the sniffed one.
+- Nothing is stored or logged: no URL, no bytes. Failures answer `IMAGE_UNAVAILABLE` without upstream detail.
+- Response headers: `Cache-Control: private, max-age=604800, immutable`, the API CSP (`default-src 'none'; frame-ancestors 'none'`), `Cross-Origin-Resource-Policy: same-origin`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`.
+- Limits: 120 pictures per account per hour (`images:<userId>`), on top of the read limit; at most 4 picture fetches in flight per instance.
+- With fixture providers the route serves the fixture picture from memory and fetches nothing.
 
 ## Provider-key handling
 

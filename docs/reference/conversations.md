@@ -46,7 +46,8 @@ messages
 
 sources
   id, message_id → messages, position,
-  url, title, domain, snippet, published_at
+  url, title, domain, snippet, published_at,
+  image_url (the result's picture, encrypted; never sent to the browser)
 
 rate_limits
   key (primary key), window_start, count, expires_at

@@ -286,7 +286,8 @@ export interface AssistantOutcome {
   messageId: string;
   content: string;
   status: "complete" | "stopped" | "error";
-  sources?: Source[];
+  /** With the picture's URL when the result had one; it is stored encrypted, never sent back. */
+  sources?: (Source & { imageUrl?: string })[];
   usage?: Usage;
   uncited?: boolean;
   noSources?: boolean;
@@ -322,7 +323,8 @@ export async function completeAssistant(input: AssistantOutcome): Promise<boolea
     : null;
   const encryptedSources = await Promise.all(
     (input.sources ?? []).map(async (source) => {
-      const id = randomUUID();
+      // The id the stream already sent, so the browser can load the picture once the answer is stored.
+      const id = source.id || randomUUID();
       return {
         id,
         messageId: input.messageId,
@@ -334,6 +336,7 @@ export async function completeAssistant(input: AssistantOutcome): Promise<boolea
           ? await encryptText(input.userId, "sources", id, "snippet", storableText(source.snippet).slice(0, SOURCE_SNIPPET_CHARS))
           : null,
         publishedAt: parseDate(source.publishedAt),
+        imageUrl: source.imageUrl ? await encryptText(input.userId, "sources", id, "image_url", storableText(source.imageUrl)) : null,
       };
     }),
   );

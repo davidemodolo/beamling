@@ -21,6 +21,7 @@ interface BraveWebResponse {
       url?: string;
       description?: string;
       age?: string;
+      thumbnail?: { src?: string };
     }[];
   };
 }
@@ -109,6 +110,7 @@ export async function searchBrave(
       title: item.title,
       snippet: item.description,
       publishedAt: item.age,
+      image: item.thumbnail?.src,
     })),
   );
 }

@@ -50,6 +50,8 @@ Error codes are stable strings. The UI maps each to a title, message and action.
 | `SERVICE_CLOSED` | Sign-in after the shutdown date; redirects to `/login?error=service_closed` | 403 |
 | `MAIL_NOT_CONFIGURED` | Shutdown with `notify: true` but no `SMTP_URL`/`MAIL_FROM` | 409 |
 | `NOT_FOUND` / `CONVERSATION_NOT_FOUND` / `MESSAGE_NOT_FOUND` | Missing or not owned; internal endpoint without its secret configured | 404 |
+| `IMAGE_NOT_FOUND` | Source picture: the source is missing, not owned, or has no picture | 404 |
+| `IMAGE_UNAVAILABLE` | Source picture: the host refused, failed the fetch rules, or sent something that is not a raster image | 502 |
 | `UNAUTHORIZED` | Internal endpoint with a wrong bearer secret | 401 |
 | `INTERNAL` | Unhandled error | 500 |
 | `INTERRUPTED` | Stored on an abandoned stream | Not returned |

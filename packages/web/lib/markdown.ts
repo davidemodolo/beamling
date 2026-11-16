@@ -12,6 +12,8 @@ export type Inline =
   | { type: "strong" | "em" | "del"; children: Inline[] }
   | { type: "link"; href: string; children: Inline[] }
   | { type: "cite"; positions: number[]; raw: string }
+  /** `![alt](source:N)`: the picture of source N. */
+  | { type: "image"; alt: string; position: number }
   | { type: "break" };
 
 export type Align = "left" | "center" | "right";
@@ -284,6 +286,9 @@ const INLINE = new RegExp(
   [
     String.raw`\\(?<esc>[!-/:-@[-\x60{-~])`,
     String.raw`\x60(?<code>[^\x60\n]+)\x60`,
+    String.raw`!\[(?<imgAlt>[^\]\n]{0,200})\]\(\s*source:(?<imgPos>\d{1,3})\s*\)`,
+    // Any other image: only its alt text. Answers never load a URL the model wrote.
+    String.raw`!\[(?<otherAlt>[^\]\n]{0,200})\]\([^)\n]*\)`,
     String.raw`\*\*\*(?<strongEm>\S(?:[\s\S]*?\S)?)\*\*\*`,
     String.raw`\*\*(?<strong>\S(?:[\s\S]*?\S)?)\*\*`,
     String.raw`(?<!${WORD})__(?<strong2>\S(?:[\s\S]*?\S)?)__(?!${WORD})`,
@@ -314,6 +319,8 @@ export function parseInline(text: string): Inline[] {
     const g = match.groups!;
     if (g.esc !== undefined) pushText(g.esc);
     else if (g.code !== undefined) nodes.push({ type: "code", value: g.code });
+    else if (g.imgAlt !== undefined) nodes.push({ type: "image", alt: g.imgAlt.trim(), position: Number(g.imgPos) });
+    else if (g.otherAlt !== undefined) pushText(g.otherAlt);
     else if (g.strongEm !== undefined) nodes.push({ type: "strong", children: [{ type: "em", children: parseInline(g.strongEm) }] });
     else if (g.strong !== undefined || g.strong2 !== undefined) nodes.push({ type: "strong", children: parseInline(g.strong ?? g.strong2) });
     else if (g.del !== undefined) nodes.push({ type: "del", children: parseInline(g.del) });

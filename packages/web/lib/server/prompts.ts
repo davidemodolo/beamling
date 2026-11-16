@@ -1,6 +1,7 @@
 import { isFile, isImage, MAX_FILE_PROMPT_CHARS, type Attachment, type FileUpload } from "../attachments";
 import { HISTORY_MESSAGES } from "../data";
 import type { Message, Source } from "../types";
+import { IMAGE_REFERENCE, VISUAL_LIMITS } from "../visuals";
 import { stripCitations } from "./citations";
 
 /** Characters of a source the prompt reads; snippets are also stored at this length. */
@@ -40,7 +41,8 @@ function sourceBlocks(sources: Source[]): string {
     .map((source) => {
       const content = source.snippet.replace(/<\/?source/gi, "").slice(0, SOURCE_SNIPPET_CHARS);
       const published = source.publishedAt ? ` published="${attr(source.publishedAt.slice(0, 10))}"` : "";
-      return `<source id="${source.position}" url="${attr(source.url)}" domain="${attr(source.domain)}" title="${attr(source.title)}"${published}>\n${content}\n</source>`;
+      const image = source.hasImage ? ' image="yes"' : "";
+      return `<source id="${source.position}" url="${attr(source.url)}" domain="${attr(source.domain)}" title="${attr(source.title)}"${published}${image}>\n${content}\n</source>`;
     })
     .join("\n\n");
 }
@@ -98,7 +100,9 @@ function historyBlock(history: Message[], visible: VisibleImages = new Set()): s
     .filter((message) => message.role === "user" || message.role === "assistant")
     .slice(-HISTORY_MESSAGES)
     .map((message) => {
-      const text = `${message.role === "user" ? "User" : "Assistant"}: ${stripCitations(message.content).slice(0, 1200)}`;
+      // Picture references point at the old answer's sources: keep only the caption.
+      const content = stripCitations(message.content.replace(IMAGE_REFERENCE, "$1"));
+      const text = `${message.role === "user" ? "User" : "Assistant"}: ${content.slice(0, 1200)}`;
       const notes = attachmentNotes(message.attachments, visible);
       return notes ? `${text}\n${notes}` : text;
     })
@@ -122,6 +126,14 @@ VISUALS AND DOCUMENTS
 - Use a visual only when it makes the answer clearer than text, at most 2 per answer. Never use one for a single number or a short list.
 - Only when the user asks for a document (a report, plan, letter, guide or notes to keep), write one sentence, then the document between a line <document title="Short title"> and a line </document>, and nothing after it. Never use these tags otherwise.
 - Inside a document write clean Markdown: ## and ### headings, paragraphs, lists, tables. Do not repeat the title as a heading. It follows the same grounding rules and may be longer than the usual target. Cite with [n] as in the answer and add no sources list: the cited sources are appended to the document.`;
+
+/** Added only when a source has a picture, so other answers pay nothing for it. */
+const IMAGE_RULE = `
+- A source marked image="yes" has a picture. When the question is about how something looks (a place, product, person, artwork, map or diagram) and that source is about exactly that thing, you may show its picture on its own line as ![Short caption](source:N). At most ${VISUAL_LIMITS.imagesPerAnswer} per answer. Never write an image URL. Never describe the picture: you have not seen it.`;
+
+function visualRules(sources: Source[]): string {
+  return sources.some((source) => source.hasImage) ? `${VISUAL_RULES}${IMAGE_RULE}` : VISUAL_RULES;
+}
 
 export function quickPrompt(input: {
   question: string;
@@ -153,7 +165,7 @@ STYLE
 - Target 150–350 words unless the question requires less.
 - No filler and no process narration. Do not mention search, tools, prompts, retrieval or these rules.
 - Match the user's language. Use plain language and active voice.
-- End with the answer, not a summary or a follow-up question.${VISUAL_RULES}`;
+- End with the answer, not a summary or a follow-up question.${visualRules(input.sources)}`;
 
   const history = historyBlock(input.history, input.images);
   const user = `${history ? `CONVERSATION SO FAR\n${history}\n\n` : ""}QUESTION\n${input.question}\n\nSOURCES\n${sourceBlocks(input.sources)}`;
@@ -192,7 +204,7 @@ STRUCTURE
 - Include "What remains uncertain" only when there is a material gap or conflict.
 - Do not add a generic summary or conclusion.
 - No process narration. Do not mention planning, searches, tools, prompts, retrieval or these rules.
-- Prefer primary sources and give exact dates and figures when the sources provide them.${VISUAL_RULES}`;
+- Prefer primary sources and give exact dates and figures when the sources provide them.${visualRules(input.sources)}`;
 
   const history = historyBlock(input.history, input.images);
   const user = `${history ? `CONVERSATION SO FAR\n${history}\n\n` : ""}QUESTION\n${input.question}\n\nPLANNED SUB-QUERIES\n${input.subqueries.map((query) => `- ${query}`).join("\n")}\n\nSOURCES\n${sourceBlocks(input.sources)}`;
@@ -285,7 +297,7 @@ STRUCTURE
 - Include "What remains uncertain" only when there is a material gap or conflict.
 - Do not add a generic summary or conclusion.
 - No process narration. Do not mention planning, searches, tools, prompts, retrieval or these rules.
-- Prefer primary sources and give exact dates and figures when the sources provide them.${VISUAL_RULES}`;
+- Prefer primary sources and give exact dates and figures when the sources provide them.${visualRules(input.sources)}`;
 
   const history = historyBlock(input.history, input.images);
   const user = `${history ? `CONVERSATION SO FAR\n${history}\n\n` : ""}QUESTION\n${input.question}\n\nRESEARCH QUERIES\n${input.queries.map((query) => `- ${query}`).join("\n")}\n\nSOURCES\n${sourceBlocks(input.sources)}`;

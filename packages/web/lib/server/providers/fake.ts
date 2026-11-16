@@ -12,6 +12,21 @@ const FAILING_QUERY = "fixture failing search";
 const SLOW_SEARCH = "[fixture:slow-search]";
 const HANGING_QUERY = "fixture hanging search";
 const VISUALS = "[fixture:visuals]";
+const IMAGES = "[fixture:images]";
+
+/** Fixture pictures: the first source's loads, the second's fails. */
+const FIXTURE_IMAGE_URL = "https://example.org/beamling-overview.png";
+const BROKEN_IMAGE_URL = "https://example.net/beamling-missing.png";
+const FIXTURE_PNG =
+  "iVBORw0KGgoAAAANSUhEUgAAAGAAAAA8CAIAAAAWtijjAAAAhElEQVR42u3ZMQ0AIAwEwDrCAJ6wiRccMCGhLF3gkp8/6W2fxp49TRsrzas9AQgQIECAAAECBAgQIEAFQD8ff9MDCBAgQIAAAQIECBAgQBVAxqo1DwgQIECAAAECBAgQIH8xax4QIECAAAECBAgQIED+YsYqIECAAAECBAgQIECAABX0HOv7sQpaW806AAAAAElFTkSuQmCC";
+
+/** The bytes of a fixture picture, or null for any other URL (the route then fails as for a broken host). */
+export function fakeImage(url: string): Uint8Array | null {
+  return url === FIXTURE_IMAGE_URL ? Uint8Array.from(Buffer.from(FIXTURE_PNG, "base64")) : null;
+}
+
+/** Appended with [fixture:images]: a picture that loads and one that fails. */
+const IMAGES_CONTENT = "\n\n![Fixture picture](source:1)\n\nA closing line after the pictures [1].\n\n![Missing picture](source:2)";
 
 /** Appended with [fixture:visuals]: a code block, a chart, a diagram, a broken chart and a document. */
 const VISUALS_CONTENT = [
@@ -83,13 +98,14 @@ export async function fakeSearch(provider: SearchProvider, query: string, count:
     throw new ApiError("PROVIDER_UNAVAILABLE", `${providerName(provider)} is temporarily unavailable.`, 502, provider);
   }
   if (/\bno sources\b/i.test(query)) return [];
-  const base = [
+  const base: RetrievedSource[] = [
     {
       title: `${query}: overview`,
       url: "https://example.org/beamling-overview",
       domain: "example.org",
       snippet: `A concise overview of ${query}. This fixture source is used when BEAMLING_FAKE_PROVIDERS=1.`,
       publishedAt: "2026-10-01T00:00:00.000Z",
+      imageUrl: FIXTURE_IMAGE_URL,
     },
     {
       title: `${query}: recent developments`,
@@ -97,6 +113,7 @@ export async function fakeSearch(provider: SearchProvider, query: string, count:
       domain: "example.net",
       snippet: `Recent reporting about ${query}, including dates and figures for end-to-end testing.`,
       publishedAt: "2026-10-10T00:00:00.000Z",
+      imageUrl: BROKEN_IMAGE_URL,
     },
     {
       title: `${query}: limitations`,
@@ -169,6 +186,7 @@ export async function fakeChat(options: {
     (images ? `The model saw ${images === 1 ? "1 image" : `${images} images`}. ` : "") +
     (files ? `The model saw ${files === 1 ? "1 file" : `${files} files`}. ` : "") +
     "This is a fixture answer for local testing. It demonstrates the streaming pipeline, source numbering and citations [1]. The second source adds a recent development [2], while the third records a limitation [3].\n\n| Source | Finding |\n| --- | --- |\n| Overview | Fixture baseline |\n| Recent | Newer detail |" +
+    (question.includes(IMAGES) ? IMAGES_CONTENT : "") +
     (question.includes(VISUALS) ? `\n${VISUALS_CONTENT}` : "");
   for (const word of content.split(" ")) {
     aborted(options.signal);

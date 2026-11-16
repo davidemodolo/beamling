@@ -10,16 +10,13 @@ import {
   type ImageUpload,
 } from "../attachments";
 import { cleanText } from "./http";
+import { IMAGE_SIGNATURES } from "./image-type";
 
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 export const MAX_BASE64_CHARS = Math.ceil(MAX_IMAGE_BYTES / 3) * 4;
 
 /** File signatures: the declared type must match the bytes, so nothing else reaches a model. */
-const SIGNATURES: Record<ImageMediaType, (bytes: Buffer) => boolean> = {
-  "image/jpeg": (bytes) => bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff,
-  "image/png": (bytes) => bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
-  "image/webp": (bytes) => bytes.toString("latin1", 0, 4) === "RIFF" && bytes.toString("latin1", 8, 12) === "WEBP",
-};
+const SIGNATURES: Record<ImageMediaType, (bytes: Buffer) => boolean> = IMAGE_SIGNATURES;
 
 /** An image in a chat request: a known type, at most MAX_IMAGE_BYTES, and bytes that match the type. */
 export const imageUpload: z.ZodType<ImageUpload> = z
