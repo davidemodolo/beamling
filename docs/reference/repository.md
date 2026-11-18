@@ -47,16 +47,16 @@
 
 | Item | Version |
 |---|---|
-| Package manager | pnpm 12.18.0; dependency build scripts denied |
-| Web framework | Next.js 16.4.5, App Router |
+| Package manager | pnpm 12.21.0; dependency build scripts denied |
+| Web framework | Next.js 16.4.6, App Router |
 | UI | React 19.3.1; TypeScript 6.0.3 in web (for typescript-eslint), 7.0.2 in mascot |
-| Styling | Tailwind CSS 4.3.4 plus CSS in `app/styles` |
+| Styling | Tailwind CSS 4.3.5 plus CSS in `app/styles` |
 | Database | PostgreSQL 18; Drizzle ORM 0.45.4, `pg` 8.23.1 |
 | Validation | Zod 4.6.7 |
-| Email | Nodemailer 10.3.1 (shutdown notice only) |
-| Model calls | AI SDK 7.0.163 (`streamText`, `ToolLoopAgent`), `@openrouter/ai-sdk-provider` 3.1.0, `@ai-sdk/deepseek` 3.0.80 |
+| Email | Nodemailer 10.6.0 (shutdown notice only) |
+| Model calls | AI SDK 7.0.173 (`streamText`, `ToolLoopAgent`), `@openrouter/ai-sdk-provider` 3.1.0, `@ai-sdk/deepseek` 3.0.87 |
 | Browser SSE | `eventsource-parser` 4.1.3 |
-| Tests | Node test runner via `tsx`; Playwright 1.65.0 |
+| Tests | Node test runner via `tsx`; Playwright 1.65.1 |
 | Runtime | Node.js 26 LTS in Docker and CI |
 
 ## Commands

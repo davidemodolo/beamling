@@ -21,3 +21,9 @@ peerDependencyRules:
     eslint-plugin-react>eslint: "10"
     eslint-plugin-jsx-a11y>eslint: "10"
     eslint-plugin-import>eslint: "10"
+# picomatch <=4.0.7 ReDoS (GHSA-fc5q-39xc-vjpf) has no patched release yet. It reaches only dev
+# tooling (eslint, knip, vite, jscpd) with globs from this repository, never the production image.
+# Drop this once picomatch ships a fix.
+auditConfig:
+  ignoreGhsas:
+    - GHSA-fc5q-39xc-vjpf
