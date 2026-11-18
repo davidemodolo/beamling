@@ -90,7 +90,7 @@
     {
       "name": "@aws-sdk/client-kms",
       "versions": [
-        "3.1169.0"
+        "3.1170.0"
       ],
       "license": "Apache-2.0",
       "homepage": "https://github.com/aws/aws-sdk-js-v3/tree/main/clients/client-kms",
@@ -261,7 +261,7 @@
     {
       "name": "@babel/generator",
       "versions": [
-        "7.29.13"
+        "7.29.14"
       ],
       "license": "MIT",
       "homepage": "https://babel.dev/docs/en/next/babel-generator",
@@ -297,7 +297,7 @@
     {
       "name": "@babel/helper-module-transforms",
       "versions": [
-        "7.29.13"
+        "7.29.14"
       ],
       "license": "MIT",
       "homepage": "https://babel.dev/docs/en/next/babel-helper-module-transforms",
@@ -306,7 +306,7 @@
     {
       "name": "@babel/helper-string-parser",
       "versions": [
-        "7.29.13"
+        "7.29.14"
       ],
       "license": "MIT",
       "homepage": "https://babel.dev/docs/en/next/babel-helper-string-parser",
@@ -333,7 +333,7 @@
     {
       "name": "@babel/helpers",
       "versions": [
-        "7.29.13"
+        "7.29.14"
       ],
       "license": "MIT",
       "homepage": "https://babel.dev/docs/en/next/babel-helpers",
@@ -342,7 +342,7 @@
     {
       "name": "@babel/parser",
       "versions": [
-        "7.29.13"
+        "7.29.14"
       ],
       "license": "MIT",
       "homepage": "https://babel.dev/docs/en/next/babel-parser",
@@ -360,7 +360,7 @@
     {
       "name": "@babel/traverse",
       "versions": [
-        "7.29.13"
+        "7.29.14"
       ],
       "license": "MIT",
       "homepage": "https://babel.dev/docs/en/next/babel-traverse",
@@ -369,7 +369,7 @@
     {
       "name": "@babel/types",
       "versions": [
-        "7.29.11"
+        "7.29.14"
       ],
       "license": "MIT",
       "homepage": "https://babel.dev/docs/en/next/babel-types",
@@ -495,7 +495,7 @@
     {
       "name": "@jridgewell/resolve-uri",
       "versions": [
-        "3.1.2"
+        "3.1.3"
       ],
       "license": "MIT",
       "homepage": "https://github.com/jridgewell/resolve-uri#readme",
@@ -540,7 +540,7 @@
     {
       "name": "@next/env",
       "versions": [
-        "16.4.5"
+        "16.4.6"
       ],
       "license": "MIT",
       "homepage": "https://github.com/vercel/next.js#readme",
@@ -549,7 +549,7 @@
     {
       "name": "@next/swc-linux-x64-gnu",
       "versions": [
-        "16.4.5"
+        "16.4.6"
       ],
       "license": "MIT",
       "homepage": "https://github.com/vercel/next.js#readme",
@@ -657,7 +657,7 @@
     {
       "name": "@smithy/core",
       "versions": [
-        "3.40.0"
+        "3.41.0"
       ],
       "license": "Apache-2.0",
       "homepage": "https://github.com/smithy-lang/smithy-typescript/tree/main/packages/core",
@@ -1125,7 +1125,7 @@
     {
       "name": "baseline-browser-mapping",
       "versions": [
-        "2.11.35"
+        "2.11.38"
       ],
       "license": "Apache-2.0",
       "homepage": "https://github.com/web-platform-dx/baseline-browser-mapping#readme",
@@ -1152,7 +1152,7 @@
     {
       "name": "browserslist",
       "versions": [
-        "4.29.5"
+        "4.29.6"
       ],
       "license": "MIT",
       "homepage": "https://github.com/browserslist/browserslist#readme",
@@ -1170,7 +1170,7 @@
     {
       "name": "caniuse-lite",
       "versions": [
-        "1.0.30001822"
+        "1.0.30001826"
       ],
       "license": "CC-BY-4.0",
       "homepage": "https://github.com/browserslist/caniuse-lite#readme",
@@ -1694,7 +1694,7 @@
     {
       "name": "electron-to-chromium",
       "versions": [
-        "1.5.478"
+        "1.5.487"
       ],
       "license": "ISC",
       "homepage": "https://github.com/Kilian/electron-to-chromium#readme",
@@ -1785,7 +1785,7 @@
     {
       "name": "gaxios",
       "versions": [
-        "8.3.2"
+        "8.3.3"
       ],
       "license": "Apache-2.0",
       "homepage": "https://github.com/googleapis/google-cloud-node/tree/main/core/packages/gaxios",
@@ -1821,7 +1821,7 @@
     {
       "name": "google-auth-library",
       "versions": [
-        "11.3.3"
+        "11.3.4"
       ],
       "license": "Apache-2.0",
       "homepage": "https://github.com/googleapis/google-cloud-node/tree/main/core/packages/google-auth-library-nodejs",
@@ -1830,7 +1830,7 @@
     {
       "name": "google-gax",
       "versions": [
-        "6.16.0"
+        "6.17.0"
       ],
       "license": "Apache-2.0",
       "homepage": "https://github.com/googleapis/google-cloud-node/tree/main/core/packages/gax",
@@ -1839,7 +1839,7 @@
     {
       "name": "google-logging-utils",
       "versions": [
-        "2.1.1"
+        "2.2.0"
       ],
       "license": "Apache-2.0",
       "homepage": "https://github.com/googleapis/google-cloud-node/tree/main/core/packages/logging-utils",
@@ -1922,7 +1922,7 @@
     {
       "name": "jose",
       "versions": [
-        "6.2.15"
+        "6.2.17"
       ],
       "license": "MIT",
       "homepage": "https://github.com/panva/jose",
@@ -2103,7 +2103,7 @@
     {
       "name": "next",
       "versions": [
-        "16.4.5"
+        "16.4.6"
       ],
       "license": "MIT",
       "homepage": "https://nextjs.org/",
@@ -2130,7 +2130,7 @@
     {
       "name": "node-releases",
       "versions": [
-        "2.0.63"
+        "2.0.65"
       ],
       "license": "MIT",
       "homepage": "https://github.com/chicoxyzzy/node-releases#readme",
@@ -2139,7 +2139,7 @@
     {
       "name": "nodemailer",
       "versions": [
-        "10.5.0"
+        "10.6.0"
       ],
       "license": "MIT-0",
       "homepage": "https://nodemailer.com/",
@@ -2175,7 +2175,7 @@
     {
       "name": "openid-client",
       "versions": [
-        "6.8.9"
+        "6.9.0"
       ],
       "license": "MIT",
       "homepage": "https://github.com/panva/openid-client",
@@ -2580,7 +2580,7 @@
     {
       "name": "update-browserslist-db",
       "versions": [
-        "1.3.4"
+        "1.4.0"
       ],
       "license": "MIT",
       "homepage": "https://github.com/browserslist/update-db#readme",

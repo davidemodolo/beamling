@@ -103,6 +103,7 @@ frame-ancestors 'none'
 - Release records the GHCR digest; deploy uses it and checks `/api/health`.
 - Dependabot: npm, Actions and Docker, weekly. The image is scanned separately (Trivy: no known vulnerabilities).
 - `pnpm-workspace.yaml` overrides dev-only `minimatch` (ESLint) and drizzle-kit's `esbuild` to patched versions, and accepts ESLint 10 as a peer for `eslint-config-next` plugins.
+- `pnpm audit` ignores GHSA-fc5q-39xc-vjpf (`picomatch` ReDoS, no patched release yet): it reaches only dev tooling with repository globs, never the production image.
 
 ## Data deletion
 
