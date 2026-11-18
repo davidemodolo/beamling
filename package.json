@@ -24,7 +24,7 @@
     "check:dupes": "jscpd"
   },
   "devDependencies": {
-    "jscpd": "5.4.2",
+    "jscpd": "5.4.3",
     "knip": "6.45.1"
   }
 }
