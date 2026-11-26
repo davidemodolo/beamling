@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Mascot } from "@/components/mascot";
 import { Icon } from "@/components/ui/icon";
-import { SOURCE_URL } from "@/lib/legal";
+import { AUTHOR_NAME, AUTHOR_URL, SOURCE_URL } from "@/lib/legal";
 import { versionLabel } from "@/lib/version";
 import { LLM_NAMES, SEARCH_NAMES } from "./landing-data";
 
@@ -50,6 +50,13 @@ export function SiteFooter() {
         <div className="l-footer-brand">
           <Brand />
           <p>Answers you can check.</p>
+          <p>
+            Made by{" "}
+            <a href={AUTHOR_URL} target="_blank" rel="noopener noreferrer">
+              {AUTHOR_NAME}
+            </a>
+            . Get in touch on LinkedIn.
+          </p>
         </div>
         <div>
           <h3>Product</h3>

@@ -78,3 +78,6 @@ export const INACTIVE_ACCOUNT_MONTHS = 24;
 export const UNACCEPTED_ACCOUNT_DAYS = 7;
 
 export const SOURCE_URL = "https://github.com/davidemodolo/beamling";
+
+export const AUTHOR_NAME = "Davide Modolo";
+export const AUTHOR_URL = "https://www.linkedin.com/in/davide-modolo/";

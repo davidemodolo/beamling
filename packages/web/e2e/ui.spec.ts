@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
+import { AUTHOR_NAME, AUTHOR_URL } from "../lib/legal";
 import {
   answers,
   ask,
@@ -101,6 +102,8 @@ test("/ is the landing page signed out and the app signed in", async ({ page }) 
   const nav = page.getByRole("navigation", { name: "Main" });
   await expect(nav.getByRole("link", { name: /Get started/ })).toHaveAttribute("href", "/login");
   await expect(nav.getByRole("link", { name: "Sign in" })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Get in touch" })).toHaveAttribute("href", AUTHOR_URL);
+  await expect(page.locator("footer").getByRole("link", { name: AUTHOR_NAME })).toHaveAttribute("href", AUTHOR_URL);
   await connectKeys(page.request);
   await page.goto("/");
   await expect(page.getByLabel("Search provider")).toBeVisible();

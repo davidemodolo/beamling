@@ -2,7 +2,7 @@ import Link from "next/link";
 import "./landing.css";
 import { Mascot } from "@/components/mascot";
 import { Icon } from "@/components/ui/icon";
-import { SOURCE_URL } from "@/lib/legal";
+import { AUTHOR_URL, SOURCE_URL } from "@/lib/legal";
 import { appUrl } from "@/lib/server/env";
 import { LandingDemo } from "./demo";
 import { FAQ, FREE_STEPS, MODE_CARDS, PRINCIPLES } from "./landing-data";
@@ -28,6 +28,9 @@ export function Landing() {
             <a href="#free">Setup</a>
             <a href="#how">How it works</a>
             <a href="#faq">FAQ</a>
+            <a href={AUTHOR_URL} target="_blank" rel="noopener noreferrer">
+              Get in touch
+            </a>
           </div>
           <div className="l-actions">
             <Link href="/login" className="l-btn l-btn-ghost">
