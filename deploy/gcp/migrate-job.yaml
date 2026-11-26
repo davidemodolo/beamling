@@ -1,6 +1,7 @@
 # Cloud Run job that applies database migrations with the released image before the service is
-# updated. It reads only DATABASE_URL_DIRECT: migrations take advisory locks and change role
-# defaults, which the Neon pooler does not support. The deploy job fills ${IMAGE}.
+# updated. It reads only DATABASE_URL_MIGRATE, the table owner's direct connection: migrations
+# take advisory locks and change role defaults, which the Neon pooler does not support. The
+# service never sees this secret. The deploy job fills ${IMAGE}.
 apiVersion: run.googleapis.com/v1
 kind: Job
 metadata:
@@ -33,4 +34,4 @@ spec:
                   value: "true"
                 - name: DATABASE_URL_DIRECT
                   valueFrom:
-                    secretKeyRef: { name: DATABASE_URL_DIRECT, key: latest }
+                    secretKeyRef: { name: DATABASE_URL_MIGRATE, key: latest }

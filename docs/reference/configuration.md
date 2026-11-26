@@ -6,7 +6,7 @@ Configuration is environment variables only.
 
 | Variable | Behavior |
 |---|---|
-| `DATABASE_URL` | App pool connection string; may be a transaction-mode pooler. Non-production default `postgres://beamling:beamling@127.0.0.1:5432/beamling`. |
+| `DATABASE_URL` | App pool connection string, as `beamling_app` ([Database access](security.md#database-access)); may be a transaction-mode pooler. Non-production default `postgres://beamling:beamling@127.0.0.1:5432/beamling`. |
 | `APP_URL` | Public origin only; `https://` outside localhost. Dev fallback: `OPENROUTER_APP_URL`, `NEXT_PUBLIC_APP_URL`, `http://localhost:3000`. Sent to OpenRouter as `HTTP-Referer`. |
 | `AUTH_SECRET` | 32 bytes, base64. HKDF root for OIDC transaction encryption, IP hashes, credential fingerprints and provider-slot keys. |
 | `OIDC_CLIENT_ID` | Google OAuth client id. |
@@ -44,7 +44,8 @@ Configuration is environment variables only.
 | `CREDENTIAL_MASTER_KEY` | Required with `KMS_PROVIDER=env`: 32 bytes, base64 (`openssl rand -base64 32`). |
 | `CREDENTIAL_MASTER_KEY_ID` | `k1`; env-KMS only. |
 | `CREDENTIAL_PREVIOUS_MASTER_KEYS` | Env-KMS rotation list. |
-| `DATABASE_URL_DIRECT` | Non-pooled connection for session advisory locks (migrations, shutdown worker). Defaults to `DATABASE_URL`. |
+| `DATABASE_URL_DIRECT` | Non-pooled connection for session advisory locks (migrations as the owner, shutdown worker as `beamling_app`). Defaults to `DATABASE_URL`. |
+| `DATABASE_APP_PASSWORD` | Migrations only: enables the `beamling_app` login with this password. |
 | `DATABASE_SSL` | `false` unless exactly `true`. |
 | `DATABASE_SSL_CA` | PEM CA; literal `\n` becomes a newline. |
 | `DATABASE_SSL_CA_FILE` | PEM CA file path (parity stack, scripts). |

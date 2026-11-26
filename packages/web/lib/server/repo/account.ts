@@ -3,7 +3,7 @@ import { INACTIVE_ACCOUNT_MONTHS, UNACCEPTED_ACCOUNT_DAYS } from "../../legal";
 import type { AppState } from "../../types";
 import { analytics } from "../analytics";
 import { audit } from "../audit";
-import { db } from "../db";
+import { asUser, db } from "../db";
 import { analyticsErasures, authSessions, credentials, providerSlots, rateLimits, settings, users } from "../schema";
 import { decryptCredential, providerSlotKey } from "../crypto";
 import { forgetWorkspaceKey } from "../workspace-key";
@@ -27,25 +27,27 @@ export async function getState(user: {
   avatarUrl: string | null;
   createdAt: Date;
 }): Promise<AppState> {
-  const [page, conversationCount, credentialList, userSettings] = await Promise.all([
-    listConversationPage(user.id),
-    countConversations(user.id),
-    listCredentials(user.id),
-    ensureSettings(user.id),
-  ]);
-  return {
-    user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      avatarUrl: user.avatarUrl,
-      createdAt: iso(user.createdAt),
-    },
-    ...page,
-    conversationCount,
-    credentials: credentialList,
-    settings: userSettings,
-  };
+  return asUser(user.id, async () => {
+    const [page, conversationCount, credentialList, userSettings] = await Promise.all([
+      listConversationPage(user.id),
+      countConversations(user.id),
+      listCredentials(user.id),
+      ensureSettings(user.id),
+    ]);
+    return {
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        avatarUrl: user.avatarUrl,
+        createdAt: iso(user.createdAt),
+      },
+      ...page,
+      conversationCount,
+      credentials: credentialList,
+      settings: userSettings,
+    };
+  });
 }
 
 /** Revokes every session of one account. */
@@ -65,16 +67,18 @@ export async function acceptTerms(userId: string, version: string): Promise<void
  * does not cancel a pending erasure: capture resumes once it has finished (see analyticsExcluded).
  */
 export async function setAnalyticsOptOut(userId: string, optOut: boolean, distinctId: string | null): Promise<void> {
-  await db.transaction(async (tx) => {
-    await tx.update(settings).set({ analyticsOptOut: optOut, updatedAt: new Date() }).where(eq(settings.userId, userId));
-    if (optOut && distinctId) {
-      await tx
-        .insert(analyticsErasures)
-        .values({ distinctId })
-        .onConflictDoUpdate({ target: analyticsErasures.distinctId, set: { passesLeft: 2, nextAttemptAt: new Date() } });
-    }
+  return asUser(userId, async () => {
+    await db.transaction(async (tx) => {
+      await tx.update(settings).set({ analyticsOptOut: optOut, updatedAt: new Date() }).where(eq(settings.userId, userId));
+      if (optOut && distinctId) {
+        await tx
+          .insert(analyticsErasures)
+          .values({ distinctId })
+          .onConflictDoUpdate({ target: analyticsErasures.distinctId, set: { passesLeft: 2, nextAttemptAt: new Date() } });
+      }
+    });
+    forgetAnalyticsExclusion(userId);
   });
-  forgetAnalyticsExclusion(userId);
 }
 
 /**
@@ -83,45 +87,47 @@ export async function setAnalyticsOptOut(userId: string, optOut: boolean, distin
  * one must never lose the erasure if the process stops before the first PostHog request.
  */
 export async function deleteAccount(userId: string, analyticsDistinctId?: string | null): Promise<void> {
-  // Provider slots are keyed by the plaintext provider key; release them before the credentials cascade.
-  const storedCredentials = await db.select().from(credentials).where(eq(credentials.userId, userId));
-  const slotKeys: string[] = [];
-  for (const row of storedCredentials) {
-    if (row.kind !== "search" || row.provider !== "brave") continue;
-    try {
-      slotKeys.push(providerSlotKey("brave", await decryptCredential(userId, row)));
-    } catch {
-      // Age-based cleanup remains the fallback for an unreadable credential.
+  return asUser(userId, async () => {
+    // Provider slots are keyed by the plaintext provider key; release them before the credentials cascade.
+    const storedCredentials = await db.select().from(credentials).where(eq(credentials.userId, userId));
+    const slotKeys: string[] = [];
+    for (const row of storedCredentials) {
+      if (row.kind !== "search" || row.provider !== "brave") continue;
+      try {
+        slotKeys.push(providerSlotKey("brave", await decryptCredential(userId, row)));
+      } catch {
+        // Age-based cleanup remains the fallback for an unreadable credential.
+      }
     }
-  }
-  await db.transaction(async (tx) => {
-    if (analyticsDistinctId) {
+    await db.transaction(async (tx) => {
+      if (analyticsDistinctId) {
+        await tx
+          .insert(analyticsErasures)
+          .values({ distinctId: analyticsDistinctId })
+          .onConflictDoUpdate({
+            target: analyticsErasures.distinctId,
+            set: { passesLeft: 2, nextAttemptAt: new Date() },
+          });
+      }
+      if (slotKeys.length) await tx.delete(providerSlots).where(inArray(providerSlots.key, slotKeys));
+      await tx.delete(authSessions).where(eq(authSessions.userId, userId));
       await tx
-        .insert(analyticsErasures)
-        .values({ distinctId: analyticsDistinctId })
-        .onConflictDoUpdate({
-          target: analyticsErasures.distinctId,
-          set: { passesLeft: 2, nextAttemptAt: new Date() },
-        });
-    }
-    if (slotKeys.length) await tx.delete(providerSlots).where(inArray(providerSlots.key, slotKeys));
-    await tx.delete(authSessions).where(eq(authSessions.userId, userId));
-    await tx
-      .delete(rateLimits)
-      .where(
-        inArray(rateLimits.key, [
-          ...Object.values(questionLimitKeys(userId)),
-          `credentials:${userId}`,
-          `conversations:${userId}`,
-          `reads:${userId}`,
-          `writes:${userId}`,
-          `exports:${userId}`,
-          `validations:${userId}`,
-        ]),
-      );
-    await tx.delete(users).where(eq(users.id, userId));
+        .delete(rateLimits)
+        .where(
+          inArray(rateLimits.key, [
+            ...Object.values(questionLimitKeys(userId)),
+            `credentials:${userId}`,
+            `conversations:${userId}`,
+            `reads:${userId}`,
+            `writes:${userId}`,
+            `exports:${userId}`,
+            `validations:${userId}`,
+          ]),
+        );
+      await tx.delete(users).where(eq(users.id, userId));
+    });
+    forgetWorkspaceKey(userId);
   });
-  forgetWorkspaceKey(userId);
 }
 
 /** Accounts deleted per cleanup run, so a backlog cannot hold the pool. */

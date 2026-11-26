@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { db } from "./db";
+import { asUser, db } from "./db";
 import { currentKmsKeyId, unwrapKey, wrapKey, type WrappedKey } from "./kms";
 import { userDataKeys } from "./schema";
 
@@ -54,16 +54,19 @@ async function readStoredKey(userId: string): Promise<Buffer | null> {
   if (row.keyId !== currentKeyId) {
     try {
       const rewrapped = await wrapKey(key, wdkAad(userId));
-      await db
-        .update(userDataKeys)
-        .set({
-          keyId: rewrapped.keyId,
-          wrappedKey: rewrapped.wrappedKey,
-          wrapNonce: rewrapped.nonce ?? null,
-          wrapTag: rewrapped.tag ?? null,
-          rotatedAt: new Date(),
-        })
-        .where(and(eq(userDataKeys.userId, userId), eq(userDataKeys.keyId, row.keyId)));
+      // A savepoint, so a failure leaves the account transaction usable.
+      await db.transaction((tx) =>
+        tx
+          .update(userDataKeys)
+          .set({
+            keyId: rewrapped.keyId,
+            wrappedKey: rewrapped.wrappedKey,
+            wrapNonce: rewrapped.nonce ?? null,
+            wrapTag: rewrapped.tag ?? null,
+            rotatedAt: new Date(),
+          })
+          .where(and(eq(userDataKeys.userId, userId), eq(userDataKeys.keyId, row.keyId))),
+      );
     } catch {
       // A failed opportunistic re-wrap must not make existing content unreadable; try again next read.
     }
@@ -74,7 +77,10 @@ async function readStoredKey(userId: string): Promise<Buffer | null> {
 export async function ensureWorkspaceKey(userId: string): Promise<Buffer> {
   const cached = cache.get(userId);
   if (cached) return cached;
+  return asUser(userId, () => loadWorkspaceKey(userId));
+}
 
+async function loadWorkspaceKey(userId: string): Promise<Buffer> {
   const existing = await readStoredKey(userId);
   if (existing) {
     cacheSet(userId, existing);

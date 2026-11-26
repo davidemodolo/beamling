@@ -29,6 +29,15 @@ frame-ancestors 'none'
 - Mutations reject cross-site `Sec-Fetch-Site` and check Origin (when present) against `APP_URL`, never a client-supplied host.
 - Session cookie: HttpOnly, SameSite=Lax, `__Host-` prefix when Secure. 30-day idle, 90-day absolute; OIDC uses state, nonce and PKCE ([Accounts](accounts.md)).
 
+## Database access
+
+- The app connects as `beamling_app`: data access only, no schema changes, no `BYPASSRLS`. Migrations run as the table owner.
+- Row-level security on `conversations`, `messages`, `sources`, `credentials`, `credential_usage`, `settings` and `user_data_keys`: policy `account_rows` shows and accepts only rows whose `user_id` matches `app.user_id`. Without it, nothing matches.
+- Repository functions run their queries through `asUser(userId, …)` (`lib/server/db.ts`): one transaction with `set_config('app.user_id', …, true)`, so it holds through a transaction-mode pooler. A nested scope for another account throws.
+- Cross-account work goes through owner functions (`SECURITY DEFINER`, fixed `search_path`, `EXECUTE` for `beamling_app` only) that return no content: streaming counts, the stop flag, interrupting answers, expiring and empty-conversation cleanup.
+- `users`, `auth_sessions`, `rate_limits`, `provider_slots`, `system_flags` and `analytics_erasures` have no policies: sign-in, sessions and limits run before an account is known.
+- Startup logs a warning when `DATABASE_URL` is a superuser, has `BYPASSRLS` or owns the tables.
+
 ## Input and output
 
 - JSON bodies: 64 KB cap (streamed, plus `Content-Length` pre-check), Zod-validated. `/api/chat` allows more for images, each checked for type, size and file signature.

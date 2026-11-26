@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "../db";
-import { messages, systemFlags } from "../schema";
+import { systemFlags } from "../schema";
 
 export const ACCEPTING_NEW_STREAMS = "accepting_new_streams";
 
@@ -41,9 +41,7 @@ export async function setAcceptingNewStreams(enabled: boolean, reason?: string):
 
 /** Counts answers currently streaming across every instance. */
 export async function activeStreams(): Promise<number> {
-  const [row] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(messages)
-    .where(eq(messages.status, "streaming"));
-  return Number(row?.count ?? 0);
+  // Spans every account, so it reads through an owner function (row-level security).
+  const result = await db.execute<{ total: number }>(sql`select total from beamling_streaming_answers(null)`);
+  return Number(result.rows[0]?.total ?? 0);
 }

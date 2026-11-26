@@ -217,7 +217,7 @@ async function searchSources(ctx: RunContext, query: string, count: number): Pro
     signal: ctx.signal,
     plan: ctx.prepared.searchPlan,
   });
-  await recordCredentialUsage(ctx.prepared.searchCredentialId, searchCostPerRequest(ctx.prepared.searchProvider)).catch(() => {});
+  await recordCredentialUsage(ctx.prepared.userId, ctx.prepared.searchCredentialId, searchCostPerRequest(ctx.prepared.searchProvider)).catch(() => {});
   return results.map((result) => ({
     id: randomUUID(),
     title: result.title,

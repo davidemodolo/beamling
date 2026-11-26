@@ -268,10 +268,12 @@ test("NUL characters never reach Postgres", { skip }, async (t) => {
     llmModel: "m",
   });
   assert.equal(questionText, "ab");
-  const { db } = await import("../../lib/server/db");
+  const { asUser, db } = await import("../../lib/server/db");
   const { messages } = await import("../../lib/server/schema");
   const { eq } = await import("drizzle-orm");
-  const [stored] = await db.select({ content: messages.content }).from(messages).where(eq(messages.conversationId, conversation.id));
+  const [stored] = await asUser(userId, () =>
+    db.select({ content: messages.content }).from(messages).where(eq(messages.conversationId, conversation.id)),
+  );
   assert.match(stored.content, /^enc:v1:/, "message content is encrypted at rest");
 });
 

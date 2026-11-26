@@ -90,8 +90,20 @@ try {
       throw error;
     }
   }
-  for (const [name, value] of Object.entries(ROLE_DEFAULTS)) {
-    await client.query(`alter role current_user set ${name} = '${value}'`);
+  // The owner keeps the timeouts too, for deployments whose app still connects as the owner.
+  const roles = ["current_user"];
+  const appRole = await client.query("select 1 from pg_roles where rolname = 'beamling_app'");
+  if (appRole.rowCount) roles.push("beamling_app");
+  for (const role of roles) {
+    for (const [name, value] of Object.entries(ROLE_DEFAULTS)) {
+      await client.query(`alter role ${role} set ${name} = '${value}'`);
+    }
+  }
+  // Local stacks and CI only; production sets the password by hand (docs/reference/operations.md).
+  const appPassword = process.env.DATABASE_APP_PASSWORD;
+  if (appPassword) {
+    if (!appRole.rowCount) throw new Error("DATABASE_APP_PASSWORD is set but the beamling_app role does not exist.");
+    await client.query(`alter role beamling_app login password ${client.escapeLiteral(appPassword)}`);
   }
   console.log("Migrations up to date.");
 } finally {
