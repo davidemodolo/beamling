@@ -465,6 +465,8 @@ test("DeepSeek models stream through the shared layer, thinking only for the ans
 
   await streamChat({ provider: "deepseek", adapter: deepSeekModels, purpose: "answer", key: "sk-ds", apiModel: "deepseek-flash", messages: [{ role: "user", content: "hi" }], maxTokens: 5 });
   assert.deepEqual(requests[1].thinking, { type: "enabled" });
+  assert.equal(requests[0].temperature, 0.2);
+  assert.equal(requests[1].temperature, undefined, "thinking mode takes no temperature");
 });
 
 test("each search adapter keeps the result picture as an https URL, never an unsafe one", async (t) => {

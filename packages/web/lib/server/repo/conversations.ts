@@ -273,10 +273,16 @@ const EXPORT_SOURCE_BATCH = 500;
  */
 export async function exportConversations(userId: string): Promise<(ConversationSummary & { messages: Message[] })[]> {
   return asUser(userId, async () => {
-    const [rows, messageRows] = await Promise.all([
-      db.select().from(conversations).where(eq(conversations.userId, userId)).orderBy(asc(conversations.createdAt), asc(conversations.id)),
-      db.select().from(messages).where(eq(messages.userId, userId)).orderBy(asc(messages.createdAt), asc(messages.id)),
-    ]);
+    const rows = await db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.userId, userId))
+      .orderBy(asc(conversations.createdAt), asc(conversations.id));
+    const messageRows = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.userId, userId))
+      .orderBy(asc(messages.createdAt), asc(messages.id));
     const mapped: Message[] = [];
     for (let start = 0; start < messageRows.length; start += EXPORT_SOURCE_BATCH) {
       mapped.push(...(await withSources(messageRows.slice(start, start + EXPORT_SOURCE_BATCH))));

@@ -54,6 +54,7 @@ export const deepSeekModels: LlmAdapter = {
   // the reasoning can be shown.
   providerOptions: { deepseek: { thinking: { type: "disabled" } } },
   answerProviderOptions: { deepseek: { thinking: { type: "enabled" } } },
+  answerWithoutTemperature: true,
   stepUsage: (step) => ({ costUsd: deepSeekCost(step) }),
 };
 

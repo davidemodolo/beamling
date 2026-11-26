@@ -44,7 +44,8 @@ export const db: Database = (globalForDb.__beamlingDb ??= new Proxy(baseDb, {
 
 /**
  * Runs `work` in one transaction with app.user_id set (pooler-safe), so RLS policies apply.
- * Nested calls for the same account reuse it. Keep `work` short: it holds a pool connection.
+ * Nested calls for the same account reuse it. Keep `work` short: it holds a pool connection, and
+ * its queries must run one at a time (one connection, so no Promise.all over queries).
  */
 export async function asUser<T>(userId: string, work: () => Promise<T>): Promise<T> {
   const current = accountScope.getStore();
@@ -52,6 +53,17 @@ export async function asUser<T>(userId: string, work: () => Promise<T>): Promise
     if (current.userId !== userId) throw new Error("Nested account scope for a different account.");
     return work();
   }
+  return accountTransaction(userId, work);
+}
+
+/** A new account transaction that commits on its own, even inside asUser. Takes a second connection. */
+export async function asUserCommitted<T>(userId: string, work: () => Promise<T>): Promise<T> {
+  const current = accountScope.getStore();
+  if (current && current.userId !== userId) throw new Error("Nested account scope for a different account.");
+  return accountTransaction(userId, work);
+}
+
+function accountTransaction<T>(userId: string, work: () => Promise<T>): Promise<T> {
   return baseDb.transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.user_id', ${userId}, true)`);
     return accountScope.run({ userId, tx }, work);

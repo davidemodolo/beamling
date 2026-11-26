@@ -209,7 +209,7 @@ These are plain text in the stored answer; nothing extra is stored or sent. The 
 ## Synthesis and citations
 
 - `max_tokens`: Quick 8192, Deep 16384, Deeper 24576, Deeper agent steps 4000. Caps include reasoning tokens.
-- AI SDK streaming, temperature `0.2`.
+- AI SDK streaming, temperature `0.2`; none for DeepSeek, whose answer call runs in thinking mode, which takes no temperature.
 - Deltas go to SSE and accumulate in memory; the browser batches React updates per animation frame.
 - On a delta containing `]`, new valid citation positions each emit a `citation` event.
 - `sanitizeCitations()` removes out-of-range markers, keeping those in code, URLs and link targets.

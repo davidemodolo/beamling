@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
-import { closePoolAfterTests, configureIntegrationEnv, createAccount, hasDatabase } from "./helpers";
+import { randomBytes } from "node:crypto";
+import { test, type TestContext } from "node:test";
+import { closePoolAfterTests, configureIntegrationEnv, createAccount, hasDatabase, skip as dbSkip } from "./helpers";
 
 configureIntegrationEnv();
 closePoolAfterTests();
@@ -63,4 +64,49 @@ test("an account scope cannot be nested inside another account's", { skip }, asy
   const { asUser } = await import("../../lib/server/db");
   await assert.rejects(asUser(owner, () => asUser(other, async () => 1)), /different account/);
   assert.equal(await asUser(owner, () => asUser(owner, async () => 1)), 1);
+});
+
+async function accountWithoutKey(t: TestContext): Promise<string> {
+  const { db } = await import("../../lib/server/db");
+  const { users } = await import("../../lib/server/schema");
+  const { deleteAccount } = await import("../../lib/server/repo");
+  const suffix = randomBytes(8).toString("hex");
+  const [user] = await db
+    .insert(users)
+    .values({ googleSub: `test-${suffix}`, email: `${suffix}@example.test`, emailVerified: true })
+    .returning();
+  t.after(() => deleteAccount(user.id));
+  return user.id;
+}
+
+test("parallel decrypts in one account scope load the workspace key once", { skip: dbSkip }, async (t) => {
+  const userId = await createAccount(t, { keys: false });
+  const { asUser } = await import("../../lib/server/db");
+  const { encryptText, decryptText, forgetWorkspaceKey } = await import("../../lib/server/workspace-key");
+  const sealed = await encryptText(userId, "conversations", userId, "title", "hello");
+  forgetWorkspaceKey(userId);
+  // Integration tests throw on pg's concurrent-query deprecation, so a second load would fail here.
+  const opened = await asUser(userId, () =>
+    Promise.all(Array.from({ length: 5 }, () => decryptText(userId, "conversations", userId, "title", sealed))),
+  );
+  assert.deepEqual(opened, Array(5).fill("hello"));
+});
+
+test("a workspace key created in a scope that rolls back is still stored", { skip: dbSkip }, async (t) => {
+  const userId = await accountWithoutKey(t);
+  const { eq } = await import("drizzle-orm");
+  const { asUser, db } = await import("../../lib/server/db");
+  const { userDataKeys } = await import("../../lib/server/schema");
+  const { encryptText, decryptText, forgetWorkspaceKey } = await import("../../lib/server/workspace-key");
+  let sealed = "";
+  await assert.rejects(
+    asUser(userId, async () => {
+      sealed = await encryptText(userId, "conversations", userId, "title", "kept");
+      throw new Error("rollback");
+    }),
+    /rollback/,
+  );
+  forgetWorkspaceKey(userId);
+  assert.equal((await asUser(userId, () => db.select().from(userDataKeys).where(eq(userDataKeys.userId, userId)))).length, 1);
+  assert.equal(await decryptText(userId, "conversations", userId, "title", sealed), "kept");
 });

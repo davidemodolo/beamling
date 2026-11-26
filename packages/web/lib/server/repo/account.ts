@@ -28,12 +28,10 @@ export async function getState(user: {
   createdAt: Date;
 }): Promise<AppState> {
   return asUser(user.id, async () => {
-    const [page, conversationCount, credentialList, userSettings] = await Promise.all([
-      listConversationPage(user.id),
-      countConversations(user.id),
-      listCredentials(user.id),
-      ensureSettings(user.id),
-    ]);
+    const page = await listConversationPage(user.id);
+    const conversationCount = await countConversations(user.id);
+    const credentialList = await listCredentials(user.id);
+    const userSettings = await ensureSettings(user.id);
     return {
       user: {
         id: user.id,

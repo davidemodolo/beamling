@@ -60,7 +60,8 @@ export function forgetAnalyticsExclusion(userId: string): void {
  */
 export async function alignDefaults(userId: string): Promise<{ settings: Settings; complete: boolean }> {
   return asUser(userId, async () => {
-    const [current, keyed] = await Promise.all([ensureSettings(userId), keyedProviders(userId)]);
+    const current = await ensureSettings(userId);
+    const keyed = await keyedProviders(userId);
     const usable = usableDefaults(current, keyed);
     const changed = usable.llmModel !== current.llmModel || usable.defaultSearchProvider !== current.defaultSearchProvider;
     const settings = changed ? await updateSettings(userId, usable) : current;

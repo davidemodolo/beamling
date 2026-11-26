@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { asUser, db } from "./db";
+import { asUser, asUserCommitted, db } from "./db";
 import { currentKmsKeyId, unwrapKey, wrapKey, type WrappedKey } from "./kms";
 import { userDataKeys } from "./schema";
 
@@ -9,6 +9,7 @@ const PREFIX = "enc:v1:";
 const PLAINTEXT_FIXED_VALUES = new Set(["", "The answer was interrupted."]);
 const CACHE_LIMIT = 500;
 const cache = new Map<string, Buffer>();
+const loading = new Map<string, Promise<Buffer>>();
 
 interface Envelope {
   n: string;
@@ -74,19 +75,31 @@ async function readStoredKey(userId: string): Promise<Buffer | null> {
   return key;
 }
 
+/** One load per account at a time, so parallel decrypts never query one scope's connection at once. */
 export async function ensureWorkspaceKey(userId: string): Promise<Buffer> {
   const cached = cache.get(userId);
   if (cached) return cached;
-  return asUser(userId, () => loadWorkspaceKey(userId));
+  let pending = loading.get(userId);
+  if (!pending) {
+    pending = loadWorkspaceKey(userId).finally(() => loading.delete(userId));
+    loading.set(userId, pending);
+  }
+  return pending;
 }
 
 async function loadWorkspaceKey(userId: string): Promise<Buffer> {
-  const existing = await readStoredKey(userId);
+  const existing = await asUser(userId, () => readStoredKey(userId));
   if (existing) {
     cacheSet(userId, existing);
     return existing;
   }
+  // Commits before it is cached: inside a scope that later rolls back, the key would be lost.
+  const created = await asUserCommitted(userId, () => createWorkspaceKey(userId));
+  cacheSet(userId, created);
+  return created;
+}
 
+async function createWorkspaceKey(userId: string): Promise<Buffer> {
   const key = randomBytes(32);
   const wrapped = await wrapKey(key, wdkAad(userId));
   const [inserted] = await db
@@ -103,10 +116,8 @@ async function loadWorkspaceKey(userId: string): Promise<Buffer> {
   if (!inserted) {
     const raced = await readStoredKey(userId);
     if (!raced) throw new Error("Workspace key could not be created.");
-    cacheSet(userId, raced);
     return raced;
   }
-  cacheSet(userId, key);
   return key;
 }
 

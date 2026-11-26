@@ -55,6 +55,7 @@ export function apiRoute<P = unknown, S extends SessionMode = "required">(
     const started = Date.now();
     let user: SessionUser | null = null;
     let status = 500;
+    let code: string | undefined;
     try {
       const isRead = request.method === "GET" || request.method === "HEAD";
       if (!isRead) assertSameOrigin(request);
@@ -78,6 +79,7 @@ export function apiRoute<P = unknown, S extends SessionMode = "required">(
     } catch (error) {
       const response = errorResponse(error, requestId);
       status = response.status;
+      code = error instanceof ApiError ? error.code : "INTERNAL";
       return response;
     } finally {
       log.info("request", {
@@ -85,6 +87,7 @@ export function apiRoute<P = unknown, S extends SessionMode = "required">(
         method: request.method,
         path: new URL(request.url).pathname,
         status,
+        code,
         durationMs: Date.now() - started,
         userId: user ? hmacToken(user.id) : undefined,
       });

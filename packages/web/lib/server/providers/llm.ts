@@ -53,6 +53,8 @@ export interface LlmAdapter {
   providerOptions?: ProviderOptions;
   /** Options for the call that writes the answer, when they differ (for example reasoning left on). */
   answerProviderOptions?: ProviderOptions;
+  /** The answer call runs in a mode that rejects temperature (DeepSeek thinking), so none is sent. */
+  answerWithoutTemperature?: boolean;
   /** Cost in USD and the upstream host for one step. */
   stepUsage(step: ModelStep): { costUsd: number; upstreamProvider?: string };
 }
@@ -148,7 +150,7 @@ export async function streamChat(options: StreamChatOptions): Promise<ChatResult
     instructions: instructions.length ? instructions.join("\n\n") : undefined,
     messages: conversation(options.messages),
     maxOutputTokens: options.maxTokens,
-    temperature: 0.2,
+    temperature: options.purpose === "answer" && adapter.answerWithoutTemperature ? undefined : 0.2,
     abortSignal: signal,
     maxRetries: 0,
     providerOptions: providerOptions as Parameters<typeof streamText>[0]["providerOptions"],
