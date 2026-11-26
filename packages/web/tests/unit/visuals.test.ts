@@ -33,6 +33,18 @@ test("pie charts take one series of non-negative values", () => {
   assert.equal(parseChart(JSON.stringify({ ...pie, series: [{ key: "v" }, { key: "w" }] })), null);
 });
 
+test("stacks, horizontal bars and scatter plots follow their own rules", () => {
+  const bar = { type: "bar", x: "name", series: [{ key: "a" }, { key: "b" }], data: [{ name: "x", a: 1, b: 2 }] };
+  assert.ok(parseChart(JSON.stringify({ ...bar, stacked: true, horizontal: true })));
+  assert.ok(parseChart(JSON.stringify({ ...bar, type: "area", stacked: true })));
+  assert.equal(parseChart(JSON.stringify({ ...bar, type: "line", stacked: true })), null);
+  assert.equal(parseChart(JSON.stringify({ ...bar, type: "area", horizontal: true })), null);
+  assert.equal(parseChart(JSON.stringify({ ...bar, stacked: true, data: [{ name: "x", a: -1, b: 2 }] })), null);
+  const scatter = { type: "scatter", x: "price", series: [{ key: "sales" }], data: [{ price: 2, sales: 10 }, { price: 3.5, sales: 7 }] };
+  assert.ok(parseChart(JSON.stringify(scatter)));
+  assert.equal(parseChart(JSON.stringify({ ...scatter, data: [{ price: "cheap", sales: 10 }] })), null);
+});
+
 test("document markers, titles and file names", () => {
   assert.equal(DOCUMENT_OPEN.exec('<document title="Trip plan">')?.[1], "Trip plan");
   assert.ok(DOCUMENT_OPEN.test("<document>"));

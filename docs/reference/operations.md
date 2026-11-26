@@ -53,6 +53,7 @@ Alpine security updates are applied; `HEALTHCHECK` hits `/api/health`.
 - `0000_init.sql` is the schema applied to production on 7 November 2026 (v0.3.0). Applied files are never edited; changes add a higher-numbered file.
 - `0001_default_model_nemotron.sql` (v0.6.0) changes the `settings.llm_model` default; existing rows keep their model.
 - `0004_app_role_rls.sql` adds `user_id` to `sources` and `credential_usage`, creates the `beamling_app` role (no login), and enables [row-level security](security.md#database-access).
+- `0005_beam_light.sql` adds `settings.beam_light` (default `false`).
 - Connects to `DATABASE_URL_DIRECT`, else `DATABASE_URL`, as the table owner. Not through a transaction-mode pooler: the advisory lock is session-scoped.
 - Clears its session timeouts, takes advisory lock `7314002917` so deploys serialize, creates `beamling_migrations` if absent.
 - Applies unapplied `drizzle/*.sql` files in name order, each in a transaction split on `--> statement-breakpoint`; records the filename after commit; rolls back on error.

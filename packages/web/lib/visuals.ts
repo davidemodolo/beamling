@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-/** Limits on what an answer can draw. Over a limit, the block is shown as plain code. */
+/** Limits on what an answer can draw. Over a limit, the block is shown as a collapsed error. */
 export const VISUAL_LIMITS = {
   /** Characters of one chart or diagram block. */
   blockChars: 20_000,
@@ -21,11 +21,13 @@ export function fenceLanguage(line: string): string {
   return info.toLowerCase().replace(/[^a-z0-9#+-]/g, "").slice(0, 20);
 }
 
+export const CHART_TYPES = ["bar", "line", "area", "scatter", "pie"] as const;
+
 const cell = z.union([z.string().max(200), z.number().finite()]);
 
 const chartSchema = z
   .object({
-    type: z.enum(["bar", "line", "pie"]),
+    type: z.enum(CHART_TYPES),
     title: z.string().max(120).optional(),
     x: z.string().min(1).max(60),
     series: z
@@ -34,14 +36,19 @@ const chartSchema = z
       .max(VISUAL_LIMITS.chartSeries),
     data: z.array(z.record(z.string().max(60), cell)).min(1).max(VISUAL_LIMITS.chartRows),
     unit: z.string().max(12).optional(),
+    /** Bar and area: series stack on each other instead of sitting side by side. */
+    stacked: z.boolean().optional(),
+    /** Bar: categories run down the side, bars grow to the right. */
+    horizontal: z.boolean().optional(),
   })
   .strict();
 
 export type ChartSpec = z.infer<typeof chartSchema>;
 
 /**
- * Reads a ```chart block. Every series value must be a number in every row; pie charts take one
- * series and non-negative values. Anything else is refused and the block is shown as code.
+ * Reads a ```chart block. Every series value must be a number in every row. Pie charts take one
+ * series and non-negative values, stacks take non-negative values, scatter plots a numeric x.
+ * `stacked` is for bar and area, `horizontal` for bar. Anything else is refused.
  */
 export function parseChart(source: string): ChartSpec | null {
   if (source.length > VISUAL_LIMITS.blockChars) return null;
@@ -55,12 +62,16 @@ export function parseChart(source: string): ChartSpec | null {
   if (!parsed.success) return null;
   const spec = parsed.data;
   if (spec.type === "pie" && spec.series.length !== 1) return null;
+  if (spec.stacked && spec.type !== "bar" && spec.type !== "area") return null;
+  if (spec.horizontal && spec.type !== "bar") return null;
+  const positive = spec.type === "pie" || spec.stacked;
   for (const row of spec.data) {
     if (row[spec.x] === undefined) return null;
+    if (spec.type === "scatter" && typeof row[spec.x] !== "number") return null;
     for (const series of spec.series) {
       const value = row[series.key];
       if (typeof value !== "number") return null;
-      if (spec.type === "pie" && value < 0) return null;
+      if (positive && value < 0) return null;
     }
   }
   return spec;

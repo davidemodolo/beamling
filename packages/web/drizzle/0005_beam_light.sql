@@ -1,0 +1,1 @@
+ALTER TABLE "settings" ADD COLUMN "beam_light" boolean DEFAULT false NOT NULL;

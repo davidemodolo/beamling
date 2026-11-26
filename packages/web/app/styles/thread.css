@@ -321,6 +321,13 @@
   position: relative;
   overflow: hidden;
 }
+/* With the light on, the card stays in view while the answer grows, so its light reaches the newest line. */
+.working.with-light {
+  position: sticky;
+  top: 8px;
+  z-index: 3;
+  background: color-mix(in oklab, var(--surface) 88%, var(--bg));
+}
 .working-mascot {
   width: 56px;
   flex: none;

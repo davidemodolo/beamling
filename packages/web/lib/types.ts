@@ -118,6 +118,8 @@ export interface Settings {
   defaultMode: Mode;
   /** The account objected to product analytics; no events are sent for it. */
   analyticsOptOut: boolean;
+  /** The mascot's light follows the words being written. */
+  beamLight: boolean;
 }
 
 export interface User {

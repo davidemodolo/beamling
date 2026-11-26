@@ -6,11 +6,12 @@ import type { BeamlingHandle } from "@beamling/mascot/react";
 import { STAGE_LABEL, type LiveAnswer } from "@/lib/answer-streams";
 import { MAX_QUESTION_CHARS } from "@/lib/legal";
 import type { Attachment } from "@/lib/attachments";
-import type { ThreadMessage } from "@/lib/store";
+import { useAccount, type ThreadMessage } from "@/lib/store";
 import type { ChatStage, Source } from "@/lib/types";
 import { AnswerCard, ReasoningDetails, SearchTraceDetails } from "./answer-card";
 import { Markdown } from "./markdown";
 import { MessageImages } from "./message-images";
+import { BeamLamp } from "./chat/beam-lamp";
 import { Mascot } from "./mascot";
 import { Icon } from "./ui/icon";
 
@@ -149,6 +150,9 @@ export function WorkingAnswer({
   onCitation: (position: number) => void;
 }) {
   const mascotRef = useRef<BeamlingHandle>(null);
+  const { beamLight } = useAccount().settings;
+  const eyesRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const hasSources = live.sources.length > 0;
   const links = useMemo(() => live.sources.map((source) => source.url), [live.sources]);
   // The search running now: the mascot turns its beam to it.
@@ -168,8 +172,8 @@ export function WorkingAnswer({
 
   return (
     <article className="message message-assistant">
-      <div className="working">
-        <div className="working-mascot" aria-hidden="true">
+      <div className={`working${beamLight ? " with-light" : ""}`}>
+        <div className="working-mascot" aria-hidden="true" ref={eyesRef}>
           <Mascot ref={mascotRef} state={live.stage} activity={live.stage === "writing" ? "writing" : "idle"} beams={false} label="" style={{ width: 56 }} />
         </div>
         <div className="working-text">
@@ -196,8 +200,10 @@ export function WorkingAnswer({
         <SearchTraceDetails traces={live.searches} />
         <ReasoningDetails reasoning={live.reasoning} streaming links={live.sources.map((source) => source.url)} />
       </div>
+      {/* No light while the model only reasons: it lands on written words. */}
+      {live.content && beamLight ? <BeamLamp eyes={eyesRef} target={bodyRef} mascot={mascotRef} flash={live.citations} /> : null}
       {live.content ? (
-        <div className="assistant-body">
+        <div className="assistant-body" ref={bodyRef}>
           <Markdown text={live.content} citations={live.sources.length} onCitation={onCitation} streaming allowedLinks={links} sources={live.sources} documentKey={live.messageId ?? "live"} />
         </div>
       ) : (

@@ -186,9 +186,9 @@ History: last six messages (`HISTORY_MESSAGES`), first 1,200 chars each, with im
 
 Prompt families:
 
-- Quick: direct answer, 150–350 words, cited, no sources section.
-- Deep: direct opening, 500–900 words (max 1,200), 3–6 sections.
-- Deeper: direct opening, 1,200–2,000 words (max 2,500), 5–9 sections, contradictions and gaps.
+- Quick: direct answer, 60–180 words (1–3 sentences for a simple fact), headers only for 3+ parts, cited, no sources section.
+- Deep: direct opening, 350–600 words (max 800), 3–5 sections.
+- Deeper: direct opening, 800–1,400 words (max 1,800), 4–7 sections, contradictions and gaps.
 - Planner: JSON, 3–5 keyword queries of ≤ 12 words.
 - Gap: JSON, sufficient flag plus ≤ 2 follow-ups.
 - Research agent: tool-use instructions; never writes the answer.
@@ -197,9 +197,9 @@ System prompts forbid following instructions in sources, inventing source number
 
 The three writer prompts end with the same visuals rules (`VISUAL_RULES`):
 
-- A chart as a fenced ` ```chart ` JSON block (bar, line or pie), only for numbers from the sources, cited in the sentence before it, never estimated.
-- A diagram as a fenced ` ```mermaid ` block (flowchart, sequence, timeline, mindmap), short plain labels, no links or styling.
-- At most 2 visuals, only when clearer than text.
+- A chart as a fenced ` ```chart ` JSON block (bar, line, area, scatter or pie; stacked bar or area, horizontal bar), only for numbers from the sources, cited in the sentence before it, never estimated.
+- A diagram as a fenced ` ```mermaid ` block (flowchart, sequence, timeline, mindmap, gantt, state, ER, quadrant, sankey, xychart), short plain labels, no links or styling.
+- No visual by default: only when the user asks, or for 4+ comparable numbers or a 4+ step process. At most 1.
 - Only when the user asks for a document: one sentence, then the document between `<document title="...">` and `</document>` lines. Inside: `##`/`###` headings, lists and tables, no repeated title, `[n]` citations and no sources list (the browser appends the cited sources). Same grounding rules; it may exceed the length target.
 
 When at least one source has a picture, one more rule: for a question about how something looks, the picture of a source about exactly that thing may go on its own line as `![Short caption](source:N)`, at most 2 per answer, never a URL and never a description (the model has not seen it).

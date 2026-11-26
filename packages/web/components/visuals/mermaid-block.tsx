@@ -3,6 +3,7 @@
 import { useEffect, useId, useState } from "react";
 import { VISUAL_LIMITS } from "@/lib/visuals";
 import { CodeBlock } from "./code-block";
+import { VisualError } from "./visual-error";
 
 type Renderer = (id: string, source: string) => Promise<string>;
 
@@ -66,7 +67,7 @@ function loadRenderer(): Promise<Renderer> {
 
 type State = { status: "drawing" } | { status: "done"; svg: string } | { status: "failed" };
 
-/** A ```mermaid block drawn as a diagram; on any error the source is shown as code. */
+/** A ```mermaid block drawn as a diagram; on any error, a collapsed error with the source inside. */
 export function MermaidBlock({ source }: { source: string }) {
   const id = `mmd-${useId().replace(/[^a-zA-Z0-9-]/g, "")}`;
   const [state, setState] = useState<{ source: string; value: State } | null>(null);
@@ -87,7 +88,7 @@ export function MermaidBlock({ source }: { source: string }) {
   }, [id, source]);
 
   const value: State = state?.source === source ? state.value : { status: "drawing" };
-  if (value.status === "failed") return <CodeBlock code={source} language="mermaid" note="Could not draw this diagram" />;
+  if (value.status === "failed") return <VisualError code={source} language="mermaid" detail="The diagram could not be drawn." />;
   if (value.status === "drawing") return <div className="visual visual-pending">Drawing…</div>;
   return (
     <figure className="visual diagram">

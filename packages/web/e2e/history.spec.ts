@@ -34,7 +34,10 @@ test("sidebar chats can be pinned and searched", async ({ page }) => {
   await expect(answers(page).last()).toContainText("fixture answer", { timeout: 20_000 });
 
   const item = sidebarItem(page, "Pinned chat");
+  const height = (await item.boundingBox())?.height;
   await item.hover();
+  await expect(item.getByRole("button", { name: "Pin Pinned chat" })).toBeVisible();
+  expect((await item.boundingBox())?.height, "showing the actions does not push the list down").toBe(height);
   // The sidebar pins optimistically; wait for the server to store it before reloading,
   // or the reload can abort the request.
   const pinSaved = page.waitForResponse(

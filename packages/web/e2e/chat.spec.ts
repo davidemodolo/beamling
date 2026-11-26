@@ -91,6 +91,25 @@ test("Deeper mode runs a research loop and persists the mode", async ({ page }) 
   expect(problems).toEqual([]);
 });
 
+test("the mascot's light on the answer is off until turned on in Settings", async ({ page }) => {
+  await connectKeys(page.request);
+  await page.goto("/");
+  await ask(page, "No light [fixture:visuals]");
+  await expect(page.locator(".working")).toBeVisible();
+  await expect(answers(page).last().locator(".answer-footer")).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator(".beam-lamp")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("dialog", { name: "Settings" }).getByRole("tab", { name: "Account" }).click();
+  const saved = page.waitForResponse((response) => response.url().endsWith("/api/settings") && response.ok());
+  await page.getByRole("checkbox", { name: /Beamling lights the answer/ }).check();
+  await saved;
+  await page.keyboard.press("Escape");
+  await ask(page, "With light [fixture:visuals]");
+  await expect(page.locator(".working.with-light")).toBeVisible();
+  await expect(page.locator(".beam-lamp")).toBeAttached();
+});
+
 test("switching conversations mid-answer keeps each answer in its own conversation", async ({ page }) => {
   await connectKeys(page.request);
   const other = await createConversation(page.request);
@@ -282,11 +301,17 @@ test("answers draw code with a copy button, charts, diagrams and a document in a
   await expect(code.getByRole("button", { name: "Copied" })).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("const answer: number = 42; // fixture");
 
-  await expect(answer.locator(".chart figcaption")).toHaveText("Fixture chart");
-  await expect(answer.locator(".chart svg rect")).toHaveCount(2);
+  await expect(answer.locator(".chart figcaption")).toHaveText(["Fixture chart", "Fixture stack"]);
+  await expect(answer.locator(".chart").first().locator("svg rect")).toHaveCount(2);
+  await expect(answer.locator(".chart").nth(1).locator("svg rect")).toHaveCount(4);
   await expect(answer.locator(".diagram-svg svg")).toBeVisible();
   await expect(answer.locator(".diagram-svg script, .diagram-svg foreignObject")).toHaveCount(0);
-  await expect(answer.locator(".code-note")).toHaveText("Could not draw this chart");
+  // A broken chart is collapsed behind an error, with its source inside.
+  const broken = answer.locator(".visual-error");
+  await expect(broken.locator("summary")).toContainText("Rendering error");
+  await expect(broken.locator(".code-block")).toBeHidden();
+  await broken.locator("summary").click();
+  await expect(broken.locator(".code-block")).toBeVisible();
 
   // The panel is its own page to the right of the chat.
   const [chatBox, paneBox] = await Promise.all([page.locator(".thread-scroll").boundingBox(), pane.boundingBox()]);

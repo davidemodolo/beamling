@@ -156,7 +156,8 @@
 .chart path:hover {
   opacity: 0.8;
 }
-.chart-legend {
+.chart-legend,
+.answer-prose .chart-legend {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 14px;
@@ -166,8 +167,12 @@
   font-size: 12px;
   color: var(--muted);
 }
+.answer-prose .chart-legend li::before {
+  content: none;
+}
 .answer-prose .chart-legend li {
   margin: 0;
+  padding: 0;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -532,4 +537,29 @@
   max-height: 70vh;
   margin: 0 auto;
   object-fit: contain;
+}
+
+/* A chart or diagram that could not be drawn, collapsed. */
+.answer-prose .visual-error {
+  padding: 10px 14px;
+  border-color: color-mix(in oklab, var(--error) 30%, var(--line));
+}
+.visual-error summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.visual-error summary svg {
+  color: var(--error);
+}
+.visual-error summary span {
+  color: var(--muted);
+  font-weight: 400;
+}
+.visual-error .code-block {
+  margin-top: 10px;
 }
