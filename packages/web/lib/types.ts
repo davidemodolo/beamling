@@ -149,6 +149,16 @@ export interface UsageReport {
   conversations: number;
   questionsThisHour: number;
   questionsToday: number;
-  /** The chats taking the most space, largest first, with decrypted titles for the owner only. */
-  largest: { id: string; title: string; bytes: number; questions: number }[];
+  /** Every chat with its stored size, largest first, with decrypted titles for the owner only. */
+  chats: StorageChat[];
+}
+
+/** A chat's stored size and last activity, for choosing what to delete. */
+export interface StorageChat {
+  id: string;
+  title: string;
+  bytes: number;
+  questions: number;
+  pinned: boolean;
+  updatedAt: string;
 }

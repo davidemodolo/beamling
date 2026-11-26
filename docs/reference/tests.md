@@ -11,7 +11,7 @@
 | `packages/web/tests/unit/analytics.test.ts` | 13 | Allowlist, identity, delivery, opt-out, deletion, erasure backoff, host rules |
 | `packages/web/tests/integration/answers.test.ts` | 19 | All modes, tool loops, planner repair, partial search, missing keys, provider and cost, no fallback, timeout, research time share, NUL, retry, regenerate and edit, text files, single DeepSeek key |
 | `packages/web/tests/integration/streams.test.ts` | 10 | Per-conversation, global and per-account limits, lock timeout, stop, mid-answer delete, stale repair, cleanup, terminal race, new-stream flag |
-| `packages/web/tests/integration/conversations.test.ts` | 6 | Pinned ordering, pagination, 100-conversation cap, 60-day expiry, per-chat and storage caps |
+| `packages/web/tests/integration/conversations.test.ts` | 6 | Pinned ordering, pagination, 100-conversation cap, 60-day expiry, per-chat and storage caps, per-chat sizes |
 | `packages/web/tests/integration/isolation.test.ts` | 5 | Row-level security: nothing outside an account scope, no cross-account reads or writes, no nested foreign scope; one workspace-key load per scope, key kept after a rollback |
 | `packages/web/tests/integration/accounts.test.ts` | 13 | Sessions, account cleanup, export, analytics opt-out and erasure, sign-up cap, rate limits, Brave spacing, keys, shutdown |
 | `packages/web/tests/unit/images.test.ts` | 7 | Image type and signature checks, image markers in prompts, single entity decoding, model vision flags, text file validation, `<file>` blocks and their budget, address-bar fragment and auto-send rule |
@@ -61,7 +61,7 @@ UI:
 - Text files: a binary file is refused; only the file id and name are stored; the model gets the text, also with a follow-up.
 - Regenerate replaces the latest answer; editing the latest question rewrites it, replaces the answer and retitles the chat.
 - `/search`: a typed question from the fragment is sent; arriving from another site only fills the composer and sets the mode; `/opensearch.xml` carries the fragment template.
-- `/limits` does not scroll horizontally at phone width.
+- `/limits` lists every chat under **Free up space** and deletes a checked one; it does not scroll horizontally at phone width.
 - Visuals (`[fixture:visuals]`): a `ts` block is highlighted and copies its code; a chart and a diagram are drawn, a broken chart falls back to code; the document opens in a panel right of the chat with its title once, heading levels, nested and task lists, citations linking to the source and the cited sources listed; after a reload the card reopens it and downloads `fixture-plan.md` with reference links.
 - Setup offers sign-out and account deletion without any key.
 - Streams stay isolated per conversation and survive client-side navigation.

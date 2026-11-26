@@ -71,9 +71,6 @@ export async function assertCanAsk(userId: string, conversationId: string | unde
   });
 }
 
-
-const LARGEST_COUNT = 5;
-
 /** The account's own usage for the limits page. */
 export async function usageReport(userId: string): Promise<UsageReport> {
   return asUser(userId, async () => {
@@ -87,8 +84,8 @@ export async function usageReport(userId: string): Promise<UsageReport> {
       .select({ key: rateLimits.key, count: rateLimits.count })
       .from(rateLimits)
       .where(and(inArray(rateLimits.key, [keys.hour, keys.day]), gt(rateLimits.expiresAt, sql`clock_timestamp()`)));
-    const sizes = await db.execute<{ id: string; title: string; bytes: string; questions: string }>(sql`
-        select c.id, c.title,
+    const sizes = await db.execute<{ id: string; title: string; pinned: boolean; updated_at: string | Date; bytes: string; questions: string }>(sql`
+        select c.id, c.title, c.pinned, c.updated_at,
           pg_column_size(c.*)
             + coalesce(sum(pg_column_size(m.*)), 0)
             + coalesce((
@@ -102,15 +99,17 @@ export async function usageReport(userId: string): Promise<UsageReport> {
         where c.user_id = ${userId}
         group by c.id
         order by bytes desc
-        limit ${LARGEST_COUNT}
       `);
     const counter = (key: string) => counters.find((row) => row.key === key)?.count ?? 0;
-    const largest = await Promise.all(
+    // At most MAX_CONVERSATIONS rows, so the whole list fits one response.
+    const chats = await Promise.all(
       sizes.rows.map(async (row) => ({
         id: row.id,
         title: await decryptText(userId, "conversations", row.id, "title", row.title).catch(() => "Untitled"),
         bytes: Number(row.bytes),
         questions: Number(row.questions),
+        pinned: row.pinned,
+        updatedAt: new Date(row.updated_at).toISOString(),
       })),
     );
     return {
@@ -118,7 +117,7 @@ export async function usageReport(userId: string): Promise<UsageReport> {
       conversations: conversationCount,
       questionsThisHour: counter(keys.hour),
       questionsToday: counter(keys.day),
-      largest,
+      chats,
     };
   });
 }

@@ -37,7 +37,7 @@ export function legalDetails(): LegalDetails {
  * either document changes materially; every account is asked to accept again on its next visit.
  */
 export const LEGAL_VERSION = "2026-11-14";
-export const LEGAL_LAST_UPDATED = "14 November 2026";
+export const LEGAL_LAST_UPDATED = "26 November 2026";
 
 /** Minimum age to hold an account. */
 export const MINIMUM_AGE = 18;
@@ -52,7 +52,7 @@ export const MAX_CONVERSATIONS = 100;
 export const MAX_QUESTIONS_PER_CONVERSATION = 100;
 
 /** Encrypted storage per account (chats, answers, sources). New questions are refused at the limit. */
-export const STORAGE_LIMIT_MB = 10;
+export const STORAGE_LIMIT_MB = 20;
 export const STORAGE_LIMIT_BYTES = STORAGE_LIMIT_MB * 1024 * 1024;
 
 /** From this share of the storage limit the limits page warns. */
