@@ -11,7 +11,7 @@
 | `/chat/:id` | A conversation; signed-out visitors go to `/login`. The app loads workspace state, conversation list and threads. During a scheduled shutdown a banner shows the closing date and a "Download my data" button (Settings → Account) |
 | `/chat/[id]` | Conversation; newest 60 messages, then earlier pages |
 | `/search` | Address-bar entry point, not indexed ([Address-bar search](#address-bar-search)) |
-| `/limits` | Signed in only, not indexed, rendered per request. Storage, chats and hourly/daily question meters, the five largest chats (decrypted titles, size, questions) and the rules (including images per question and their browser retention). Linked from the sidebar and from `STORAGE_FULL`/`CONVERSATION_FULL` answer errors |
+| `/limits` | Signed in only, not indexed, rendered per request. Storage, chats and hourly/daily question meters and the rules (including images per question and their browser retention). **Free up space** under Storage lists every chat with size, last use and questions, sorted by size and age (size × (1 + idle days / 30), pinned last) or by size; checked chats are deleted with one confirmation, then the page reloads its figures. Linked from the sidebar and from `STORAGE_FULL`/`CONVERSATION_FULL` answer errors |
 | `/privacy` | GDPR Art. 13/14 notice: controller, data and legal bases, retention (below), providers on the user's accounts (some in China), transfers (hosting in Belgium, database in Frankfurt), Art. 15–21 rights, Garante complaints |
 | `/terms` | Alpha terms: 18+, user owns keys, costs and provider choice, storage limits, acceptable use, MIT source (name and logo not licensed), liability limits, 24-month inactive deletion, closure with 14 days' notice, DSA contact, `LEGAL_GOVERNING_LAW` with consumer forum |
 | `/cookies` | Essential cookies only (session: 30 days idle, 90 days max); no analytics or ad cookies |
@@ -25,7 +25,7 @@
 | `/api/live` | DB-free liveness probe |
 | `/robots.txt` | Allows `/`; disallows `/chat/`, `/limits`, `/onboarding`, `/api/` |
 
-Privacy-page retention: conversations 60 days after the last question, max 100 per account (least recently used unpinned go first), 10 MB per account; inactive accounts 24 months; unaccepted accounts 7 days; sessions 30 days idle / 90 max; hashed IPs and counters one hour; logs `LEGAL_LOG_RETENTION_DAYS`; backups `LEGAL_BACKUP_RETENTION_DAYS`; analytics until opt-out; everything on a closing date.
+Privacy-page retention: conversations 60 days after the last question, max 100 per account (least recently used unpinned go first), 20 MB per account; inactive accounts 24 months; unaccepted accounts 7 days; sessions 30 days idle / 90 max; hashed IPs and counters one hour; logs `LEGAL_LOG_RETENTION_DAYS`; backups `LEGAL_BACKUP_RETENTION_DAYS`; analytics until opt-out; everything on a closing date.
 
 - Metadata base and landing demo host come from `APP_URL`.
 - Legal pages read operator details from `legalDetails()` and dates from `LEGAL_LAST_UPDATED`. The source URL is `SOURCE_URL` in `lib/legal.ts`.

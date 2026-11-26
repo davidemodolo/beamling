@@ -183,8 +183,11 @@ test("a chat stops at its question cap and a full account stops asking", { skip 
   const before = await usageReport(userId);
   assert.ok(before.storageBytes > 0 && before.storageBytes < STORAGE_LIMIT_BYTES);
   assert.equal(before.conversations, 2);
-  assert.equal(before.largest[0].id, full.id);
-  assert.equal(before.largest[0].questions, MAX_QUESTIONS_PER_CONVERSATION);
+  assert.equal(before.chats.length, 2, "every chat is listed, not only the largest");
+  assert.equal(before.chats[0].id, full.id);
+  assert.equal(before.chats[0].questions, MAX_QUESTIONS_PER_CONVERSATION);
+  assert.ok(before.chats[0].bytes >= before.chats[1].bytes);
+  assert.ok(!Number.isNaN(Date.parse(before.chats[0].updatedAt)));
 
   // Base64 of random bytes does not compress, so its stored size is close to its length.
   const filler = randomBytes(Math.ceil(STORAGE_LIMIT_BYTES * 0.8)).toString("base64");

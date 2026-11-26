@@ -205,39 +205,94 @@
 .limit-meter.full .limit-bar span {
   background: var(--error);
 }
-.limits-largest {
+.limit-meter-action {
+  margin-top: 12px;
+}
+.storage-chats {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+.storage-chats-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.storage-chats-head span {
+  margin-right: 4px;
+}
+.storage-chats-head button[aria-pressed="true"] {
+  background: var(--active);
+  color: var(--text);
+}
+.storage-chats-list {
+  max-height: 420px;
   margin: 0;
   padding: 0;
+  overflow-y: auto;
   list-style: none;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: var(--surface);
 }
-.limits-largest li {
+.storage-chats-list li {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 2px 12px;
-  padding: 11px 16px;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
   font-size: 13.5px;
 }
-.limits-largest li + li {
+.storage-chats-list li + li {
   border-top: 1px solid var(--line);
 }
-.limits-largest a {
+.storage-chats-list li.is-selected {
+  background: var(--active);
+}
+.storage-chats-list input,
+.storage-chats-foot input {
+  flex: none;
+  margin-top: 3px;
+  accent-color: var(--beam);
+}
+.storage-chats-list li > div {
+  display: grid;
+  gap: 2px;
   min-width: 0;
-  max-width: 100%;
+}
+.storage-chats-list a {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.limits-largest a:hover {
+.storage-chats-list a:hover {
   color: var(--beam);
 }
-.limits-largest span {
-  flex: none;
+.storage-chats-list a svg {
+  color: var(--beam-soft);
+}
+.storage-chats-list span {
   color: var(--muted);
   font-size: 12px;
+}
+.storage-chats-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.storage-chats-foot input {
+  margin-top: 0;
+}
+.storage-chats-empty,
+.storage-chats-error {
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.storage-chats-error {
+  margin: 0;
+  color: var(--error);
 }
 
 /* Settings: a provider's key and its choices */

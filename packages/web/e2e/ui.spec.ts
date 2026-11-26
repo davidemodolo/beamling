@@ -137,8 +137,15 @@ test("the limits page shows the account's own usage and is linked from the sideb
   await expect(page).toHaveURL(/\/limits$/);
   await expect(page.getByRole("meter", { name: "Questions this hour" })).toHaveAttribute("aria-valuenow", "1");
   await expect(page.getByRole("meter", { name: "Chats" })).toHaveAttribute("aria-valuenow", "1");
+  await page.getByRole("button", { name: "Free up space" }).click();
   await expect(page.locator("#main").getByRole("link", { name: "How big is this chat?" })).toBeVisible();
   await page.screenshot({ path: test.info().outputPath("limits.png"), fullPage: true });
+
+  await page.getByRole("checkbox", { name: "Select How big is this chat?" }).check();
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+  await expect(page.getByRole("meter", { name: "Chats" })).toHaveAttribute("aria-valuenow", "0");
+  await expect(page.locator("#main").getByText("No chats stored.")).toBeVisible();
 });
 
 test("a Quick answer streams with citations, cost breakdown and sources", async ({ page }) => {
@@ -736,7 +743,8 @@ test("the limits page fits a phone screen without horizontal scrolling", async (
   await ask(page, "A question whose title is long enough to fill the row twice over");
   await expect(answers(page).last()).toContainText("fixture answer", { timeout: 20_000 });
   await page.goto("/limits");
-  await expect(page.getByRole("heading", { name: "Largest chats" })).toBeVisible();
+  await page.getByRole("button", { name: "Free up space" }).click();
+  await expect(page.getByRole("checkbox", { name: "Select all" })).toBeVisible();
   const overflow = await page.locator(".limits-scroll").evaluate((el) => el.scrollWidth - el.clientWidth);
   expect(overflow).toBe(0);
 });

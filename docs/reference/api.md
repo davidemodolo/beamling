@@ -71,7 +71,7 @@ Provider keys, key ciphertext and session tokens are never included.
 | Route group | Limit |
 |---|---|
 | `POST /api/chat` | 60 per user/hour; 500 per user/day; 120 per hashed IP/hour, all counted before the body is read. At most `MAX_CONCURRENT_CHATS_PER_USER` requests per account are read and prepared at once per instance (`SERVER_BUSY`, 429) |
-| New questions | Refused when the database reaches `DATABASE_SIZE_LIMIT_MB` (`SERVICE_FULL`), at 10 MB stored per account (`STORAGE_FULL`) or 100 questions per conversation (`CONVERSATION_FULL`); retries exempt |
+| New questions | Refused when the database reaches `DATABASE_SIZE_LIMIT_MB` (`SERVICE_FULL`), at 20 MB stored per account (`STORAGE_FULL`) or 100 questions per conversation (`CONVERSATION_FULL`); retries exempt |
 | `POST /api/conversations` | 120 per user/hour |
 | `POST /api/credentials` and credential validation | 20 per user/hour |
 | Provider key checks (validated create, revalidate) | 50 per user/day; 120 per hashed IP/hour |

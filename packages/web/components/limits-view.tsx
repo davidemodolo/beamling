@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { useState } from "react";
 import {
   CONVERSATION_RETENTION_DAYS,
   MAX_CONVERSATIONS,
@@ -14,18 +14,27 @@ import {
 import { IMAGE_RETENTION_DAYS, MAX_FILE_BYTES, MAX_FILES_PER_QUESTION, MAX_IMAGES_PER_QUESTION } from "@/lib/attachments";
 import { useAccount } from "@/lib/store";
 import type { UsageReport } from "@/lib/types";
-import { formatNumber } from "@/lib/utils";
+import { formatBytes, formatNumber } from "@/lib/utils";
 import { useSidebar } from "./sidebar-context";
+import { StorageChats } from "./storage-chats";
 import { Icon } from "./ui/icon";
 import { UserAvatar } from "./user-avatar";
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function Meter({ label, used, limit, display, note }: { label: string; used: number; limit: number; display: string; note: string }) {
+function Meter({
+  label,
+  used,
+  limit,
+  display,
+  note,
+  children,
+}: {
+  label: string;
+  used: number;
+  limit: number;
+  display: string;
+  note: string;
+  children?: React.ReactNode;
+}) {
   const ratio = Math.min(1, used / limit);
   const tone = ratio >= 1 ? "full" : ratio >= STORAGE_WARNING_RATIO ? "warn" : "";
   return (
@@ -46,6 +55,7 @@ function Meter({ label, used, limit, display, note }: { label: string; used: num
         <span style={{ width: `${ratio * 100}%` }} />
       </div>
       <p>{note}</p>
+      {children}
     </div>
   );
 }
@@ -54,6 +64,7 @@ export function LimitsView({ usage }: { usage: UsageReport }) {
   const { user } = useAccount();
   const { openSidebar, openSettings } = useSidebar();
   const storageFull = usage.storageBytes >= STORAGE_LIMIT_BYTES;
+  const [managing, setManaging] = useState(false);
 
   return (
     <main className="main-pane" id="main">
@@ -92,7 +103,20 @@ export function LimitsView({ usage }: { usage: UsageReport }) {
               limit={STORAGE_LIMIT_BYTES}
               display={`${formatBytes(usage.storageBytes)} of ${formatBytes(STORAGE_LIMIT_BYTES)}`}
               note="Chats, answers and sources, encrypted. New questions stop when full."
-            />
+            >
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm limit-meter-action"
+                onClick={() => setManaging((open) => !open)}
+                aria-expanded={managing}
+                aria-controls="storage-chats"
+              >
+                <Icon name={managing ? "x" : "trash"} size={12} /> {managing ? "Close" : "Free up space"}
+              </button>
+              <div id="storage-chats" hidden={!managing}>
+                {managing ? <StorageChats chats={usage.chats} /> : null}
+              </div>
+            </Meter>
             <Meter
               label="Chats"
               used={usage.conversations}
@@ -115,22 +139,6 @@ export function LimitsView({ usage }: { usage: UsageReport }) {
               note="Resets a day after the first question in the window."
             />
           </section>
-
-          {usage.largest.length ? (
-            <section>
-              <h2>Largest chats</h2>
-              <ul className="limits-largest">
-                {usage.largest.map((chat) => (
-                  <li key={chat.id}>
-                    <Link href={`/chat/${chat.id}`}>{chat.title}</Link>
-                    <span className="mono">
-                      {formatBytes(chat.bytes)} · {chat.questions}/{MAX_QUESTIONS_PER_CONVERSATION} questions
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ) : null}
 
           <section>
             <h2>Rules</h2>

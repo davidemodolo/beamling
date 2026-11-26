@@ -9,7 +9,7 @@ import { Modal } from "./ui/modal";
  * Select mode for the chat list. Only chats on screen count: those hidden by a search are neither
  * selected by "Select all" nor deleted.
  */
-export function useChatSelection(visible: ConversationSummary[]) {
+export function useChatSelection<T extends { id: string }>(visible: T[]) {
   // null when select mode is off.
   const [ids, setIds] = useState<ReadonlySet<string> | null>(null);
   const chosen = ids ? visible.filter((conversation) => ids.has(conversation.id)) : [];
@@ -31,11 +31,13 @@ export function useChatSelection(visible: ConversationSummary[]) {
   };
 }
 
+export type ChatSelection<T extends { id: string }> = ReturnType<typeof useChatSelection<T>>;
+
 export function SelectBar({
   selection,
   onDelete,
 }: {
-  selection: ReturnType<typeof useChatSelection>;
+  selection: ChatSelection<ConversationSummary>;
   onDelete: (conversations: ConversationSummary[]) => void;
 }) {
   const count = selection.chosen.length;
@@ -60,7 +62,7 @@ export function DeleteChatsDialog({
   onClose,
   onConfirm,
 }: {
-  chats: ConversationSummary[] | null;
+  chats: { title: string }[] | null;
   onClose: () => void;
   onConfirm: () => void;
 }) {
