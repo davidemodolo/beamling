@@ -502,6 +502,15 @@
   color: var(--l-fg);
 }
 
+.l-footer-brand p a {
+  display: inline;
+  padding: 0;
+  font-size: inherit;
+  color: var(--l-fg);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .l-footer-base {
   display: flex;
   justify-content: space-between;

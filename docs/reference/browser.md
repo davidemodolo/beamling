@@ -166,7 +166,7 @@ Rendered per request, so the CSP nonce is injected and CTAs follow the session (
 - Hero with a scripted, replayable demo (queued → searching → reading → writing → done); no live provider call.
 - "Get started in three steps": Google sign-in, an OpenRouter key, a Brave key, each with a dashboard link. The copy makes no claims about provider plans, limits or privacy.
 - Modes, four principles, provider pills, FAQ (cost, own keys, limits and billing, other models, data location), final CTA with the mascot.
-- Nav: Setup, How it works, FAQ; "Sign in" and "Get started". Footer: product links, source repository, Privacy, Terms, Cookies, Data processors, Security, Status, Contact, Licenses.
+- Nav: Setup, How it works, FAQ, "Get in touch" (the author's LinkedIn, `AUTHOR_URL` in `lib/legal.ts`; hidden on phones); "Sign in" and "Get started". Footer: "Made by" the author with the same link, product links, source repository, Privacy, Terms, Cookies, Data processors, Security, Status, Contact, Licenses.
 - `prefers-reduced-motion` skips the demo animation.
 
 ## Installable app
