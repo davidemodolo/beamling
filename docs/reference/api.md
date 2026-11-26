@@ -36,7 +36,6 @@ Errors use one envelope ([Error model](errors.md)):
 | `GET` | `/api/conversations/:id` | Required | UUID id | `{ conversation }` with newest 60 messages |
 | `GET` | `/api/conversations/:id/messages` | Required | `?before=<messageId>` | `{ messages, hasMore }` |
 | `PATCH` | `/api/conversations/:id` | Required | `{ mode?, pinned? }` (at least one) | `{ conversation }` |
-| `DELETE` | `/api/conversations/:id` | Required | None | `{ ok: true }` |
 | `POST` | `/api/credentials` | Required | `{ provider, key, plan?, expiresOn?, budgetUsd?, validate? }` ([Accepted credentials](credentials.md#accepted-credentials)) | `201 { credential, settings }` |
 | `POST` | `/api/credentials/:id/validate` | Required | None | `{ credential }` |
 | `PATCH` | `/api/credentials/:id` | Required | `{ plan?, expiresOn?, budgetUsd? }` | `{ credential }` |

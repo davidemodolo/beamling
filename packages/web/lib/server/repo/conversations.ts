@@ -216,15 +216,10 @@ export async function updateConversation(
   patch: { mode?: Mode; pinned?: boolean },
 ): Promise<ConversationSummary | null> {
   return asUser(userId, async () => {
-    const values: { mode?: Mode; pinned?: boolean; updatedAt?: Date } = {};
-    if (patch.mode !== undefined) {
-      values.mode = patch.mode;
-      values.updatedAt = new Date();
-    }
-    if (patch.pinned !== undefined) values.pinned = patch.pinned;
+    // Neither counts as activity: the 60-day expiry runs from the last question.
     const [row] = await db
       .update(conversations)
-      .set(values)
+      .set({ mode: patch.mode, pinned: patch.pinned })
       .where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
       .returning();
     return row ? mapSummary(userId, row) : null;

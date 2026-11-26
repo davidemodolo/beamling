@@ -8,7 +8,7 @@ import { useAccount, useConversations } from "@/lib/store";
 import type { ConversationSummary } from "@/lib/types";
 import { dayGroup } from "@/lib/utils";
 import { versionLabel } from "@/lib/version";
-import { DeleteChatsDialog, SelectBar, useChatSelection } from "./history-selection";
+import { DeleteChatsDialog, SelectBar, useChatSelection, useDeleteChats } from "./history-selection";
 import { useSidebar } from "./sidebar-context";
 import { Icon } from "./ui/icon";
 import { Wordmark } from "./wordmark";
@@ -20,13 +20,12 @@ interface SidebarProps {
 
 function SidebarContent({ mobile, onNavigate }: SidebarProps) {
   const { user, signOut, ready, error, refresh } = useAccount();
-  const { conversations, conversationCount, hasMoreConversations, loadMoreConversations, deleteConversations, setConversationPinned } = useConversations();
+  const { conversations, conversationCount, hasMoreConversations, loadMoreConversations, setConversationPinned } = useConversations();
   const { openSettings } = useSidebar();
   const pathname = usePathname();
   const router = useRouter();
   // Conversations waiting for delete confirmation: one from its row, or the selection.
-  const [deleting, setDeleting] = useState<ConversationSummary[] | null>(null);
-  const [deleteFailed, setDeleteFailed] = useState(false);
+  const deletion = useDeleteChats<ConversationSummary>();
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreFailed, setLoadMoreFailed] = useState(false);
   const [search, setSearch] = useState("");
@@ -75,24 +74,11 @@ function SidebarContent({ mobile, onNavigate }: SidebarProps) {
   const visible = useMemo(() => groups.flatMap((group) => group.items), [groups]);
   const selection = useChatSelection(visible);
 
-  const askDelete = (chats: ConversationSummary[]) => {
-    setDeleteFailed(false);
-    setDeleting(chats);
-  };
-
-  const confirmDelete = async () => {
-    if (!deleting) return;
-    const ids = deleting.map((conversation) => conversation.id);
-    const wasActive = !!activeId && ids.includes(activeId);
-    setDeleting(null);
-    selection.stop();
-    if (wasActive) router.push("/");
-    try {
-      await deleteConversations(ids);
-    } catch {
-      setDeleteFailed(true);
-    }
-  };
+  const confirmDelete = () =>
+    deletion.confirm((ids) => {
+      selection.stop();
+      if (activeId && ids.includes(activeId)) router.push("/");
+    });
 
   return (
     <>
@@ -131,13 +117,13 @@ function SidebarContent({ mobile, onNavigate }: SidebarProps) {
           ) : null}
         </div>
         {selection.active ? (
-          <SelectBar selection={selection} onDelete={askDelete} />
+          <SelectBar selection={selection} onDelete={deletion.ask} />
         ) : conversations.length ? (
           <button type="button" className="btn btn-ghost btn-sm history-select-toggle" onClick={selection.start}>
             <Icon name="check-circle" size={13} /> Select chats
           </button>
         ) : null}
-        {deleteFailed ? (
+        {deletion.failed ? (
           <p className="sidebar-search-note" role="alert">
             Could not delete those chats. Try again.
           </p>
@@ -201,7 +187,7 @@ function SidebarContent({ mobile, onNavigate }: SidebarProps) {
                     <button
                       type="button"
                       aria-label={`Delete ${conversation.title}`}
-                      onClick={() => askDelete([conversation])}
+                      onClick={() => deletion.ask([conversation])}
                     >
                       <Icon name="trash" size={12} />
                     </button>
@@ -274,8 +260,8 @@ function SidebarContent({ mobile, onNavigate }: SidebarProps) {
       </div>
 
       <DeleteChatsDialog
-        chats={deleting}
-        onClose={() => setDeleting(null)}
+        chats={deletion.deleting}
+        onClose={deletion.cancel}
         onConfirm={() => {
           close();
           void confirmDelete();

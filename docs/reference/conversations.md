@@ -77,7 +77,7 @@ Columns worth knowing:
 - `users.terms_version`: accepted `LEGAL_VERSION` (null until accepted). `users.last_seen_at`: set on sign-in and daily session renewal. `users.shutdown_notified_at`: when the shutdown notice was accepted by SMTP (reset on scheduling).
 - `settings.analytics_opt_out`: default `false`.
 - `system_flags`: the [killswitch](operations.md#operational-killswitch) and the `shutdown` row ([Scheduled shutdown](#scheduled-shutdown)).
-- `conversations.updated_at`: last activity (new exchange or mode change); drives sidebar order, the 100 cap and 60-day expiry.
+- `conversations.updated_at`: last activity (a new exchange; mode and pin changes do not count); drives sidebar order, the 100 cap and 60-day expiry.
 
 Migrations are recorded in `beamling_migrations(filename, checksum, applied_at)`. Editing an applied file fails the next run; rows without a checksum are baselined.
 

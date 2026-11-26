@@ -8,6 +8,8 @@ import "./globals.css";
 import "./styles/primitives.css";
 import "./styles/form.css";
 import "./styles/app-frame.css";
+import "./styles/sidebar.css";
+import "./styles/thread.css";
 import "./styles/composer.css";
 import "./styles/sources.css";
 import "./styles/visuals.css";

@@ -7,17 +7,17 @@
 | `packages/web/tests/unit/providers.test.ts` | 26 | Model allowlist, setup defaults, key validation, search and error mapping, 429 retry, unsafe URLs, malformed bodies, DeepSeek query limit, cost, thinking switch, result pictures |
 | `packages/web/tests/unit/answer.test.ts` | 10 | Citations, ranking, freshness, language, prompt injection, history, stream events, picture rule and history |
 | `packages/web/tests/unit/safe-fetch.test.ts` | 4 | Public-address check (IPv4, IPv6, mapped), refused URLs before connecting, picture URL rules, raster signatures |
-| `packages/web/tests/unit/security.test.ts` | 11 | IP HMAC, derived keys, test sign-in, origins, production config, body limits, log redaction, signup allowlists, shutdown notice |
+| `packages/web/tests/unit/security.test.ts` | 12 | IP HMAC, dev database default, derived keys, test sign-in, origins, production config, body limits, log redaction, signup allowlists, shutdown notice |
 | `packages/web/tests/unit/analytics.test.ts` | 13 | Allowlist, identity, delivery, opt-out, deletion, erasure backoff, host rules |
 | `packages/web/tests/integration/answers.test.ts` | 19 | All modes, tool loops, planner repair, partial search, missing keys, provider and cost, no fallback, timeout, research time share, NUL, retry, regenerate and edit, text files, single DeepSeek key |
 | `packages/web/tests/integration/streams.test.ts` | 10 | Per-conversation, global and per-account limits, lock timeout, stop, mid-answer delete, stale repair, cleanup, terminal race, new-stream flag |
-| `packages/web/tests/integration/conversations.test.ts` | 6 | Pinned ordering, pagination, 100-conversation cap, 60-day expiry, per-chat and storage caps, per-chat sizes |
+| `packages/web/tests/integration/conversations.test.ts` | 7 | Pinned ordering, mode and pin changes are not activity, pagination, 100-conversation cap, 60-day expiry, per-chat and storage caps, per-chat sizes |
 | `packages/web/tests/integration/isolation.test.ts` | 5 | Row-level security: nothing outside an account scope, no cross-account reads or writes, no nested foreign scope; one workspace-key load per scope, key kept after a rollback |
 | `packages/web/tests/integration/accounts.test.ts` | 13 | Sessions, account cleanup, export, analytics opt-out and erasure, sign-up cap, rate limits, Brave spacing, keys, shutdown |
 | `packages/web/tests/unit/images.test.ts` | 7 | Image type and signature checks, image markers in prompts, single entity decoding, model vision flags, text file validation, `<file>` blocks and their budget, address-bar fragment and auto-send rule |
 | `packages/web/tests/unit/visuals.test.ts` | 4 | Fence language, chart validation and limits, pie rules, document markers and file names |
 | `packages/web/tests/unit/markdown.test.ts` | 8 | Heading levels, nested and task lists across blank lines, quotes, fences, tables, documents, inline formatting and citations, document export with sources, picture references |
-| `packages/web/e2e/*.spec.ts` | 61 | 15 API checks, 34 UI flows, 12 route CSP/axe variants (below) |
+| `packages/web/e2e/*.spec.ts` | 62 | 15 API checks, 35 UI flows, 12 route CSP/axe variants (below) |
 
 ## Running
 

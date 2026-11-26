@@ -75,7 +75,7 @@ Priority: P0 = Alpha 1 target, P1 = private alpha/v1, P2 = later. Priority is no
 - **FR-30 (P0):** Deletion removes its messages and sources.
 - **FR-69 (P0):** Pin/unpin from the sidebar, stored server-side, shown in a Pinned section.
   - Acceptance: a pinned old chat sorts ahead of newer unpinned ones; unpinning restores date grouping; state lives in PostgreSQL.
-- **FR-74 (P0):** Storage is bounded: conversations (pinned or not) are deleted 60 days after last activity (question or mode change); max 100 per account. Implemented.
+- **FR-74 (P0):** Storage is bounded: conversations (pinned or not) are deleted 60 days after the last question; max 100 per account. Implemented.
   - Acceptance: cleanup deletes chats idle > 60 days; creating the 101st deletes the least recently active unpinned ones first and returns their ids; the sidebar always states the 60-day rule and warns from 90 chats; Terms and Privacy state both limits.
 - **FR-70 (P1):** Search conversations by title in the sidebar.
   - Alpha 1: filters loaded pages and says older chats must be loaded. Full-history search is post-alpha.
