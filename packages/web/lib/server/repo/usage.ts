@@ -78,14 +78,16 @@ const LARGEST_COUNT = 5;
 export async function usageReport(userId: string): Promise<UsageReport> {
   return asUser(userId, async () => {
     const keys = questionLimitKeys(userId);
-    const [storageBytes, [{ value: conversationCount }], counters, sizes] = await Promise.all([
-      storageUsedBytes(userId),
-      db.select({ value: count() }).from(conversations).where(eq(conversations.userId, userId)),
-      db
-        .select({ key: rateLimits.key, count: rateLimits.count })
-        .from(rateLimits)
-        .where(and(inArray(rateLimits.key, [keys.hour, keys.day]), gt(rateLimits.expiresAt, sql`clock_timestamp()`))),
-      db.execute<{ id: string; title: string; bytes: string; questions: string }>(sql`
+    const storageBytes = await storageUsedBytes(userId);
+    const [{ value: conversationCount }] = await db
+      .select({ value: count() })
+      .from(conversations)
+      .where(eq(conversations.userId, userId));
+    const counters = await db
+      .select({ key: rateLimits.key, count: rateLimits.count })
+      .from(rateLimits)
+      .where(and(inArray(rateLimits.key, [keys.hour, keys.day]), gt(rateLimits.expiresAt, sql`clock_timestamp()`)));
+    const sizes = await db.execute<{ id: string; title: string; bytes: string; questions: string }>(sql`
         select c.id, c.title,
           pg_column_size(c.*)
             + coalesce(sum(pg_column_size(m.*)), 0)
@@ -101,8 +103,7 @@ export async function usageReport(userId: string): Promise<UsageReport> {
         group by c.id
         order by bytes desc
         limit ${LARGEST_COUNT}
-      `),
-    ]);
+      `);
     const counter = (key: string) => counters.find((row) => row.key === key)?.count ?? 0;
     const largest = await Promise.all(
       sizes.rows.map(async (row) => ({

@@ -33,7 +33,7 @@ frame-ancestors 'none'
 
 - The app connects as `beamling_app`: data access only, no schema changes, no `BYPASSRLS`. Migrations run as the table owner.
 - Row-level security on `conversations`, `messages`, `sources`, `credentials`, `credential_usage`, `settings` and `user_data_keys`: policy `account_rows` shows and accepts only rows whose `user_id` matches `app.user_id`. Without it, nothing matches.
-- Repository functions run their queries through `asUser(userId, …)` (`lib/server/db.ts`): one transaction with `set_config('app.user_id', …, true)`, so it holds through a transaction-mode pooler. A nested scope for another account throws.
+- Repository functions run their queries through `asUser(userId, …)` (`lib/server/db.ts`): one transaction with `set_config('app.user_id', …, true)`, so it holds through a transaction-mode pooler. A nested scope for another account throws. A scope holds one connection, so its queries run one after another; integration tests turn pg's concurrent-query deprecation into an error. A new workspace key is stored in its own committed transaction before it is cached, so a rolled-back scope cannot lose it.
 - Cross-account work goes through owner functions (`SECURITY DEFINER`, fixed `search_path`, `EXECUTE` for `beamling_app` only) that return no content: streaming counts, the stop flag, interrupting answers, expiring and empty-conversation cleanup.
 - `users`, `auth_sessions`, `rate_limits`, `provider_slots`, `system_flags` and `analytics_erasures` have no policies: sign-in, sessions and limits run before an account is known.
 - Startup logs a warning when `DATABASE_URL` is a superuser, has `BYPASSRLS` or owns the tables.
@@ -81,7 +81,7 @@ frame-ancestors 'none'
 
 ## Logging and error handling
 
-- One-line JSON logs. Each API request logs request id, method, path, status, duration and a keyed user hash; `x-request-id` is returned.
+- One-line JSON logs. Each API request logs request id, method, path, status, error code on failure (`INTERNAL` when unhandled), duration and a keyed user hash; `x-request-id` is returned.
 - Each answer logs one `answer` line with its outcome metadata (mode, models, providers, counts, timings, error code), never content ([answer pipeline](answer-pipeline.md#stop-timeout-disconnect-and-shutdown)).
 - Error summaries keep name, Postgres code, message and SQL text, without parameters. Provider adapters log only provider and HTTP status; bodies and keys are redacted.
 - Never logged: request bodies, cookies, authorization headers, plaintext keys.

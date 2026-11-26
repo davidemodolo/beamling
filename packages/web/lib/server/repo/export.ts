@@ -16,16 +16,14 @@ export async function exportAccount(userId: string) {
   return asUser(userId, async () => {
     const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
     if (!user) return null;
-    const [settings, credentials, sessions, conversations] = await Promise.all([
-      ensureSettings(userId),
-      listCredentials(userId),
-      db
-        .select({ createdAt: authSessions.createdAt, expiresAt: authSessions.expiresAt })
-        .from(authSessions)
-        .where(eq(authSessions.userId, userId))
-        .orderBy(asc(authSessions.createdAt)),
-      exportConversations(userId),
-    ]);
+    const settings = await ensureSettings(userId);
+    const credentials = await listCredentials(userId);
+    const sessions = await db
+      .select({ createdAt: authSessions.createdAt, expiresAt: authSessions.expiresAt })
+      .from(authSessions)
+      .where(eq(authSessions.userId, userId))
+      .orderBy(asc(authSessions.createdAt));
+    const conversations = await exportConversations(userId);
     return {
       format: "beamling-export",
       version: 1,
