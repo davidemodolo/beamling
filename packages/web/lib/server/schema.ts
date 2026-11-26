@@ -146,6 +146,8 @@ export const settings = pgTable("settings", {
   defaultMode: text("default_mode").$type<Mode>().notNull().default("quick"),
   // Objection to product analytics (Art. 21 GDPR): no events are sent for this account.
   analyticsOptOut: boolean("analytics_opt_out").notNull().default(false),
+  // The working mascot casts light on the words being written. Off unless chosen.
+  beamLight: boolean("beam_light").notNull().default(false),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

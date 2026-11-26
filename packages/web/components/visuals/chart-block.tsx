@@ -13,9 +13,9 @@ function niceStep(span: number, count: number): number {
   return (unit <= 1 ? 1 : unit <= 2 ? 2 : unit <= 5 ? 5 : 10) * power;
 }
 
-function scale(values: number[]): { min: number; max: number; ticks: number[] } {
-  let min = Math.min(0, ...values);
-  let max = Math.max(0, ...values);
+function scale(values: number[], includeZero = true): { min: number; max: number; ticks: number[] } {
+  let min = Math.min(...values, ...(includeZero ? [0] : []));
+  let max = Math.max(...values, ...(includeZero ? [0] : []));
   if (min === max) max = min + 1;
   const step = niceStep(max - min, 5);
   min = Math.floor(min / step) * step;
@@ -23,6 +23,22 @@ function scale(values: number[]): { min: number; max: number; ticks: number[] } 
   const ticks: number[] = [];
   for (let value = min; value <= max + step / 2; value += step) ticks.push(Number(value.toPrecision(12)));
   return { min, max, ticks };
+}
+
+const color = (index: number) => `var(--viz-${(index % 6) + 1})`;
+
+/** Per row, where each series starts and ends: side by side from 0, or stacked. */
+function extents(spec: ChartSpec): { from: number; to: number }[][] {
+  return spec.data.map((row) => {
+    let base = 0;
+    return spec.series.map((series) => {
+      const value = row[series.key] as number;
+      if (!spec.stacked) return { from: 0, to: value };
+      const span = { from: base, to: base + value };
+      base += value;
+      return span;
+    });
+  });
 }
 
 function format(value: number, unit = ""): string {
@@ -99,61 +115,129 @@ function XLabels({ labels, x, W, H }: { labels: string[]; x: (index: number) => 
   );
 }
 
-function BarOrLine({ spec, W }: { spec: ChartSpec; W: number }) {
+function Cartesian({ spec, W }: { spec: ChartSpec; W: number }) {
   const H = Math.round(Math.min(300, Math.max(190, W * 0.48)));
+  const scatter = spec.type === "scatter";
   const labels = spec.data.map((row) => String(row[spec.x]));
-  const values = spec.data.flatMap((row) => spec.series.map((series) => row[series.key] as number));
-  const { min, max, ticks } = scale(values);
+  const spans = extents(spec);
+  const { min, max, ticks } = scale(spans.flatMap((row) => row.flatMap((span) => [span.from, span.to])), !scatter);
   const plotW = W - M.left - M.right;
   const plotH = H - M.top - M.bottom;
   const y = (value: number) => M.top + plotH - ((value - min) / (max - min)) * plotH;
   const band = plotW / labels.length;
-  const x = (index: number) => M.left + band * index + band / 2;
+  // Scatter plots place x by value; the others give each row a band.
+  const xs = scatter ? scale(spec.data.map((row) => row[spec.x] as number), false) : null;
+  const x = (index: number) =>
+    xs ? M.left + (((spec.data[index][spec.x] as number) - xs.min) / (xs.max - xs.min)) * plotW : M.left + band * index + band / 2;
   const name = (index: number) => spec.series[index].label || spec.series[index].key;
+  const tip = (row: number, series: number) =>
+    `${labels[row]} · ${name(series)}: ${format(spec.data[row][spec.series[series].key] as number, spec.unit)}`;
+
+  let marks: React.ReactNode;
+  if (spec.type === "bar") {
+    const groupW = Math.min(band * 0.7, spec.stacked ? 44 : 44 * spec.series.length);
+    const barW = spec.stacked ? groupW : groupW / spec.series.length;
+    marks = spans.map((row, rowIndex) =>
+      row.map((span, seriesIndex) => (
+        <rect
+          key={`${rowIndex}-${seriesIndex}`}
+          x={x(rowIndex) - groupW / 2 + (spec.stacked ? 0 : barW * seriesIndex) + 1}
+          y={y(Math.max(span.from, span.to))}
+          width={Math.max(barW - 2, 1)}
+          height={Math.max(Math.abs(y(span.to) - y(span.from)), 0.5)}
+          rx={2}
+          fill={color(seriesIndex)}
+        >
+          <title>{tip(rowIndex, seriesIndex)}</title>
+        </rect>
+      )),
+    );
+  } else {
+    marks = spec.series.map((series, seriesIndex) => {
+      const top = spans.map((row, rowIndex) => [x(rowIndex), y(row[seriesIndex].to)] as const);
+      const line = top.map((point) => point.join(",")).join(" ");
+      const bottom = spans.map((row, rowIndex) => `${x(rowIndex)},${y(row[seriesIndex].from)}`).reverse().join(" ");
+      return (
+        <g key={series.key}>
+          {spec.type === "area" ? <polygon points={`${line} ${bottom}`} fill={color(seriesIndex)} opacity={spec.stacked ? 0.55 : 0.22} /> : null}
+          {scatter ? null : <polyline points={line} fill="none" stroke={color(seriesIndex)} strokeWidth={2.2} strokeLinejoin="round" strokeLinecap="round" />}
+          {scatter || top.length <= 40
+            ? top.map(([px, py], rowIndex) => (
+                <circle key={rowIndex} cx={px} cy={py} r={scatter ? 4 : 3.2} fill={color(seriesIndex)} opacity={scatter ? 0.85 : 1}>
+                  <title>{tip(rowIndex, seriesIndex)}</title>
+                </circle>
+              ))
+            : null}
+        </g>
+      );
+    });
+  }
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={spec.title || "Chart"}>
       <Axes ticks={ticks} y={y} unit={spec.unit} W={W} />
-      <XLabels labels={labels} x={x} W={W} H={H} />
-      {spec.type === "bar"
-        ? spec.data.map((row, rowIndex) => {
-            const groupW = Math.min(band * 0.7, 44 * spec.series.length);
-            const barW = groupW / spec.series.length;
-            return spec.series.map((series, seriesIndex) => {
-              const value = row[series.key] as number;
-              const top = y(Math.max(value, 0));
-              const height = Math.max(Math.abs(y(value) - y(0)), 0.5);
-              return (
-                <rect
-                  key={`${rowIndex}-${seriesIndex}`}
-                  x={x(rowIndex) - groupW / 2 + barW * seriesIndex + 1}
-                  y={top}
-                  width={Math.max(barW - 2, 1)}
-                  height={height}
-                  rx={2}
-                  fill={`var(--viz-${(seriesIndex % 6) + 1})`}
-                >
-                  <title>{`${labels[rowIndex]} · ${name(seriesIndex)}: ${format(value, spec.unit)}`}</title>
-                </rect>
-              );
-            });
-          })
-        : spec.series.map((series, seriesIndex) => {
-            const points = spec.data.map((row, rowIndex) => [x(rowIndex), y(row[series.key] as number)] as const);
-            const color = `var(--viz-${(seriesIndex % 6) + 1})`;
-            return (
-              <g key={series.key}>
-                <polyline points={points.map((point) => point.join(",")).join(" ")} fill="none" stroke={color} strokeWidth={2.2} strokeLinejoin="round" strokeLinecap="round" />
-                {points.length <= 40
-                  ? points.map(([px, py], rowIndex) => (
-                      <circle key={rowIndex} cx={px} cy={py} r={3.2} fill={color}>
-                        <title>{`${labels[rowIndex]} · ${name(seriesIndex)}: ${format(spec.data[rowIndex][series.key] as number, spec.unit)}`}</title>
-                      </circle>
-                    ))
-                  : null}
-              </g>
-            );
-          })}
+      {xs ? (
+        <g className="chart-axis">
+          {xs.ticks.map((tick) => (
+            <text key={tick} x={M.left + ((tick - xs.min) / (xs.max - xs.min)) * plotW} y={H - M.bottom + 18} textAnchor="middle">
+              {format(tick)}
+            </text>
+          ))}
+        </g>
+      ) : (
+        <XLabels labels={labels} x={x} W={W} H={H} />
+      )}
+      {marks}
+    </svg>
+  );
+}
+
+/** Bars growing to the right, one row per category: long labels stay readable. */
+function HorizontalBars({ spec, W }: { spec: ChartSpec; W: number }) {
+  const labels = spec.data.map((row) => String(row[spec.x]));
+  const spans = extents(spec);
+  const { min, max, ticks } = scale(spans.flatMap((row) => row.flatMap((span) => [span.from, span.to])));
+  const labelW = Math.min(150, Math.round(W * 0.3));
+  const barH = spec.stacked ? 16 : Math.max(6, 16 / Math.sqrt(spec.series.length));
+  const rowH = (spec.stacked ? barH : barH * spec.series.length) + 12;
+  const top = 6;
+  const H = top + rowH * labels.length + 24;
+  const left = labelW + 8;
+  const plotW = W - left - M.right;
+  const x = (value: number) => left + ((value - min) / (max - min)) * plotW;
+  const name = (index: number) => spec.series[index].label || spec.series[index].key;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={spec.title || "Chart"}>
+      <g className="chart-axis">
+        {ticks.map((tick) => (
+          <g key={tick}>
+            <line x1={x(tick)} x2={x(tick)} y1={top} y2={H - 24} className={tick === 0 ? "zero" : undefined} />
+            <text x={x(tick)} y={H - 8} textAnchor="middle">
+              {format(tick, spec.unit)}
+            </text>
+          </g>
+        ))}
+        {labels.map((label, index) => (
+          <text key={index} x={labelW} y={top + rowH * index + rowH / 2} dy="0.32em" textAnchor="end">
+            {short(label, Math.max(8, Math.floor(labelW / 7)))}
+          </text>
+        ))}
+      </g>
+      {spans.map((row, rowIndex) =>
+        row.map((span, seriesIndex) => (
+          <rect
+            key={`${rowIndex}-${seriesIndex}`}
+            x={x(Math.min(span.from, span.to))}
+            y={top + rowH * rowIndex + 6 + (spec.stacked ? 0 : barH * seriesIndex)}
+            width={Math.max(Math.abs(x(span.to) - x(span.from)), 0.5)}
+            height={Math.max(barH - 2, 2)}
+            rx={2}
+            fill={color(seriesIndex)}
+          >
+            <title>{`${labels[rowIndex]} · ${name(seriesIndex)}: ${format(spec.data[rowIndex][spec.series[seriesIndex].key] as number, spec.unit)}`}</title>
+          </rect>
+        )),
+      )}
     </svg>
   );
 }
@@ -179,7 +263,7 @@ function Pie({ spec }: { spec: ChartSpec }) {
           // A full circle cannot be one arc; stop just short of it.
           const a1 = a0 + Math.min(share, 0.9999) * Math.PI * 2;
           return share > 0 ? (
-            <path key={index} d={arc(a0, a1)} fill={`var(--viz-${(index % 6) + 1})`}>
+            <path key={index} d={arc(a0, a1)} fill={color(index)}>
               <title>{`${row.label}: ${format(row.value, spec.unit)} (${Math.round(share * 100)}%)`}</title>
             </path>
           ) : null;
@@ -201,7 +285,7 @@ export function ChartBlock({ spec }: { spec: ChartSpec }) {
       ) : (
         <>
           <div ref={ref as React.RefObject<HTMLDivElement>} className="chart-frame">
-            <BarOrLine spec={spec} W={width} />
+            {spec.horizontal ? <HorizontalBars spec={spec} W={width} /> : <Cartesian spec={spec} W={width} />}
           </div>
           <Legend spec={spec} />
         </>

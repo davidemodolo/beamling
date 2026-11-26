@@ -27,6 +27,7 @@ test("the free setup connects OpenRouter and Brave, then setup is skipped", asyn
     defaultSearchProvider: "brave",
     defaultMode: "quick",
     analyticsOptOut: false,
+    beamLight: false,
   });
   expect(state.credentials.find((credential: { provider: string }) => credential.provider === "brave").plan).toBe("free");
 

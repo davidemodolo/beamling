@@ -9,6 +9,7 @@ import { ChartBlock } from "./visuals/chart-block";
 import { CodeBlock } from "./visuals/code-block";
 import { DocumentCard } from "./visuals/document";
 import { MermaidBlock } from "./visuals/mermaid-block";
+import { VisualBoundary, VisualError } from "./visuals/visual-error";
 
 interface MarkdownProps {
   text: string;
@@ -62,13 +63,17 @@ function fencedBlock(language: string, code: string, closed: boolean, key: strin
     );
   }
   if (ctx.visuals >= VISUAL_LIMITS.perAnswer || code.length > VISUAL_LIMITS.blockChars) {
-    return <CodeBlock key={key} code={code} language={language} note="Too large to draw" />;
+    return <VisualError key={key} code={code} language={language} detail="Too large to draw." />;
   }
   if (language === "chart") {
     const spec = parseChart(code);
-    if (!spec) return <CodeBlock key={key} code={code} language="json" note="Could not draw this chart" />;
+    if (!spec) return <VisualError key={key} code={code} language="json" detail="The chart could not be drawn." />;
     ctx.visuals++;
-    return <ChartBlock key={key} spec={spec} />;
+    return (
+      <VisualBoundary key={key} code={code} language="json">
+        <ChartBlock spec={spec} />
+      </VisualBoundary>
+    );
   }
   ctx.visuals++;
   return <MermaidBlock key={key} source={code} />;

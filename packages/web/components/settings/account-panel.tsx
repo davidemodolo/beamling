@@ -21,6 +21,14 @@ export function AccountPanel() {
     }
   };
 
+  const toggleBeamLight = async (on: boolean) => {
+    try {
+      await updateSettings({ beamLight: on });
+    } catch (cause) {
+      showToast(errorMessage(cause, "Could not update the setting"));
+    }
+  };
+
   return (
     <div className="settings-stack">
       <section className="settings-card">
@@ -76,6 +84,27 @@ export function AccountPanel() {
                 revokes it immediately.
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="settings-card">
+        <div className="settings-card-body tight">
+          <div className="setting-row">
+            <label className="grow check-row" htmlFor="beam-light" style={{ alignItems: "flex-start" }}>
+              <input
+                id="beam-light"
+                type="checkbox"
+                checked={settings.beamLight}
+                onChange={(event) => void toggleBeamLight(event.target.checked)}
+              />
+              <span>
+                <span className="row-title">Beamling lights the answer</span>
+                <span className="row-hint" style={{ display: "block", fontWeight: 400 }}>
+                  While an answer is written, a beam from Beamling&apos;s eyes follows the newest words.
+                </span>
+              </span>
+            </label>
           </div>
         </div>
       </section>

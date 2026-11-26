@@ -6,6 +6,7 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultSearchProvider: DEFAULT_SEARCH_PROVIDER,
   defaultMode: "quick",
   analyticsOptOut: false,
+  beamLight: false,
 };
 
 export const DEFAULT_CONVERSATION_TITLE = "New conversation";

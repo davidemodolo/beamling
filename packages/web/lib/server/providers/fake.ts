@@ -28,7 +28,7 @@ export function fakeImage(url: string): Uint8Array | null {
 /** Appended with [fixture:images]: a picture that loads and one that fails. */
 const IMAGES_CONTENT = "\n\n![Fixture picture](source:1)\n\nA closing line after the pictures [1].\n\n![Missing picture](source:2)";
 
-/** Appended with [fixture:visuals]: a code block, a chart, a diagram, a broken chart and a document. */
+/** Appended with [fixture:visuals]: a code block, two charts, a diagram, a broken chart and a document. */
 const VISUALS_CONTENT = [
   "",
   "```ts",
@@ -37,6 +37,10 @@ const VISUALS_CONTENT = [
   "",
   "```chart",
   '{"type":"bar","title":"Fixture chart","x":"year","series":[{"key":"value","label":"Value"}],"data":[{"year":"2024","value":3},{"year":"2025","value":5}]}',
+  "```",
+  "",
+  "```chart",
+  '{"type":"bar","horizontal":true,"stacked":true,"title":"Fixture stack","x":"name","series":[{"key":"a"},{"key":"b"}],"data":[{"name":"First","a":1,"b":2},{"name":"Second","a":3,"b":1}]}',
   "```",
   "",
   "```mermaid",

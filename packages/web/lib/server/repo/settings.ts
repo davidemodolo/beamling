@@ -69,7 +69,7 @@ export async function alignDefaults(userId: string): Promise<{ settings: Setting
   });
 }
 
-/** Updates the answer defaults. The analytics objection has its own path (setAnalyticsOptOut). */
+/** Updates the answer defaults and display choices. The analytics objection has its own path (setAnalyticsOptOut). */
 export async function updateSettings(
   userId: string,
   patch: Partial<Omit<Settings, "analyticsOptOut">>,
@@ -91,6 +91,7 @@ export async function updateSettings(
         llmModel: next.llmModel,
         defaultSearchProvider: next.defaultSearchProvider,
         defaultMode: next.defaultMode,
+        beamLight: next.beamLight,
         updatedAt: new Date(),
       })
       .where(eq(settings.userId, userId))

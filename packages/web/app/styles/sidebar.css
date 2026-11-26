@@ -156,6 +156,8 @@
   display: none;
   align-items: center;
   gap: 1px;
+  /* The 32px buttons fit the row's 20px line, so showing them on hover does not grow it. */
+  margin-block: -6px;
 }
 .history-item:hover .history-actions,
 .history-item:focus-within .history-actions {

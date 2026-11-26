@@ -27,7 +27,7 @@ credential_usage
 
 settings
   user_id → users (primary key), llm_model, default_search_provider, default_mode,
-  analytics_opt_out, updated_at
+  analytics_opt_out, beam_light, updated_at
 
 conversations
   id, user_id → users, title, mode, pinned, created_at, updated_at
@@ -75,7 +75,7 @@ Indexes and constraints:
 Columns worth knowing:
 
 - `users.terms_version`: accepted `LEGAL_VERSION` (null until accepted). `users.last_seen_at`: set on sign-in and daily session renewal. `users.shutdown_notified_at`: when the shutdown notice was accepted by SMTP (reset on scheduling).
-- `settings.analytics_opt_out`: default `false`.
+- `settings.analytics_opt_out`: default `false`. `settings.beam_light`: the mascot's light on the answer, default `false`.
 - `system_flags`: the [killswitch](operations.md#operational-killswitch) and the `shutdown` row ([Scheduled shutdown](#scheduled-shutdown)).
 - `conversations.updated_at`: last activity (a new exchange; mode and pin changes do not count); drives sidebar order, the 100 cap and 60-day expiry.
 

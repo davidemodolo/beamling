@@ -15,9 +15,9 @@
 | `packages/web/tests/integration/isolation.test.ts` | 5 | Row-level security: nothing outside an account scope, no cross-account reads or writes, no nested foreign scope; one workspace-key load per scope, key kept after a rollback |
 | `packages/web/tests/integration/accounts.test.ts` | 13 | Sessions, account cleanup, export, analytics opt-out and erasure, sign-up cap, rate limits, Brave spacing, keys, shutdown |
 | `packages/web/tests/unit/images.test.ts` | 7 | Image type and signature checks, image markers in prompts, single entity decoding, model vision flags, text file validation, `<file>` blocks and their budget, address-bar fragment and auto-send rule |
-| `packages/web/tests/unit/visuals.test.ts` | 4 | Fence language, chart validation and limits, pie rules, document markers and file names |
+| `packages/web/tests/unit/visuals.test.ts` | 5 | Fence language, chart validation and limits, pie, stack, horizontal and scatter rules, document markers and file names |
 | `packages/web/tests/unit/markdown.test.ts` | 8 | Heading levels, nested and task lists across blank lines, quotes, fences, tables, documents, inline formatting and citations, document export with sources, picture references |
-| `packages/web/e2e/*.spec.ts` | 62 | 15 API checks, 35 UI flows, 12 route CSP/axe variants (below) |
+| `packages/web/e2e/*.spec.ts` | 63 | 15 API checks, 36 UI flows, 12 route CSP/axe variants (below) |
 
 ## Running
 
@@ -56,15 +56,16 @@ UI:
 - Per-question Tavily selection keeps its badge after reload; providers without a key are marked; an Exa key is saved unvalidated and checked later.
 - Settings: a model is picked under its keyed provider, an unkeyed provider's models stay disabled until its key is added, a search provider is picked by card, and the dialog has no serious axe violations.
 - Install: the manifest is linked and standalone, its icons load, the service worker activates, and a page load offline shows the offline page.
-- Sidebar pinning and title search; older conversations load on demand; several chats are selected and deleted in one request, in a dialog centred in the window.
+- Sidebar pinning (showing a row's actions does not change its height) and title search; older conversations load on demand; several chats are selected and deleted in one request, in a dialog centred in the window.
 - Images: only the image id and type are stored; a follow-up re-sends the image from the browser; after 7 days, or in another browser, a placeholder shows and the model does not get it; an image-only question is titled "Image question" and deleting it clears the device copy.
 - Text files: a binary file is refused; only the file id and name are stored; the model gets the text, also with a follow-up.
 - Regenerate replaces the latest answer; editing the latest question rewrites it, replaces the answer and retitles the chat.
 - `/search`: a typed question from the fragment is sent; arriving from another site only fills the composer and sets the mode; `/opensearch.xml` carries the fragment template.
 - `/limits` lists every chat under **Free up space** and deletes a checked one; it does not scroll horizontally at phone width.
-- Visuals (`[fixture:visuals]`): a `ts` block is highlighted and copies its code; a chart and a diagram are drawn, a broken chart falls back to code; the document opens in a panel right of the chat with its title once, heading levels, nested and task lists, citations linking to the source and the cited sources listed; after a reload the card reopens it and downloads `fixture-plan.md` with reference links.
+- Visuals (`[fixture:visuals]`): a `ts` block is highlighted and copies its code; two charts (one stacked and horizontal) and a diagram are drawn, a broken chart is collapsed behind a rendering error; the document opens in a panel right of the chat with its title once, heading levels, nested and task lists, citations linking to the source and the cited sources listed; after a reload the card reopens it and downloads `fixture-plan.md` with reference links.
 - Setup offers sign-out and account deletion without any key.
 - Streams stay isolated per conversation and survive client-side navigation.
+- The mascot's light on the answer is off by default; once turned on in Settings, the working card is sticky and the light shows while the answer is written.
 - Stop keeps partial text; “Ask again” replaces the answer; reload mid-answer shows a stopped answer.
 - Failures before storage retry as a new question; deleting the active conversation returns to a new question.
 - A scheduled shutdown shows in the app, on `/login` (date, sign-up closed) and on `/status`.

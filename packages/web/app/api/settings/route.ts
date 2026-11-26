@@ -16,6 +16,7 @@ const schema = z.object({
   defaultSearchProvider: z.enum(SEARCH_PROVIDER_IDS).optional(),
   defaultMode: z.enum(MODES).optional(),
   analyticsOptOut: z.boolean().optional(),
+  beamLight: z.boolean().optional(),
 });
 
 export const PATCH = apiRoute(async ({ request, user }) => {

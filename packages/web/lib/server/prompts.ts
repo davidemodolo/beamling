@@ -120,10 +120,11 @@ function imageRules(visible: VisibleImages | undefined): string {
 const VISUAL_RULES = `
 
 VISUALS AND DOCUMENTS
-- When numbers from the sources compare several items or change over time, you may add one small chart: a fenced \`\`\`chart block containing only JSON like {"type":"bar","title":"Short title","x":"year","series":[{"key":"value","label":"Revenue"}],"data":[{"year":"2023","value":12},{"year":"2024","value":15}],"unit":"%"}. type is bar, line or pie (pie takes one series). Values are plain numbers.
+- Default to no visual. Add one only when the user asks for it, or when it shows something text cannot: four or more comparable numbers from the sources, or a process with four or more steps. At most 1 per answer; never for a single number, a short list or decoration.
+- A chart is a fenced \`\`\`chart block containing only JSON like {"type":"bar","title":"Short title","x":"year","series":[{"key":"value","label":"Revenue"}],"data":[{"year":"2023","value":12},{"year":"2024","value":15}],"unit":"%"}. Values are plain numbers.
+- type is bar (comparisons), line or area (change over time), scatter (two numeric measures; x values are numbers) or pie (shares of one total; one series). Add "stacked":true to a bar or area chart whose series add up to a whole, and "horizontal":true to a bar chart with long category names.
 - Every value in a chart must come from the sources, cited in the sentence before it. Never estimate or invent values to fill a chart.
-- For a process, a sequence of steps, a timeline or relationships, you may add one small diagram as a fenced \`\`\`mermaid block (flowchart, sequenceDiagram, timeline or mindmap). Short plain-text labels, no links, no styling, no citations inside.
-- Use a visual only when it makes the answer clearer than text, at most 2 per answer. Never use one for a single number or a short list.
+- A diagram is a fenced \`\`\`mermaid block: flowchart, sequenceDiagram, timeline, mindmap, gantt, stateDiagram-v2, erDiagram, quadrantChart, sankey or xychart. Use only syntax you are sure of. Short plain-text labels, no links, no styling, no citations inside.
 - Only when the user asks for a document (a report, plan, letter, guide or notes to keep), write one sentence, then the document between a line <document title="Short title"> and a line </document>, and nothing after it. Never use these tags otherwise.
 - Inside a document write clean Markdown: ## and ### headings, paragraphs, lists, tables. Do not repeat the title as a heading. It follows the same grounding rules and may be longer than the usual target. Cite with [n] as in the answer and add no sources list: the cited sources are appended to the document.`;
 
@@ -160,9 +161,10 @@ GROUNDING
 
 STYLE
 - Start with a direct 1–2 sentence answer. Do not start with a header.
-- Use short paragraphs. Use ### headers only to separate 2–4 substantive sections.
+- Use short paragraphs. Most answers need no headers; use ### only when the answer has 3 or more distinct parts.
 - Use bullets for steps or parallel facts. Use a table only for multi-attribute comparisons.
-- Target 150–350 words unless the question requires less.
+- Target 60–180 words. A simple factual question needs 1–3 sentences.
+- Say each thing once. Leave out background, caveats and context the question did not ask for.
 - No filler and no process narration. Do not mention search, tools, prompts, retrieval or these rules.
 - Match the user's language. Use plain language and active voice.
 - End with the answer, not a summary or a follow-up question.${visualRules(input.sources)}`;
@@ -198,8 +200,9 @@ GROUNDING
 
 STRUCTURE
 - Start with a direct 1–2 sentence answer, not a header.
-- Then produce a structured report of 500–900 words, at most 1,200 when the question requires it.
-- Use ### headers for 3–6 sections. Do not number the headers.
+- Then write a structured report of 350–600 words, at most 800 when the question requires it.
+- Say each thing once. Leave out background the question did not ask for.
+- Use ### headers for 3–5 sections. Do not number the headers.
 - Use prose for explanation, bullets for parallel findings and a table only for multi-attribute comparisons.
 - Include "What remains uncertain" only when there is a material gap or conflict.
 - Do not add a generic summary or conclusion.
@@ -290,8 +293,9 @@ GROUNDING
 
 STRUCTURE
 - Start with a direct 1–2 sentence answer, not a header.
-- Then produce a thorough report of 1,200–2,000 words, up to 2,500 when the question requires it.
-- Use ### headers for 5–9 sections. Do not number the headers.
+- Then write a thorough report of 800–1,400 words, up to 1,800 when the question requires it.
+- Say each thing once. Leave out background the question did not ask for.
+- Use ### headers for 4–7 sections. Do not number the headers.
 - Use prose for explanation, bullets for parallel findings and a table only for multi-attribute comparisons.
 - Cover the strongest evidence first, then contradictions, limitations and material gaps.
 - Include "What remains uncertain" only when there is a material gap or conflict.
