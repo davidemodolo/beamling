@@ -12,6 +12,7 @@
 | `packages/web/tests/integration/answers.test.ts` | 19 | All modes, tool loops, planner repair, partial search, missing keys, provider and cost, no fallback, timeout, research time share, NUL, retry, regenerate and edit, text files, single DeepSeek key |
 | `packages/web/tests/integration/streams.test.ts` | 10 | Per-conversation, global and per-account limits, lock timeout, stop, mid-answer delete, stale repair, cleanup, terminal race, new-stream flag |
 | `packages/web/tests/integration/conversations.test.ts` | 6 | Pinned ordering, pagination, 100-conversation cap, 60-day expiry, per-chat and storage caps |
+| `packages/web/tests/integration/isolation.test.ts` | 3 | Row-level security: nothing outside an account scope, no cross-account reads or writes, no nested foreign scope |
 | `packages/web/tests/integration/accounts.test.ts` | 13 | Sessions, account cleanup, export, analytics opt-out and erasure, sign-up cap, rate limits, Brave spacing, keys, shutdown |
 | `packages/web/tests/unit/images.test.ts` | 7 | Image type and signature checks, image markers in prompts, single entity decoding, model vision flags, text file validation, `<file>` blocks and their budget, address-bar fragment and auto-send rule |
 | `packages/web/tests/unit/visuals.test.ts` | 4 | Fence language, chart validation and limits, pie rules, document markers and file names |
@@ -27,7 +28,7 @@ DATABASE_URL=postgres://... pnpm --filter @beamling/web test
 E2E_DATABASE_URL=postgres://... pnpm --filter @beamling/web test:e2e
 ```
 
-- Integration tests skip, with a message, without `DATABASE_URL`.
+- Integration tests skip, with a message, without `DATABASE_URL`. Connect as `beamling_app` so row-level security applies; the isolation tests skip for a role that bypasses it.
 - `pnpm test` runs unit files in parallel, then integration files one at a time (`--test-concurrency=1`): some change database-wide state (global stream cap, sign-up cap, new-stream flag).
 - Helpers: `tests/helpers.ts` (`withEnv`, `mockFetch`, `jsonResponse`), plus `helpers.ts` in `unit/` and `integration/`.
 - Playwright starts a production server on `E2E_PORT` (default 3210) with fixture providers and a random master key. It needs a migrated, disposable database.

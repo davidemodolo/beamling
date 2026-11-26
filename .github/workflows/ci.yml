@@ -31,7 +31,8 @@ jobs:
           --health-timeout 5s
           --health-retries 20
     env:
-      DATABASE_URL: postgres://beamling:beamling@localhost:5432/beamling_test
+      # Tests and the app connect as the application role, so row-level security is exercised.
+      DATABASE_URL: postgres://beamling_app:beamling-app@localhost:5432/beamling_test
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -64,7 +65,11 @@ jobs:
       - run: pnpm --filter @beamling/mascot typecheck
       - run: pnpm --filter @beamling/web typecheck
       - run: pnpm --filter @beamling/web lint
-      - run: pnpm db:migrate
+      - name: Migrations (as the owner; enables the application login)
+        run: pnpm db:migrate
+        env:
+          DATABASE_URL: postgres://beamling:beamling@localhost:5432/beamling_test
+          DATABASE_APP_PASSWORD: beamling-app
       - name: Unit and integration tests
         run: pnpm test
       - run: pnpm --filter @beamling/web build

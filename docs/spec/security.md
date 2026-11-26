@@ -13,6 +13,7 @@ Implemented: KMS-backed envelope encryption, hashed session tokens, `APP_URL`-an
 | Prompt injection in snippets | Manipulated answers | Delimited `<source>` blocks, instruction hierarchy, no tools from content, regression set |
 | XSS in model output | Session theft | Sanitized markdown, no raw HTML, link scheme allowlist |
 | CSRF | Unwanted actions | SameSite cookies, `APP_URL`-anchored origin checks |
+| Query without an account filter | Cross-account data exposure | Row-level security per account, app role without schema or bypass rights |
 | Session theft | Data exposure | HttpOnly/SameSite/Secure cookie, 256-bit opaque token, hashed, 30-day expiry |
 | Free-tier abuse | Cost exhaustion | Per-account and per-IP limits, global concurrency cap, alpha access control |
 | Cost amplification | Unexpected spend | Cost estimate, ceiling warning, no silent fallbacks |

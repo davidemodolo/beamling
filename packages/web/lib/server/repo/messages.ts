@@ -1,17 +1,25 @@
 import { randomUUID } from "node:crypto";
-import { and, count, desc, eq, gt, inArray, lt, lte, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, lt, lte, sql } from "drizzle-orm";
 import type { Attachment } from "../../attachments";
 import { DEFAULT_CONVERSATION_TITLE, HISTORY_MESSAGES, attachmentQuestionTitle, titleFromQuestion } from "../../data";
 import { DEFAULT_SEARCH_PROVIDER } from "../../provider-catalog";
 import type { Message, Mode, SearchProvider, SearchTrace, Source, Usage } from "../../types";
 import { plural } from "../../utils";
-import { db } from "../db";
+import { asUser, db, type Tx } from "../db";
 import { maxConcurrentChats, maxConcurrentChatsPerUser } from "../env";
 import { ApiError, pgErrorCode, storableText } from "../http";
 import { SOURCE_SNIPPET_CHARS } from "../prompts";
 import { conversations, messages, sources } from "../schema";
 import { decryptText, encryptText } from "../workspace-key";
-import { interruptedFields, mapMessage, readAttachments, staleBefore, staleBeforeSql, type MessageRow } from "./shared";
+import {
+  STALE_STREAMING_SECONDS,
+  interruptedFields,
+  mapMessage,
+  readAttachments,
+  staleBefore,
+  staleBeforeSql,
+  type MessageRow,
+} from "./shared";
 
 const UNIQUE_VIOLATION = "23505";
 const LOCK_NOT_AVAILABLE = "55P03";
@@ -25,22 +33,23 @@ function deeperSlots(): number {
 
 /** The messages before `before` that form the prompt's conversation context, oldest first. */
 export async function getHistory(userId: string, conversationId: string, before: Date): Promise<Message[]> {
-  const rows = await db
-    .select()
-    .from(messages)
-    .where(
-      and(
-        eq(messages.conversationId, conversationId),
-        eq(messages.userId, userId),
-        lt(messages.createdAt, before),
-      ),
-    )
-    .orderBy(desc(messages.createdAt), desc(messages.id))
-    .limit(HISTORY_MESSAGES);
-  return Promise.all(rows.reverse().map((row) => mapMessage(userId, row, [])));
+  return asUser(userId, async () => {
+    const rows = await db
+      .select()
+      .from(messages)
+      .where(
+        and(
+          eq(messages.conversationId, conversationId),
+          eq(messages.userId, userId),
+          lt(messages.createdAt, before),
+        ),
+      )
+      .orderBy(desc(messages.createdAt), desc(messages.id))
+      .limit(HISTORY_MESSAGES);
+    return Promise.all(rows.reverse().map((row) => mapMessage(userId, row, [])));
+  });
 }
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 /** The latest answer, about to be replaced, with the question it answered. */
 async function retryTarget(tx: Tx, input: { userId: string; conversationId: string; messageId: string }) {
@@ -114,171 +123,167 @@ export async function createExchange(input: {
   attachments?: Attachment[];
   retryOf?: string;
 }): Promise<{ userMessage: MessageRow; assistantMessage: MessageRow; questionText: string; attachments: Attachment[] }> {
-  try {
-    return await db.transaction(async (tx) => {
-      // Taken first so every exchange acquires its locks in the same order.
-      await tx.execute(sql`select pg_advisory_xact_lock(${CHAT_SLOT_LOCK_ID})`);
+  return asUser(input.userId, async () => {
+    try {
+      return await db.transaction(async (tx) => {
+        // Taken first so every exchange acquires its locks in the same order.
+        await tx.execute(sql`select pg_advisory_xact_lock(${CHAT_SLOT_LOCK_ID})`);
 
-      const [conversation] = await tx
-        .select()
-        .from(conversations)
-        .where(and(eq(conversations.id, input.conversationId), eq(conversations.userId, input.userId)))
-        .limit(1)
-        .for("update");
-      if (!conversation) throw new ApiError("CONVERSATION_NOT_FOUND", "Conversation not found.", 404);
+        const [conversation] = await tx
+          .select()
+          .from(conversations)
+          .where(and(eq(conversations.id, input.conversationId), eq(conversations.userId, input.userId)))
+          .limit(1)
+          .for("update");
+        if (!conversation) throw new ApiError("CONVERSATION_NOT_FOUND", "Conversation not found.", 404);
 
-      // An answer left streaming by a crashed instance must not block the conversation forever.
-      await tx
-        .update(messages)
-        .set(interruptedFields())
-        .where(
-          and(
-            eq(messages.conversationId, conversation.id),
-            eq(messages.status, "streaming"),
-            lte(messages.createdAt, staleBeforeSql()),
-          ),
-        );
+        // An answer left streaming by a crashed instance must not block the conversation forever.
+        await tx
+          .update(messages)
+          .set(interruptedFields())
+          .where(
+            and(
+              eq(messages.conversationId, conversation.id),
+              eq(messages.status, "streaming"),
+              lte(messages.createdAt, staleBeforeSql()),
+            ),
+          );
 
-      // Counted under the advisory lock, so concurrent exchanges see each other's committed rows.
-      const [{ value: inFlight }] = await tx
-        .select({ value: count() })
-        .from(messages)
-        .where(and(eq(messages.status, "streaming"), gt(messages.createdAt, staleBeforeSql())));
-      if (inFlight >= maxConcurrentChats()) {
-        throw new ApiError("SERVER_BUSY", "Beamling is busy right now. Try again in a minute.", 503);
-      }
+        // Counted under the advisory lock, so concurrent exchanges see each other's committed rows.
+        // The count spans every account, so it runs through an owner function (row-level security).
+        const [streaming] = (
+          await tx.execute<{ total: number; deeper: number }>(
+            sql`select total, deeper from beamling_streaming_answers(${STALE_STREAMING_SECONDS})`,
+          )
+        ).rows;
+        if (streaming.total >= maxConcurrentChats()) {
+          throw new ApiError("SERVER_BUSY", "Beamling is busy right now. Try again in a minute.", 503);
+        }
 
-      // Deeper answers run for minutes; capping their share keeps a few accounts from holding every slot.
-      if (input.mode === "deeper") {
-        const [{ value: deeperInFlight }] = await tx
+        // Deeper answers run for minutes; capping their share keeps a few accounts from holding every slot.
+        if (input.mode === "deeper" && streaming.deeper >= deeperSlots()) {
+          throw new ApiError("SERVER_BUSY", "Deeper answers are busy right now. Try Deep, or try again in a minute.", 503);
+        }
+
+        const [{ value: userInFlight }] = await tx
           .select({ value: count() })
           .from(messages)
           .where(
-            and(eq(messages.status, "streaming"), eq(messages.mode, "deeper"), gt(messages.createdAt, staleBeforeSql())),
+            and(
+              eq(messages.userId, input.userId),
+              eq(messages.status, "streaming"),
+              gt(messages.createdAt, staleBeforeSql()),
+            ),
           );
-        if (deeperInFlight >= deeperSlots()) {
-          throw new ApiError("SERVER_BUSY", "Deeper answers are busy right now. Try Deep, or try again in a minute.", 503);
+        const perUserLimit = maxConcurrentChatsPerUser();
+        if (userInFlight >= perUserLimit) {
+          throw new ApiError(
+            "SERVER_BUSY",
+            `You already have ${plural(perUserLimit, "answer")} running. Wait for one to finish or stop it.`,
+            503,
+          );
         }
-      }
 
-      const [{ value: userInFlight }] = await tx
-        .select({ value: count() })
-        .from(messages)
-        .where(
-          and(
-            eq(messages.userId, input.userId),
-            eq(messages.status, "streaming"),
-            gt(messages.createdAt, staleBeforeSql()),
-          ),
-        );
-      const perUserLimit = maxConcurrentChatsPerUser();
-      if (userInFlight >= perUserLimit) {
-        throw new ApiError(
-          "SERVER_BUSY",
-          `You already have ${plural(perUserLimit, "answer")} running. Wait for one to finish or stop it.`,
-          503,
-        );
-      }
-
-      const now = new Date();
-      let userMessage: MessageRow;
-      let questionText: string;
-      let attachments: Attachment[];
-      // Set when an edit rewrote the question the conversation was titled from.
-      let retitleFrom: string | undefined;
-      if (input.retryOf) {
-        const { target, question, questionText: storedQuestion, first } = await retryTarget(tx, {
-          userId: input.userId,
-          conversationId: conversation.id,
-          messageId: input.retryOf,
-        });
-        await tx.delete(messages).where(eq(messages.id, target.id));
-        userMessage = question;
-        questionText = storedQuestion;
-        attachments = (await readAttachments(input.userId, question)) ?? [];
-        const edited = input.question === undefined ? storedQuestion : storableText(input.question);
-        if (edited !== storedQuestion) {
-          if (!edited && !attachments.length) throw new ApiError("INVALID_INPUT", "Ask a question first.", 400);
+        const now = new Date();
+        let userMessage: MessageRow;
+        let questionText: string;
+        let attachments: Attachment[];
+        // Set when an edit rewrote the question the conversation was titled from.
+        let retitleFrom: string | undefined;
+        if (input.retryOf) {
+          const { target, question, questionText: storedQuestion, first } = await retryTarget(tx, {
+            userId: input.userId,
+            conversationId: conversation.id,
+            messageId: input.retryOf,
+          });
+          await tx.delete(messages).where(eq(messages.id, target.id));
+          userMessage = question;
+          questionText = storedQuestion;
+          attachments = (await readAttachments(input.userId, question)) ?? [];
+          const edited = input.question === undefined ? storedQuestion : storableText(input.question);
+          if (edited !== storedQuestion) {
+            if (!edited && !attachments.length) throw new ApiError("INVALID_INPUT", "Ask a question first.", 400);
+            [userMessage] = await tx
+              .update(messages)
+              .set({ content: await encryptText(input.userId, "messages", question.id, "content", edited) })
+              .where(eq(messages.id, question.id))
+              .returning();
+            questionText = edited;
+            if (first) retitleFrom = storedQuestion;
+          }
+        } else {
+          questionText = storableText(input.question ?? "");
+          attachments = input.attachments ?? [];
+          const id = randomUUID();
           [userMessage] = await tx
-            .update(messages)
-            .set({ content: await encryptText(input.userId, "messages", question.id, "content", edited) })
-            .where(eq(messages.id, question.id))
+            .insert(messages)
+            .values({
+              id,
+              conversationId: conversation.id,
+              userId: input.userId,
+              role: "user",
+              content: await encryptText(input.userId, "messages", id, "content", questionText),
+              attachments: attachments.length
+                ? await encryptText(input.userId, "messages", id, "attachments", JSON.stringify(attachments))
+                : null,
+              status: "complete",
+              mode: input.mode,
+              createdAt: now,
+            })
             .returning();
-          questionText = edited;
-          if (first) retitleFrom = storedQuestion;
         }
-      } else {
-        questionText = storableText(input.question ?? "");
-        attachments = input.attachments ?? [];
-        const id = randomUUID();
-        [userMessage] = await tx
+
+        const assistantId = randomUUID();
+        const [assistantMessage] = await tx
           .insert(messages)
           .values({
-            id,
+            id: assistantId,
             conversationId: conversation.id,
             userId: input.userId,
-            role: "user",
-            content: await encryptText(input.userId, "messages", id, "content", questionText),
-            attachments: attachments.length
-              ? await encryptText(input.userId, "messages", id, "attachments", JSON.stringify(attachments))
-              : null,
-            status: "complete",
+            role: "assistant",
+            content: await encryptText(input.userId, "messages", assistantId, "content", ""),
+            status: "streaming",
             mode: input.mode,
-            createdAt: now,
+            llmModel: input.llmModel,
+            searchProvider: input.searchProvider ?? DEFAULT_SEARCH_PROVIDER,
+            // Strictly after the question, so the thread order never depends on the clock's resolution.
+            createdAt: new Date(Math.max(now.getTime(), userMessage.createdAt.getTime()) + 1),
           })
           .returning();
+
+        const currentTitle = await decryptText(input.userId, "conversations", conversation.id, "title", conversation.title);
+        const titleFor = (text: string) => titleFromQuestion(text || attachmentQuestionTitle(attachments));
+        // An edited first question retitles the conversation, unless the title is no longer the one it gave.
+        const untitled = currentTitle === DEFAULT_CONVERSATION_TITLE || (retitleFrom !== undefined && currentTitle === titleFor(retitleFrom));
+        const nextTitle = untitled ? titleFor(questionText) : currentTitle;
+        await tx
+          .update(conversations)
+          .set({
+            title: nextTitle === currentTitle
+              ? conversation.title
+              : await encryptText(input.userId, "conversations", conversation.id, "title", nextTitle),
+            mode: input.mode,
+            updatedAt: now,
+          })
+          .where(eq(conversations.id, conversation.id));
+
+        return { userMessage, assistantMessage, questionText, attachments };
+      });
+    } catch (error) {
+      // Waiting too long for the concurrency lock means a burst of answers is starting.
+      if (pgErrorCode(error) === LOCK_NOT_AVAILABLE) {
+        throw new ApiError("SERVER_BUSY", "Beamling is busy right now. Try again in a minute.", 503);
       }
-
-      const assistantId = randomUUID();
-      const [assistantMessage] = await tx
-        .insert(messages)
-        .values({
-          id: assistantId,
-          conversationId: conversation.id,
-          userId: input.userId,
-          role: "assistant",
-          content: await encryptText(input.userId, "messages", assistantId, "content", ""),
-          status: "streaming",
-          mode: input.mode,
-          llmModel: input.llmModel,
-          searchProvider: input.searchProvider ?? DEFAULT_SEARCH_PROVIDER,
-          // Strictly after the question, so the thread order never depends on the clock's resolution.
-          createdAt: new Date(Math.max(now.getTime(), userMessage.createdAt.getTime()) + 1),
-        })
-        .returning();
-
-      const currentTitle = await decryptText(input.userId, "conversations", conversation.id, "title", conversation.title);
-      const titleFor = (text: string) => titleFromQuestion(text || attachmentQuestionTitle(attachments));
-      // An edited first question retitles the conversation, unless the title is no longer the one it gave.
-      const untitled = currentTitle === DEFAULT_CONVERSATION_TITLE || (retitleFrom !== undefined && currentTitle === titleFor(retitleFrom));
-      const nextTitle = untitled ? titleFor(questionText) : currentTitle;
-      await tx
-        .update(conversations)
-        .set({
-          title: nextTitle === currentTitle
-            ? conversation.title
-            : await encryptText(input.userId, "conversations", conversation.id, "title", nextTitle),
-          mode: input.mode,
-          updatedAt: now,
-        })
-        .where(eq(conversations.id, conversation.id));
-
-      return { userMessage, assistantMessage, questionText, attachments };
-    });
-  } catch (error) {
-    // Waiting too long for the concurrency lock means a burst of answers is starting.
-    if (pgErrorCode(error) === LOCK_NOT_AVAILABLE) {
-      throw new ApiError("SERVER_BUSY", "Beamling is busy right now. Try again in a minute.", 503);
+      if (pgErrorCode(error) === UNIQUE_VIOLATION) {
+        throw new ApiError(
+          "GENERATION_IN_PROGRESS",
+          "An answer is already being written in this conversation. Stop it or wait for it to finish.",
+          409,
+        );
+      }
+      throw error;
     }
-    if (pgErrorCode(error) === UNIQUE_VIOLATION) {
-      throw new ApiError(
-        "GENERATION_IN_PROGRESS",
-        "An answer is already being written in this conversation. Stop it or wait for it to finish.",
-        409,
-      );
-    }
-    throw error;
-  }
+  });
 }
 
 export interface AssistantOutcome {
@@ -305,82 +310,85 @@ export interface AssistantOutcome {
  * conversation was deleted while the answer was being written.
  */
 export async function completeAssistant(input: AssistantOutcome): Promise<boolean> {
-  const content = await encryptText(
-    input.userId,
-    "messages",
-    input.messageId,
-    "content",
-    storableText(input.content),
-  );
-  const errorMessage = input.errorMessage
-    ? await encryptText(input.userId, "messages", input.messageId, "error_message", storableText(input.errorMessage))
-    : null;
-  const searches = input.searches?.length
-    ? await encryptText(input.userId, "messages", input.messageId, "searches", JSON.stringify(input.searches))
-    : null;
-  const reasoning = input.reasoning
-    ? await encryptText(input.userId, "messages", input.messageId, "reasoning", storableText(input.reasoning))
-    : null;
-  const encryptedSources = await Promise.all(
-    (input.sources ?? []).map(async (source) => {
-      // The id the stream already sent, so the browser can load the picture once the answer is stored.
-      const id = source.id || randomUUID();
-      return {
-        id,
-        messageId: input.messageId,
-        position: source.position,
-        url: await encryptText(input.userId, "sources", id, "url", storableText(source.url)),
-        title: source.title ? await encryptText(input.userId, "sources", id, "title", storableText(source.title)) : null,
-        domain: source.domain ? await encryptText(input.userId, "sources", id, "domain", storableText(source.domain)) : null,
-        snippet: source.snippet
-          ? await encryptText(input.userId, "sources", id, "snippet", storableText(source.snippet).slice(0, SOURCE_SNIPPET_CHARS))
-          : null,
-        publishedAt: parseDate(source.publishedAt),
-        imageUrl: source.imageUrl ? await encryptText(input.userId, "sources", id, "image_url", storableText(source.imageUrl)) : null,
-      };
-    }),
-  );
-  return db.transaction(async (tx) => {
-    const updated = await tx
-      .update(messages)
-      .set({
-        content,
-        status: input.status,
-        noSources: input.noSources ?? false,
-        uncited: input.uncited ?? false,
-        truncated: input.truncated ?? false,
-        degraded: input.degraded ?? false,
-        searchRequests: input.usage?.searchRequests ?? 0,
-        searchFailures: input.searchFailures ?? 0,
-        tokensIn: input.usage?.tokensIn ?? null,
-        tokensOut: input.usage?.tokensOut ?? null,
-        costUsd: input.usage ? input.usage.costUsd.toFixed(6) : null,
-        searchCostUsd: input.usage?.searchCostUsd != null ? input.usage.searchCostUsd.toFixed(6) : null,
-        resolvedModel: input.usage?.resolvedModel ?? null,
-        upstreamProvider: input.usage?.upstreamProvider ?? null,
-        latencyMs: input.usage?.latencyMs ?? null,
-        errorCode: input.errorCode ?? null,
-        errorMessage,
-        searches,
-        reasoning,
-      })
-      .where(
-        and(
-          eq(messages.id, input.messageId),
-          eq(messages.userId, input.userId),
-          // A reaper or shutdown may already have marked this run interrupted. First writer wins.
-          eq(messages.status, "streaming"),
-        ),
-      )
-      .returning({ id: messages.id });
-    // The update holds the row lock, so a concurrent delete cannot remove it before the sources land.
-    if (!updated.length) return false;
+  return asUser(input.userId, async () => {
+    const content = await encryptText(
+      input.userId,
+      "messages",
+      input.messageId,
+      "content",
+      storableText(input.content),
+    );
+    const errorMessage = input.errorMessage
+      ? await encryptText(input.userId, "messages", input.messageId, "error_message", storableText(input.errorMessage))
+      : null;
+    const searches = input.searches?.length
+      ? await encryptText(input.userId, "messages", input.messageId, "searches", JSON.stringify(input.searches))
+      : null;
+    const reasoning = input.reasoning
+      ? await encryptText(input.userId, "messages", input.messageId, "reasoning", storableText(input.reasoning))
+      : null;
+    const encryptedSources = await Promise.all(
+      (input.sources ?? []).map(async (source) => {
+        // The id the stream already sent, so the browser can load the picture once the answer is stored.
+        const id = source.id || randomUUID();
+        return {
+          id,
+          messageId: input.messageId,
+          userId: input.userId,
+          position: source.position,
+          url: await encryptText(input.userId, "sources", id, "url", storableText(source.url)),
+          title: source.title ? await encryptText(input.userId, "sources", id, "title", storableText(source.title)) : null,
+          domain: source.domain ? await encryptText(input.userId, "sources", id, "domain", storableText(source.domain)) : null,
+          snippet: source.snippet
+            ? await encryptText(input.userId, "sources", id, "snippet", storableText(source.snippet).slice(0, SOURCE_SNIPPET_CHARS))
+            : null,
+          publishedAt: parseDate(source.publishedAt),
+          imageUrl: source.imageUrl ? await encryptText(input.userId, "sources", id, "image_url", storableText(source.imageUrl)) : null,
+        };
+      }),
+    );
+    return db.transaction(async (tx) => {
+      const updated = await tx
+        .update(messages)
+        .set({
+          content,
+          status: input.status,
+          noSources: input.noSources ?? false,
+          uncited: input.uncited ?? false,
+          truncated: input.truncated ?? false,
+          degraded: input.degraded ?? false,
+          searchRequests: input.usage?.searchRequests ?? 0,
+          searchFailures: input.searchFailures ?? 0,
+          tokensIn: input.usage?.tokensIn ?? null,
+          tokensOut: input.usage?.tokensOut ?? null,
+          costUsd: input.usage ? input.usage.costUsd.toFixed(6) : null,
+          searchCostUsd: input.usage?.searchCostUsd != null ? input.usage.searchCostUsd.toFixed(6) : null,
+          resolvedModel: input.usage?.resolvedModel ?? null,
+          upstreamProvider: input.usage?.upstreamProvider ?? null,
+          latencyMs: input.usage?.latencyMs ?? null,
+          errorCode: input.errorCode ?? null,
+          errorMessage,
+          searches,
+          reasoning,
+        })
+        .where(
+          and(
+            eq(messages.id, input.messageId),
+            eq(messages.userId, input.userId),
+            // A reaper or shutdown may already have marked this run interrupted. First writer wins.
+            eq(messages.status, "streaming"),
+          ),
+        )
+        .returning({ id: messages.id });
+      // The update holds the row lock, so a concurrent delete cannot remove it before the sources land.
+      if (!updated.length) return false;
 
-    if (encryptedSources.length) {
-      await tx.delete(sources).where(eq(sources.messageId, input.messageId));
-      await tx.insert(sources).values(encryptedSources);
-    }
-    return true;
+      if (encryptedSources.length) {
+        await tx.delete(sources).where(eq(sources.messageId, input.messageId));
+        await tx.insert(sources).values(encryptedSources);
+      }
+      return true;
+    });
   });
 }
 
@@ -392,36 +400,30 @@ function parseDate(value: string | undefined): Date | null {
 
 /** Flags a streaming answer for cancellation; the instance running it polls this flag. */
 export async function requestStop(userId: string, messageId: string): Promise<boolean> {
-  const rows = await db
-    .update(messages)
-    .set({ stopRequested: true })
-    .where(and(eq(messages.id, messageId), eq(messages.userId, userId), eq(messages.status, "streaming")))
-    .returning({ id: messages.id });
-  return rows.length > 0;
+  return asUser(userId, async () => {
+    const rows = await db
+      .update(messages)
+      .set({ stopRequested: true })
+      .where(and(eq(messages.id, messageId), eq(messages.userId, userId), eq(messages.status, "streaming")))
+      .returning({ id: messages.id });
+    return rows.length > 0;
+  });
 }
 
 /**
- * True when the running answer should stop: the user asked for it from any instance, the message
- * was deleted with its conversation or account, or it is no longer streaming.
+ * True when the running answer should stop: stop requested, deleted, or no longer streaming.
+ * Polled without an account scope, so it goes through an owner function.
  */
 export async function isStopRequested(messageId: string): Promise<boolean> {
-  const [row] = await db
-    .select({ stopRequested: messages.stopRequested, status: messages.status })
-    .from(messages)
-    .where(eq(messages.id, messageId))
-    .limit(1);
-  return !row || row.stopRequested || row.status !== "streaming";
+  const result = await db.execute<{ stop: boolean }>(sql`select beamling_answer_should_stop(${messageId}::uuid) as stop`);
+  return result.rows[0]?.stop ?? true;
 }
 
-/** Marks answers abandoned by a crash or restart as interrupted. */
+/** Marks answers abandoned by a crash or restart as interrupted (all accounts, owner function). */
 export async function interruptStaleAnswers(messageIds?: string[]): Promise<void> {
-  await db
-    .update(messages)
-    .set(interruptedFields())
-    .where(
-      and(
-        eq(messages.status, "streaming"),
-        messageIds ? inArray(messages.id, messageIds) : lte(messages.createdAt, staleBeforeSql()),
-      ),
-    );
+  const { errorCode, errorMessage } = interruptedFields();
+  const ids = messageIds ? sql`${`{${messageIds.join(",")}}`}::uuid[]` : sql`null::uuid[]`;
+  await db.execute(
+    sql`select beamling_interrupt_answers(${ids}, ${STALE_STREAMING_SECONDS}, ${errorCode}, ${errorMessage})`,
+  );
 }

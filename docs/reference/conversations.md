@@ -23,7 +23,7 @@ credentials
   budget_started_at, last_validated_at, created_at, updated_at
 
 credential_usage
-  credential_id → credentials, day, requests, estimated_cost_usd
+  credential_id → credentials, user_id → users, day, requests, estimated_cost_usd
 
 settings
   user_id → users (primary key), llm_model, default_search_provider, default_mode,
@@ -45,7 +45,7 @@ messages
   created_at
 
 sources
-  id, message_id → messages, position,
+  id, message_id → messages, user_id → users, position,
   url, title, domain, snippet, published_at,
   image_url (the result's picture, encrypted; never sent to the browser)
 

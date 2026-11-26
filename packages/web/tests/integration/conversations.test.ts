@@ -32,7 +32,7 @@ test("a pinned chat sorts ahead of newer chats across pages", { skip }, async (t
 });
 
 test("conversations and messages are paginated", { skip }, async (t) => {
-  const { db } = await import("../../lib/server/db");
+  const { asUser, db } = await import("../../lib/server/db");
   const { conversations, messages } = await import("../../lib/server/schema");
   const { getConversation, getEarlierMessages, getState, listConversationPage } = await import("../../lib/server/repo");
   const { CONVERSATION_PAGE_SIZE, MESSAGE_PAGE_SIZE } = await import("../../lib/data");
@@ -53,7 +53,7 @@ test("conversations and messages are paginated", { skip }, async (t) => {
       };
     }),
   );
-  const rows = await db.insert(conversations).values(values).returning();
+  const rows = await asUser(userId, () => db.insert(conversations).values(values).returning());
   const first = await listConversationPage(userId);
   assert.equal(first.conversations.length, CONVERSATION_PAGE_SIZE);
   assert.ok(first.nextCursor);
@@ -83,7 +83,7 @@ test("conversations and messages are paginated", { skip }, async (t) => {
       };
     }),
   );
-  await db.insert(messages).values(messageValues);
+  await asUser(userId, () => db.insert(messages).values(messageValues));
   const conversation = await getConversation(userId, conversationId);
   assert.equal(conversation?.messages.length, MESSAGE_PAGE_SIZE);
   assert.equal(conversation?.hasMoreMessages, true);
@@ -99,24 +99,26 @@ test("conversations and messages are paginated", { skip }, async (t) => {
 test("an account keeps at most 100 conversations, dropping unpinned ones first", { skip }, async (t) => {
   const userId = await createAccount(t, { keys: false });
   const { sql } = await import("drizzle-orm");
-  const { db } = await import("../../lib/server/db");
+  const { asUser, db } = await import("../../lib/server/db");
   const { conversations } = await import("../../lib/server/schema");
   const { countConversations, createConversation, trimConversations, updateConversation } = await import("../../lib/server/repo");
   const { MAX_CONVERSATIONS } = await import("../../lib/legal");
   const created: string[] = [];
   for (let i = 0; i < MAX_CONVERSATIONS; i++) created.push((await createConversation(userId, "quick")).id);
   // Oldest first: give each a distinct, increasing activity time.
-  await db.execute(sql`
-    update ${conversations} c set updated_at = now() - make_interval(mins => 1000 - o.n::int)
-    from (select id, row_number() over (order by created_at, id) as n from ${conversations} where user_id = ${userId}) o
-    where c.id = o.id
-  `);
-  const [oldest, secondOldest, thirdOldest] = await db
-    .select({ id: conversations.id })
-    .from(conversations)
-    .where(sql`${conversations.userId} = ${userId}`)
-    .orderBy(conversations.updatedAt)
-    .limit(3);
+  const [oldest, secondOldest, thirdOldest] = await asUser(userId, async () => {
+    await db.execute(sql`
+      update ${conversations} c set updated_at = now() - make_interval(mins => 1000 - o.n::int)
+      from (select id, row_number() over (order by created_at, id) as n from ${conversations} where user_id = ${userId}) o
+      where c.id = o.id
+    `);
+    return db
+      .select({ id: conversations.id })
+      .from(conversations)
+      .where(sql`${conversations.userId} = ${userId}`)
+      .orderBy(conversations.updatedAt)
+      .limit(3);
+  });
   await updateConversation(userId, oldest.id, { pinned: true });
 
   const fresh = await createConversation(userId, "quick");
@@ -127,16 +129,18 @@ test("an account keeps at most 100 conversations, dropping unpinned ones first",
   assert.equal(await countConversations(userId), MAX_CONVERSATIONS);
 
   // A question that fails before it is stored (here: no keys) must not cost an older conversation.
-  const before = new Set((await db.select({ id: conversations.id }).from(conversations).where(sql`${conversations.userId} = ${userId}`)).map((row) => row.id));
+  const ids = async () =>
+    new Set((await asUser(userId, () => db.select({ id: conversations.id }).from(conversations))).map((row) => row.id));
+  const before = await ids();
   await assert.rejects(ask(userId, { question: "No keys yet", mode: "quick" }));
-  const after = new Set((await db.select({ id: conversations.id }).from(conversations).where(sql`${conversations.userId} = ${userId}`)).map((row) => row.id));
+  const after = await ids();
   assert.deepEqual(after, before);
 });
 
 test("conversations expire 60 days after their last activity, pinned or not", { skip }, async (t) => {
   const userId = await createAccount(t, { keys: false });
   const { eq, sql } = await import("drizzle-orm");
-  const { db } = await import("../../lib/server/db");
+  const { asUser, db } = await import("../../lib/server/db");
   const { conversations } = await import("../../lib/server/schema");
   const { createConversation, deleteExpiredConversations, updateConversation } = await import("../../lib/server/repo");
   const expired = await createConversation(userId, "quick");
@@ -144,29 +148,33 @@ test("conversations expire 60 days after their last activity, pinned or not", { 
   const recent = await createConversation(userId, "quick");
   await updateConversation(userId, pinnedExpired.id, { pinned: true });
   for (const [id, days] of [[expired.id, 61], [pinnedExpired.id, 61], [recent.id, 59]] as const) {
-    await db.update(conversations).set({ updatedAt: sql`now() - make_interval(days => ${days})` }).where(eq(conversations.id, id));
+    await asUser(userId, () =>
+      db.update(conversations).set({ updatedAt: sql`now() - make_interval(days => ${days})` }).where(eq(conversations.id, id)),
+    );
   }
   assert.ok((await deleteExpiredConversations()) >= 2);
-  const left = (await db.select({ id: conversations.id }).from(conversations).where(eq(conversations.userId, userId))).map((row) => row.id);
+  const left = (await asUser(userId, () => db.select({ id: conversations.id }).from(conversations))).map((row) => row.id);
   assert.deepEqual(left, [recent.id]);
 });
 
 test("a chat stops at its question cap and a full account stops asking", { skip }, async (t) => {
   const userId = await createAccount(t);
   const { randomBytes } = await import("node:crypto");
-  const { db } = await import("../../lib/server/db");
+  const { asUser, db } = await import("../../lib/server/db");
   const { messages } = await import("../../lib/server/schema");
   const { createConversation, usageReport } = await import("../../lib/server/repo");
   const { MAX_QUESTIONS_PER_CONVERSATION, STORAGE_LIMIT_BYTES } = await import("../../lib/legal");
 
   const full = await createConversation(userId, "quick");
-  await db.insert(messages).values(
-    Array.from({ length: MAX_QUESTIONS_PER_CONVERSATION }, () => ({
-      conversationId: full.id,
-      userId,
-      role: "user" as const,
-      content: "bm:x",
-    })),
+  await asUser(userId, () =>
+    db.insert(messages).values(
+      Array.from({ length: MAX_QUESTIONS_PER_CONVERSATION }, () => ({
+        conversationId: full.id,
+        userId,
+        role: "user" as const,
+        content: "bm:x",
+      })),
+    ),
   );
   await assert.rejects(ask(userId, { conversationId: full.id, question: "One more?", mode: "quick" }), { code: "CONVERSATION_FULL" });
 
@@ -180,7 +188,7 @@ test("a chat stops at its question cap and a full account stops asking", { skip 
 
   // Base64 of random bytes does not compress, so its stored size is close to its length.
   const filler = randomBytes(Math.ceil(STORAGE_LIMIT_BYTES * 0.8)).toString("base64");
-  await db.insert(messages).values({ conversationId: full.id, userId, role: "assistant", content: `bm:${filler}` });
+  await asUser(userId, () => db.insert(messages).values({ conversationId: full.id, userId, role: "assistant", content: `bm:${filler}` }));
   assert.ok((await usageReport(userId)).storageBytes >= STORAGE_LIMIT_BYTES);
   await assert.rejects(ask(userId, { conversationId: prepared.conversationId, question: "Still room?", mode: "quick" }), {
     code: "STORAGE_FULL",

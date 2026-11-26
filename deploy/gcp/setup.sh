@@ -8,7 +8,7 @@
 #   - Secret Manager secrets (values are added separately; this script never sees them).
 #   - Artifact Registry remote repository that proxies the public GHCR release images.
 #   - beamling-app      (Cloud Run service): encrypt/decrypt on the one key + read its secrets.
-#   - beamling-migrate  (Cloud Run job):     read DATABASE_URL_DIRECT only.
+#   - beamling-migrate  (Cloud Run job):     read DATABASE_URL_MIGRATE (table owner) only.
 #   - beamling-deploy   (GitHub Actions):    deploy Cloud Run + act as the two runtime accounts,
 #                                            reachable only from the production environment of
 #                                            this repository on main, via keyless OIDC.
@@ -83,7 +83,7 @@ create_sa() {
 create_sa beamling-app "Beamling app (Cloud Run service)" \
   "Runtime identity. Encrypt/decrypt on the workspace key and read the app secrets; nothing else."
 create_sa beamling-migrate "Beamling migrations (Cloud Run job)" \
-  "Runs database migrations. Reads DATABASE_URL_DIRECT only."
+  "Runs database migrations. Reads DATABASE_URL_MIGRATE only."
 create_sa beamling-deploy "Beamling deploy (GitHub Actions)" \
   "Deploys Cloud Run from the production environment of $GITHUB_REPO via keyless OIDC."
 
@@ -98,8 +98,14 @@ for name in "${SECRETS[@]}"; do
   g secrets add-iam-policy-binding "$name" --member "serviceAccount:$APP_SA" \
     --role roles/secretmanager.secretAccessor >/dev/null
 done
-g secrets add-iam-policy-binding DATABASE_URL_DIRECT --member "serviceAccount:$MIGRATE_SA" \
+# The table owner's connection: migrations only. The app connects as beamling_app.
+exists g secrets describe DATABASE_URL_MIGRATE ||
+  g secrets create DATABASE_URL_MIGRATE --replication-policy user-managed --locations "$REGION"
+g secrets add-iam-policy-binding DATABASE_URL_MIGRATE --member "serviceAccount:$MIGRATE_SA" \
   --role roles/secretmanager.secretAccessor >/dev/null
+# Earlier setups let the migration job read the app's direct connection; it no longer needs it.
+g secrets remove-iam-policy-binding DATABASE_URL_DIRECT --member "serviceAccount:$MIGRATE_SA" \
+  --role roles/secretmanager.secretAccessor >/dev/null 2>&1 || true
 
 step "Artifact Registry: proxy of the public GHCR images"
 if ! exists g artifacts repositories describe ghcr --location "$REGION"; then

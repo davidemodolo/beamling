@@ -34,6 +34,23 @@ async function shutdown(signal: string): Promise<void> {
   process.exit(0);
 }
 
+/** RLS does not bind a superuser, a BYPASSRLS role or the table owner: warn if the app is one. */
+async function warnIfRowSecurityBypassed(): Promise<void> {
+  try {
+    const { rows } = await pool.query<{ role: string; bypass: boolean }>(
+      `select current_user as role, rolsuper or rolbypassrls or exists (
+         select 1 from pg_tables where schemaname = 'public' and tablename = 'conversations' and tableowner = current_user
+       ) as bypass
+       from pg_roles where rolname = current_user`,
+    );
+    if (rows[0]?.bypass) {
+      log.warn("DATABASE_URL bypasses row-level security; connect as beamling_app", { role: rows[0].role });
+    }
+  } catch (error) {
+    log.warn("Could not check the database role", { error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
 /** Refuses to boot a misconfigured production server, then schedules retention cleanup. */
 export async function startServer(): Promise<void> {
   const errors = productionConfigErrors();
@@ -43,6 +60,7 @@ export async function startServer(): Promise<void> {
   }
   log.info("Beamling starting", { version: APP_VERSION, commit: GIT_COMMIT, builtAt: BUILD_TIME });
   for (const warning of productionConfigWarnings()) log.warn(warning);
+  void warnIfRowSecurityBypassed();
 
   if (process.env.NEXT_MANUAL_SIG_HANDLE) {
     process.once("SIGTERM", () => void shutdown("SIGTERM"));

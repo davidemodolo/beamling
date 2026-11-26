@@ -23,7 +23,7 @@ pnpm local:up
 pnpm local:down
 ```
 
-Integration tests use `DATABASE_URL=postgres://beamling:beamling@127.0.0.1:5433/beamling`.
+Integration tests use `DATABASE_URL=postgres://beamling_app:beamling-app@127.0.0.1:5433/beamling_test`, after migrating that database as `beamling` with `DATABASE_APP_PASSWORD=beamling-app`.
 
 `pnpm web:dev` is a fast dev loop, not the parity stack. `BEAMLING_FAKE_PROVIDERS=1` selects fixture providers; Playwright uses them with the test-only `/api/auth/test-login`.
 
@@ -52,13 +52,24 @@ Alpine security updates are applied; `HEALTHCHECK` hits `/api/health`.
 
 - `0000_init.sql` is the schema applied to production on 7 November 2026 (v0.3.0). Applied files are never edited; changes add a higher-numbered file.
 - `0001_default_model_nemotron.sql` (v0.6.0) changes the `settings.llm_model` default; existing rows keep their model.
-- Connects to `DATABASE_URL_DIRECT`, else `DATABASE_URL`. Not through a transaction-mode pooler: the advisory lock is session-scoped.
+- `0004_app_role_rls.sql` adds `user_id` to `sources` and `credential_usage`, creates the `beamling_app` role (no login), and enables [row-level security](security.md#database-access).
+- Connects to `DATABASE_URL_DIRECT`, else `DATABASE_URL`, as the table owner. Not through a transaction-mode pooler: the advisory lock is session-scoped.
 - Clears its session timeouts, takes advisory lock `7314002917` so deploys serialize, creates `beamling_migrations` if absent.
 - Applies unapplied `drizzle/*.sql` files in name order, each in a transaction split on `--> statement-breakpoint`; records the filename after commit; rolls back on error.
-- Sets role defaults (`ALTER ROLE CURRENT_USER SET`): `statement_timeout` 15 s, `lock_timeout` 5 s, `idle_in_transaction_session_timeout` 30 s, on every run. App and migrations must use the same role.
+- Sets role defaults on the owner and `beamling_app`: `statement_timeout` 15 s, `lock_timeout` 5 s, `idle_in_transaction_session_timeout` 30 s, on every run.
+- With `DATABASE_APP_PASSWORD`, enables the `beamling_app` login with that password (local stack, CI). Production sets it once by hand ([Application role](#application-role)).
 - Releases the lock and closes.
 
 Migrations are a release step, not run at app start.
+
+### Application role
+
+One-time switch of production from the owner to `beamling_app`, after the release with `0004_app_role_rls.sql`. Until then the app keeps working as the owner, unprotected.
+
+1. Before that release, re-run `deploy/gcp/setup.sh` (it creates `DATABASE_URL_MIGRATE`), then copy the owner's direct URL into it: `gcloud secrets versions access latest --secret DATABASE_URL_DIRECT | gcloud secrets versions add DATABASE_URL_MIGRATE --data-file=-`.
+2. After it, as the owner: `ALTER ROLE beamling_app LOGIN PASSWORD '<random, 32+ characters>'`.
+3. Add new versions of `DATABASE_URL` (pooled) and `DATABASE_URL_DIRECT` with user `beamling_app`, then deploy a new revision.
+4. Check the startup log has no row-level security warning.
 
 ## Health and shutdown
 
@@ -88,12 +99,12 @@ Cloud Run in `europe-west1`, Neon Postgres in Frankfurt, Cloud KMS key in `europ
   | Identity | Used by | Permissions |
   |---|---|---|
   | `beamling-app` | Cloud Run service | `cloudkms.cryptoKeyEncrypterDecrypter` on the key; `secretmanager.secretAccessor` on the six app secrets |
-  | `beamling-migrate` | Cloud Run job `beamling-migrate` | `secretmanager.secretAccessor` on `DATABASE_URL_DIRECT` only |
+  | `beamling-migrate` | Cloud Run job `beamling-migrate` | `secretmanager.secretAccessor` on `DATABASE_URL_MIGRATE` only |
   | `beamling-deploy` | GitHub Actions `deploy` job | `run.developer`, `iam.serviceAccountUser` on the two accounts above, `artifactregistry.reader` on the `ghcr` proxy; no IAM, secret or KMS rights |
 
 - **Keyless deploys:** GitHub OIDC via Workload Identity pool `github` / provider `github-actions`, limited to the repository and owner IDs, `refs/heads/main` and environment `production`. Only `principalSet://…/attribute.repository_id/1427513799` can impersonate `beamling-deploy`.
 - **Key:** rotates every 90 days; destroyed versions recoverable for 120 days. Rows store the key name, so decrypt survives rotation. KMS audit logs on.
-- **Secrets:** Secret Manager (`europe-west1`) holds `DATABASE_URL`, `DATABASE_URL_DIRECT`, `AUTH_SECRET`, `OIDC_CLIENT_SECRET`, `KILL_SWITCH_SECRET`, `METRICS_SECRET` (`key: latest`, read at instance start). Add values with `gcloud secrets versions add NAME --data-file=-`.
+- **Secrets:** Secret Manager (`europe-west1`) holds `DATABASE_URL`, `DATABASE_URL_DIRECT` (both `beamling_app`), `DATABASE_URL_MIGRATE` (table owner, migration job only), `AUTH_SECRET`, `OIDC_CLIENT_SECRET`, `KILL_SWITCH_SECRET`, `METRICS_SECRET` (`key: latest`, read at instance start). Add values with `gcloud secrets versions add NAME --data-file=-`.
 - **Images:** public GHCR, proxied by Artifact Registry remote `ghcr`; Cloud Run deploys `europe-west1-docker.pkg.dev/beamling-prod/ghcr/<owner>/<repo>@sha256:…`. Cleanup keeps the five newest versions.
 - **Topology** (`deploy/gcp/service.yaml`):
   - 0–1 instances; the maximum is the spend cap.
@@ -121,7 +132,7 @@ Cloud Run in `europe-west1`, Neon Postgres in Frankfurt, Cloud KMS key in `europ
 
 - One pool per process via `globalThis`; max 10 connections; 10 s connection timeout.
 - Statement/lock/idle-in-transaction timeouts (15 s / 5 s / 30 s) are role defaults set by [migrations](#migrations), not startup parameters, which transaction-mode poolers reject.
-- Pooler-safe: no session state; the global stream cap uses a transaction-scoped advisory lock. The scheduled-shutdown worker opens its own `DATABASE_URL_DIRECT` connection for a session lock.
+- Pooler-safe: no session state; account scopes (`asUser`) and the global stream cap use transaction-scoped settings and locks. The scheduled-shutdown worker opens its own `DATABASE_URL_DIRECT` connection for a session lock.
 - TLS only when `DATABASE_SSL=true`; CA and verification configurable; `DATABASE_SSL_CA_FILE` reads a mounted CA.
 
 ## Operational killswitch

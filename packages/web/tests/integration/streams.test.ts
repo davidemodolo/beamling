@@ -26,9 +26,7 @@ test("the global concurrency cap holds under concurrent requests", { skip }, asy
   const { db } = await import("../../lib/server/db");
   const { sql } = await import("drizzle-orm");
   // Answers left in flight by other suites sharing this database count towards the cap too.
-  const { rows } = await db.execute<{ n: number }>(
-    sql`select count(*)::int as n from messages where status = 'streaming' and created_at > now() - interval '3 minutes'`,
-  );
+  const { rows } = await db.execute<{ n: number }>(sql`select total as n from beamling_streaming_answers(180)`);
   withEnv(t, { MAX_CONCURRENT_CHATS: String(rows[0].n + 1) });
   const userId = await createAccount(t);
   const conversations = await Promise.all(Array.from({ length: 8 }, () => createConversation(userId, "quick")));
@@ -128,7 +126,7 @@ test("deleting a conversation mid-answer stops it without a database error", { s
 });
 
 test("an answer abandoned by a crashed instance reads as interrupted", { skip }, async (t) => {
-  const { db } = await import("../../lib/server/db");
+  const { asUser, db } = await import("../../lib/server/db");
   const { messages } = await import("../../lib/server/schema");
   const { createConversation, createExchange } = await import("../../lib/server/repo");
   const { eq } = await import("drizzle-orm");
@@ -136,17 +134,15 @@ test("an answer abandoned by a crashed instance reads as interrupted", { skip },
   const conversation = await createConversation(userId, "quick");
   const { assistantMessage } = await createExchange({ userId, conversationId: conversation.id, question: "Q", mode: "quick", llmModel: "m" });
   // Deeper has a six-minute route limit, so a five-minute answer is still healthy.
-  await db
-    .update(messages)
-    .set({ createdAt: new Date(Date.now() - 5 * 60_000) })
-    .where(eq(messages.id, assistantMessage.id));
+  await asUser(userId, () =>
+    db.update(messages).set({ createdAt: new Date(Date.now() - 5 * 60_000) }).where(eq(messages.id, assistantMessage.id)),
+  );
   const running = await storedAnswer(userId, conversation.id);
   assert.equal(running.answer?.status, "streaming");
 
-  await db
-    .update(messages)
-    .set({ createdAt: new Date(Date.now() - 10 * 60_000) })
-    .where(eq(messages.id, assistantMessage.id));
+  await asUser(userId, () =>
+    db.update(messages).set({ createdAt: new Date(Date.now() - 10 * 60_000) }).where(eq(messages.id, assistantMessage.id)),
+  );
 
   const { answer } = await storedAnswer(userId, conversation.id);
   assert.equal(answer?.status, "error");
@@ -174,7 +170,7 @@ test("a failed first question keeps a client-created conversation for retry, the
   const { prepareChat } = await import("../../lib/server/answer-pipeline");
   const { cleanupEmptyConversations, conversationExists, createConversation } = await import("../../lib/server/repo");
   const { eq } = await import("drizzle-orm");
-  const { db } = await import("../../lib/server/db");
+  const { asUser, db } = await import("../../lib/server/db");
   const { conversations } = await import("../../lib/server/schema");
   const userId = await createAccount(t, { keys: false });
   const conversation = await createConversation(userId, "quick");
@@ -183,10 +179,9 @@ test("a failed first question keeps a client-created conversation for retry, the
     (error: unknown) => error instanceof Error && "code" in error && error.code === "CREDENTIAL_MISSING",
   );
   assert.equal(await conversationExists(userId, conversation.id), true, "the client can retry");
-  await db
-    .update(conversations)
-    .set({ updatedAt: new Date(Date.now() - 2 * 60 * 60_000) })
-    .where(eq(conversations.id, conversation.id));
+  await asUser(userId, () =>
+    db.update(conversations).set({ updatedAt: new Date(Date.now() - 2 * 60 * 60_000) }).where(eq(conversations.id, conversation.id)),
+  );
   await cleanupEmptyConversations();
   assert.equal(await conversationExists(userId, conversation.id), false);
 });

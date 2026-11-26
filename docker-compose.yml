@@ -78,6 +78,7 @@ services:
     command: ["node", "scripts/migrate.mjs"]
     environment:
       DATABASE_URL: postgres://beamling:${POSTGRES_PASSWORD:-beamling}@db:5432/beamling
+      DATABASE_APP_PASSWORD: ${DATABASE_APP_PASSWORD:-beamling-app}
       DATABASE_SSL: "true"
       DATABASE_SSL_CA_FILE: /certs/ca.crt
       DATABASE_SSL_REJECT_UNAUTHORIZED: "true"
@@ -98,7 +99,8 @@ services:
         GIT_COMMIT: ${GIT_COMMIT:-local}
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgres://beamling:${POSTGRES_PASSWORD:-beamling}@db:5432/beamling
+      # The application role: data access only, bound by row-level security.
+      DATABASE_URL: postgres://beamling_app:${DATABASE_APP_PASSWORD:-beamling-app}@db:5432/beamling
       DATABASE_SSL: "true"
       DATABASE_SSL_CA_FILE: /certs/ca.crt
       DATABASE_SSL_REJECT_UNAUTHORIZED: "true"

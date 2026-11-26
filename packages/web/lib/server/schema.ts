@@ -122,6 +122,10 @@ export const credentialUsage = pgTable(
     credentialId: uuid("credential_id")
       .notNull()
       .references(() => credentials.id, { onDelete: "cascade" }),
+    // The credential's owner, so row-level security can filter usage without a join.
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
     day: date("day", { mode: "string" }).notNull(),
     requests: integer("requests").notNull().default(0),
     estimatedCostUsd: numeric("estimated_cost_usd", { precision: 12, scale: 6 }).notNull().default("0"),
@@ -129,6 +133,7 @@ export const credentialUsage = pgTable(
   (table) => [
     primaryKey({ columns: [table.credentialId, table.day] }),
     index("credential_usage_day_idx").on(table.day),
+    index("credential_usage_user_idx").on(table.userId),
   ],
 );
 
@@ -226,6 +231,10 @@ export const sources = pgTable(
     messageId: uuid("message_id")
       .notNull()
       .references(() => messages.id, { onDelete: "cascade" }),
+    // The message's owner, so row-level security can filter sources without a join.
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
     position: integer("position").notNull(),
     url: text("url").notNull(),
     title: text("title"),
@@ -235,7 +244,10 @@ export const sources = pgTable(
     // The search result's picture URL, encrypted; the image route fetches it for the owner.
     imageUrl: text("image_url"),
   },
-  (table) => [uniqueIndex("sources_message_position_idx").on(table.messageId, table.position)],
+  (table) => [
+    uniqueIndex("sources_message_position_idx").on(table.messageId, table.position),
+    index("sources_user_idx").on(table.userId),
+  ],
 );
 
 export const rateLimits = pgTable(
