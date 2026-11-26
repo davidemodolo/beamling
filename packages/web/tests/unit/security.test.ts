@@ -48,6 +48,17 @@ test("each use of AUTH_SECRET gets its own derived key", async (t) => {
   assert.notDeepEqual(authSubkey("oidc-transaction"), transaction, "a new secret derives new keys");
 });
 
+test("without DATABASE_URL, development uses the compose database as the app role", async (t) => {
+  const { databaseUrl } = await import("../../lib/server/env");
+  withEnv(t, { DATABASE_URL: undefined, NODE_ENV: "development" });
+  const url = new URL(databaseUrl() ?? "");
+  assert.equal(url.username, "beamling_app", "the owner role would bypass row-level security");
+  assert.equal(url.port, "5433");
+  assert.equal(url.searchParams.get("sslmode"), "no-verify");
+  withEnv(t, { NODE_ENV: "production" });
+  assert.equal(databaseUrl(), undefined);
+});
+
 test("the test-only sign-in answers 404 when it is disabled", async (t) => {
   withEnv(t, { BEAMLING_TEST_AUTH: undefined, APP_URL: "https://beamling.example" });
   const { POST } = await import("../../app/api/auth/test-login/route");

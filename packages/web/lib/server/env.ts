@@ -1,6 +1,7 @@
 import { hkdfSync } from "node:crypto";
 import { readFileSync } from "node:fs";
-const DEV_DATABASE_URL = "postgres://beamling:beamling@127.0.0.1:5432/beamling";
+// The compose database (TLS, loopback 5433) as the app role, so row-level security applies.
+const DEV_DATABASE_URL = "postgres://beamling_app:beamling-app@127.0.0.1:5433/beamling?sslmode=no-verify";
 const DEV_APP_URL = "http://localhost:3000";
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 

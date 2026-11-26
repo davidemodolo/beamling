@@ -31,6 +31,17 @@ test("a pinned chat sorts ahead of newer chats across pages", { skip }, async (t
   assert.equal(after.conversations.filter((conversation) => conversation.pinned).length, 0);
 });
 
+test("changing a chat's mode or pin is not activity", { skip }, async (t) => {
+  const { createConversation, updateConversation } = await import("../../lib/server/repo");
+  const userId = await createAccount(t);
+  const conversation = await createConversation(userId, "quick");
+  const moved = await updateConversation(userId, conversation.id, { mode: "deep" });
+  assert.equal(moved?.mode, "deep");
+  assert.equal(moved?.updatedAt, conversation.updatedAt, "the 60-day expiry runs from the last question");
+  const pinned = await updateConversation(userId, conversation.id, { pinned: true });
+  assert.equal(pinned?.updatedAt, conversation.updatedAt);
+});
+
 test("conversations and messages are paginated", { skip }, async (t) => {
   const { asUser, db } = await import("../../lib/server/db");
   const { conversations, messages } = await import("../../lib/server/schema");
@@ -162,7 +173,7 @@ test("a chat stops at its question cap and a full account stops asking", { skip 
   const { randomBytes } = await import("node:crypto");
   const { asUser, db } = await import("../../lib/server/db");
   const { messages } = await import("../../lib/server/schema");
-  const { createConversation, usageReport } = await import("../../lib/server/repo");
+  const { createConversation, storageUsedBytes, usageReport } = await import("../../lib/server/repo");
   const { MAX_QUESTIONS_PER_CONVERSATION, STORAGE_LIMIT_BYTES } = await import("../../lib/legal");
 
   const full = await createConversation(userId, "quick");
@@ -188,6 +199,7 @@ test("a chat stops at its question cap and a full account stops asking", { skip 
   assert.equal(before.chats[0].questions, MAX_QUESTIONS_PER_CONVERSATION);
   assert.ok(before.chats[0].bytes >= before.chats[1].bytes);
   assert.ok(!Number.isNaN(Date.parse(before.chats[0].updatedAt)));
+  assert.equal(before.storageBytes, await storageUsedBytes(userId), "the chats' sizes add up to the account's total");
 
   // Base64 of random bytes does not compress, so its stored size is close to its length.
   const filler = randomBytes(Math.ceil(STORAGE_LIMIT_BYTES * 0.8)).toString("base64");

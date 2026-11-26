@@ -6,7 +6,7 @@ Configuration is environment variables only.
 
 | Variable | Behavior |
 |---|---|
-| `DATABASE_URL` | App pool connection string, as `beamling_app` ([Database access](security.md#database-access)); may be a transaction-mode pooler. Non-production default `postgres://beamling:beamling@127.0.0.1:5432/beamling`. |
+| `DATABASE_URL` | App pool connection string, as `beamling_app` ([Database access](security.md#database-access)); may be a transaction-mode pooler. Non-production default: the compose database as `beamling_app`, `postgres://beamling_app:beamling-app@127.0.0.1:5433/beamling?sslmode=no-verify`. |
 | `APP_URL` | Public origin only; `https://` outside localhost. Dev fallback: `OPENROUTER_APP_URL`, `NEXT_PUBLIC_APP_URL`, `http://localhost:3000`. Sent to OpenRouter as `HTTP-Referer`. |
 | `AUTH_SECRET` | 32 bytes, base64. HKDF root for OIDC transaction encryption, IP hashes, credential fingerprints and provider-slot keys. |
 | `OIDC_CLIENT_ID` | Google OAuth client id. |

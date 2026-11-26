@@ -1,8 +1,7 @@
 import { z } from "zod";
 import { MODES } from "@/lib/contracts";
-import { abortChats } from "@/lib/server/active-chats";
 import { idParam, json, notFound, parseBody } from "@/lib/server/http";
-import { deleteConversation, getConversation, updateConversation } from "@/lib/server/repo";
+import { getConversation, updateConversation } from "@/lib/server/repo";
 import { apiRoute } from "@/lib/server/route";
 
 export const runtime = "nodejs";
@@ -34,13 +33,4 @@ export const PATCH = apiRoute<Context>(async ({ request, context, user }) => {
   const conversation = await updateConversation(user.id, id, patch);
   if (!conversation) throw conversationNotFound();
   return json({ conversation });
-});
-
-export const DELETE = apiRoute<Context>(async ({ context, user }) => {
-  const id = await idParam(context);
-  const deleted = await deleteConversation(user.id, id);
-  if (!deleted) throw conversationNotFound();
-  // Answers running elsewhere notice the deleted row on their next stop-flag poll.
-  abortChats({ userId: user.id, conversationId: id });
-  return json({ ok: true });
 });

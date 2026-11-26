@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useConversations } from "@/lib/store";
 import type { ConversationSummary } from "@/lib/types";
 import { Icon } from "./ui/icon";
 import { Modal } from "./ui/modal";
@@ -28,6 +29,37 @@ export function useChatSelection<T extends { id: string }>(visible: T[]) {
         return next;
       }),
     toggleAll: () => setIds(allChosen ? new Set() : new Set(visible.map((conversation) => conversation.id))),
+  };
+}
+
+/** Chats waiting for delete confirmation, and the delete itself. */
+export function useDeleteChats<T extends { id: string; title: string }>() {
+  const { deleteConversations } = useConversations();
+  const [deleting, setDeleting] = useState<T[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  return {
+    deleting,
+    failed,
+    ask: (chats: T[]) => {
+      setFailed(false);
+      setDeleting(chats);
+    },
+    cancel: () => setDeleting(null),
+    /** Deletes the confirmed chats; `onConfirmed` runs before the request. True when it succeeded. */
+    confirm: async (onConfirmed?: (ids: string[]) => void): Promise<boolean> => {
+      if (!deleting) return false;
+      const ids = deleting.map((chat) => chat.id);
+      setDeleting(null);
+      setFailed(false);
+      onConfirmed?.(ids);
+      try {
+        await deleteConversations(ids);
+        return true;
+      } catch {
+        setFailed(true);
+        return false;
+      }
+    },
   };
 }
 

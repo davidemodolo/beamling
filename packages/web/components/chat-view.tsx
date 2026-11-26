@@ -7,6 +7,7 @@ import { ChatTopbar } from "./chat/chat-topbar";
 import { useFollowStoredAnswer } from "./chat/use-follow-stored-answer";
 import { useSourcesPanel } from "./chat/use-sources-panel";
 import { useImageDraft } from "./chat/use-image-draft";
+import { useLitAnswer } from "./chat/use-lit-answer";
 import { useThreadScroll } from "./chat/use-thread-scroll";
 import { EmptyState, LoadErrorState, NotFoundState, Thread, ThreadSkeleton, UserBubble, WorkingAnswer } from "./chat-thread";
 import { Composer } from "./composer";
@@ -97,7 +98,6 @@ function ChatPane({ conversationId, search }: ChatViewProps) {
   // Mode picked before the first question; kept local so it does not change the saved default.
   const [draftMode, setDraftMode] = useState<Mode | null>(null);
   const mode = summary?.mode ?? draftMode ?? settings.defaultMode;
-  const pickedMode = mode;
   const [draftSearchProvider, setDraftSearchProvider] = useState<SearchProvider | null>(null);
   const searchProvider = draftSearchProvider ?? settings.defaultSearchProvider;
   // Marks keyless providers in the picker only. Sending is not blocked here: the store can be stale
@@ -139,20 +139,7 @@ function ChatPane({ conversationId, search }: ChatViewProps) {
   });
   const followStored = !!storedStreaming;
 
-  // The answer that just finished streaming here; the mascot lights its sources for a moment.
-  const [streamedId, setStreamedId] = useState<string | null>(live?.messageId ?? null);
-  const [litId, setLitId] = useState<string | null>(null);
-  const liveId = live?.messageId ?? null;
-  if (liveId && liveId !== streamedId) setStreamedId(liveId);
-  if (!live && streamedId) {
-    setStreamedId(null);
-    setLitId(streamedId);
-  }
-  useEffect(() => {
-    if (!litId) return;
-    const timer = window.setTimeout(() => setLitId(null), 2600);
-    return () => window.clearTimeout(timer);
-  }, [litId]);
+  const litId = useLitAnswer(live);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const creatingRef = useRef(false);
@@ -187,14 +174,14 @@ function ChatPane({ conversationId, search }: ChatViewProps) {
 
   const submit = useCallback(async (asked?: SearchRequest) => {
     const question = collapseWhitespace(asked?.question ?? input);
-    const mode = asked?.mode ?? pickedMode;
+    const askedMode = asked?.mode ?? mode;
     const { images, files } = imageDraft;
     if ((!question && !images.length && !files.length) || imageDraft.adding || live || followStored || creatingRef.current) return;
     let id = activeId;
     if (!id) {
       creatingRef.current = true;
       try {
-        id = (await createConversation(mode)).id;
+        id = (await createConversation(askedMode)).id;
       } catch (cause) {
         showToast(errorMessage(cause, "Could not start a conversation."));
         return;
@@ -207,12 +194,12 @@ function ChatPane({ conversationId, search }: ChatViewProps) {
       if (["/", "/search"].includes(window.location.pathname)) window.history.replaceState(null, "", `/chat/${id}`);
     }
     const ask = { text: question, attachments: [...images.map(toAttachment), ...files.map(toFileAttachment)] };
-    if (streams.start({ conversationId: id, mode, searchProvider, ask, picked: images, pickedFiles: files })) {
+    if (streams.start({ conversationId: id, mode: askedMode, searchProvider, ask, picked: images, pickedFiles: files })) {
       setInput("");
       imageDraft.clear();
       beforeStart();
     }
-  }, [input, imageDraft, live, followStored, activeId, createConversation, pickedMode, searchProvider, showToast, streams, beforeStart]);
+  }, [input, imageDraft, live, followStored, activeId, createConversation, mode, searchProvider, showToast, streams, beforeStart]);
 
   // A question from the address bar: fill the composer, and send it when the navigation allows.
   const searchHandled = useRef(false);

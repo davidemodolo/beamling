@@ -3,10 +3,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { useConversations } from "@/lib/store";
 import type { StorageChat } from "@/lib/types";
 import { formatBytes, plural } from "@/lib/utils";
-import { DeleteChatsDialog, useChatSelection } from "./history-selection";
+import { DeleteChatsDialog, useChatSelection, useDeleteChats } from "./history-selection";
 import { Icon } from "./ui/icon";
 
 type Order = "suggested" | "size";
@@ -37,10 +36,8 @@ function lastUsed(days: number): string {
 /** The account's chats with their stored size, to pick and delete the ones taking space. */
 export function StorageChats({ chats }: { chats: StorageChat[] }) {
   const router = useRouter();
-  const { deleteConversations } = useConversations();
+  const deletion = useDeleteChats<StorageChat>();
   const [order, setOrder] = useState<Order>("suggested");
-  const [deleting, setDeleting] = useState<StorageChat[] | null>(null);
-  const [failed, setFailed] = useState(false);
   // Read once when the list opens; it is rendered only on the client.
   const [now] = useState(() => Date.now());
   const sorted = useMemo(() => sortChats(chats, order, now), [chats, order, now]);
@@ -48,16 +45,7 @@ export function StorageChats({ chats }: { chats: StorageChat[] }) {
   const chosenBytes = selection.chosen.reduce((sum, chat) => sum + chat.bytes, 0);
 
   const confirmDelete = async () => {
-    if (!deleting) return;
-    const ids = deleting.map((chat) => chat.id);
-    setDeleting(null);
-    setFailed(false);
-    try {
-      await deleteConversations(ids);
-      selection.start();
-    } catch {
-      setFailed(true);
-    }
+    if (await deletion.confirm()) selection.start();
     router.refresh();
   };
 
@@ -107,7 +95,7 @@ export function StorageChats({ chats }: { chats: StorageChat[] }) {
         ))}
       </ul>
 
-      {failed ? (
+      {deletion.failed ? (
         <p className="storage-chats-error" role="alert">
           Could not delete the chats. Try again.
         </p>
@@ -122,13 +110,13 @@ export function StorageChats({ chats }: { chats: StorageChat[] }) {
           type="button"
           className="btn btn-danger btn-sm"
           disabled={!selection.chosen.length}
-          onClick={() => setDeleting(selection.chosen)}
+          onClick={() => deletion.ask(selection.chosen)}
         >
           <Icon name="trash" size={12} /> Delete
         </button>
       </div>
 
-      <DeleteChatsDialog chats={deleting} onClose={() => setDeleting(null)} onConfirm={confirmDelete} />
+      <DeleteChatsDialog chats={deletion.deleting} onClose={deletion.cancel} onConfirm={confirmDelete} />
     </div>
   );
 }

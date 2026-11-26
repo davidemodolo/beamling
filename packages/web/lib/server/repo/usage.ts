@@ -4,7 +4,7 @@ import { MAX_QUESTIONS_PER_CONVERSATION, STORAGE_LIMIT_BYTES, STORAGE_LIMIT_MB }
 import { asUser, db } from "../db";
 import { databaseSizeLimitBytes } from "../env";
 import { ApiError } from "../http";
-import { conversations, messages, rateLimits } from "../schema";
+import { messages, rateLimits } from "../schema";
 import { decryptText } from "../workspace-key";
 
 /** Rate-limit keys of the per-account question budgets, shared with the chat route. */
@@ -75,11 +75,6 @@ export async function assertCanAsk(userId: string, conversationId: string | unde
 export async function usageReport(userId: string): Promise<UsageReport> {
   return asUser(userId, async () => {
     const keys = questionLimitKeys(userId);
-    const storageBytes = await storageUsedBytes(userId);
-    const [{ value: conversationCount }] = await db
-      .select({ value: count() })
-      .from(conversations)
-      .where(eq(conversations.userId, userId));
     const counters = await db
       .select({ key: rateLimits.key, count: rateLimits.count })
       .from(rateLimits)
@@ -105,16 +100,17 @@ export async function usageReport(userId: string): Promise<UsageReport> {
     const chats = await Promise.all(
       sizes.rows.map(async (row) => ({
         id: row.id,
-        title: await decryptText(userId, "conversations", row.id, "title", row.title).catch(() => "Untitled"),
+        title: await decryptText(userId, "conversations", row.id, "title", row.title),
         bytes: Number(row.bytes),
         questions: Number(row.questions),
         pinned: row.pinned,
         updatedAt: new Date(row.updated_at).toISOString(),
       })),
     );
+    // Every message and source belongs to one of these chats, so their sizes add up to the total.
     return {
-      storageBytes,
-      conversations: conversationCount,
+      storageBytes: chats.reduce((sum, chat) => sum + chat.bytes, 0),
+      conversations: chats.length,
       questionsThisHour: counter(keys.hour),
       questionsToday: counter(keys.day),
       chats,

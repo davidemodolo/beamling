@@ -44,7 +44,7 @@ export {
   requestStop,
   type AssistantOutcome,
 } from "./messages";
-export { assertCanAsk, questionLimitKeys, usageReport } from "./usage";
+export { assertCanAsk, questionLimitKeys, storageUsedBytes, usageReport } from "./usage";
 export { alignDefaults, ensureSettings, updateSettings } from "./settings";
 export {
   claimAnalyticsErasures,

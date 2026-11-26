@@ -107,12 +107,7 @@ async function retryTarget(tx: Tx, input: { userId: string; conversationId: stri
   };
 }
 
-/**
- * Stores the question and a streaming assistant placeholder. With `retryOf` the latest answer is
- * replaced instead: its question is reused, or rewritten when `question` is given (an edit). Rejects a second concurrent answer for the same conversation
- * (enforced by a partial unique index) and enforces the global concurrency cap.
- */
-export async function createExchange(input: {
+type ExchangeInput = {
   userId: string;
   conversationId: string;
   mode: Mode;
@@ -122,7 +117,143 @@ export async function createExchange(input: {
   /** Images and files on a new question; with `retryOf` the stored question's are reused. */
   attachments?: Attachment[];
   retryOf?: string;
-}): Promise<{ userMessage: MessageRow; assistantMessage: MessageRow; questionText: string; attachments: Attachment[] }> {
+};
+
+type StoredQuestion = {
+  userMessage: MessageRow;
+  questionText: string;
+  attachments: Attachment[];
+  /** Set when an edit rewrote the question the conversation was titled from. */
+  retitleFrom?: string;
+};
+
+/** Refuses a new answer when the server, the Deeper share or the account's own answers are at their cap. */
+async function assertCapacity(tx: Tx, input: ExchangeInput): Promise<void> {
+  // An answer left streaming by a crashed instance must not block the conversation forever.
+  await tx
+    .update(messages)
+    .set(interruptedFields())
+    .where(
+      and(
+        eq(messages.conversationId, input.conversationId),
+        eq(messages.status, "streaming"),
+        lte(messages.createdAt, staleBeforeSql()),
+      ),
+    );
+
+  // Counted under the advisory lock, so concurrent exchanges see each other's committed rows.
+  // The count spans every account, so it runs through an owner function (row-level security).
+  const [streaming] = (
+    await tx.execute<{ total: number; deeper: number }>(
+      sql`select total, deeper from beamling_streaming_answers(${STALE_STREAMING_SECONDS})`,
+    )
+  ).rows;
+  if (streaming.total >= maxConcurrentChats()) {
+    throw new ApiError("SERVER_BUSY", "Beamling is busy right now. Try again in a minute.", 503);
+  }
+
+  // Deeper answers run for minutes; capping their share keeps a few accounts from holding every slot.
+  if (input.mode === "deeper" && streaming.deeper >= deeperSlots()) {
+    throw new ApiError("SERVER_BUSY", "Deeper answers are busy right now. Try Deep, or try again in a minute.", 503);
+  }
+
+  const [{ value: userInFlight }] = await tx
+    .select({ value: count() })
+    .from(messages)
+    .where(
+      and(
+        eq(messages.userId, input.userId),
+        eq(messages.status, "streaming"),
+        gt(messages.createdAt, staleBeforeSql()),
+      ),
+    );
+  const perUserLimit = maxConcurrentChatsPerUser();
+  if (userInFlight >= perUserLimit) {
+    throw new ApiError(
+      "SERVER_BUSY",
+      `You already have ${plural(perUserLimit, "answer")} running. Wait for one to finish or stop it.`,
+      503,
+    );
+  }
+}
+
+/** Drops the answer being replaced and reuses its question, rewritten when the input carries an edit. */
+async function reuseQuestion(tx: Tx, input: ExchangeInput & { retryOf: string }): Promise<StoredQuestion> {
+  const { target, question, questionText: storedQuestion, first } = await retryTarget(tx, {
+    userId: input.userId,
+    conversationId: input.conversationId,
+    messageId: input.retryOf,
+  });
+  await tx.delete(messages).where(eq(messages.id, target.id));
+  const attachments = (await readAttachments(input.userId, question)) ?? [];
+  const edited = input.question === undefined ? storedQuestion : storableText(input.question);
+  if (edited === storedQuestion) return { userMessage: question, questionText: storedQuestion, attachments };
+  if (!edited && !attachments.length) throw new ApiError("INVALID_INPUT", "Ask a question first.", 400);
+  const [userMessage] = await tx
+    .update(messages)
+    .set({ content: await encryptText(input.userId, "messages", question.id, "content", edited) })
+    .where(eq(messages.id, question.id))
+    .returning();
+  return { userMessage, questionText: edited, attachments, retitleFrom: first ? storedQuestion : undefined };
+}
+
+async function insertQuestion(tx: Tx, input: ExchangeInput, now: Date): Promise<StoredQuestion> {
+  const questionText = storableText(input.question ?? "");
+  const attachments = input.attachments ?? [];
+  const id = randomUUID();
+  const [userMessage] = await tx
+    .insert(messages)
+    .values({
+      id,
+      conversationId: input.conversationId,
+      userId: input.userId,
+      role: "user",
+      content: await encryptText(input.userId, "messages", id, "content", questionText),
+      attachments: attachments.length
+        ? await encryptText(input.userId, "messages", id, "attachments", JSON.stringify(attachments))
+        : null,
+      status: "complete",
+      mode: input.mode,
+      createdAt: now,
+    })
+    .returning();
+  return { userMessage, questionText, attachments };
+}
+
+/** Marks the conversation active, titling it from its first question (or the edit of it). */
+async function touchConversation(
+  tx: Tx,
+  input: ExchangeInput,
+  conversation: typeof conversations.$inferSelect,
+  stored: StoredQuestion,
+  now: Date,
+): Promise<void> {
+  const { questionText, attachments, retitleFrom } = stored;
+  const currentTitle = await decryptText(input.userId, "conversations", conversation.id, "title", conversation.title);
+  const titleFor = (text: string) => titleFromQuestion(text || attachmentQuestionTitle(attachments));
+  // An edited first question retitles the conversation, unless the title is no longer the one it gave.
+  const untitled = currentTitle === DEFAULT_CONVERSATION_TITLE || (retitleFrom !== undefined && currentTitle === titleFor(retitleFrom));
+  const nextTitle = untitled ? titleFor(questionText) : currentTitle;
+  await tx
+    .update(conversations)
+    .set({
+      title: nextTitle === currentTitle
+        ? conversation.title
+        : await encryptText(input.userId, "conversations", conversation.id, "title", nextTitle),
+      mode: input.mode,
+      updatedAt: now,
+    })
+    .where(eq(conversations.id, conversation.id));
+}
+
+/**
+ * Stores the question and a streaming assistant placeholder. With `retryOf` the latest answer is
+ * replaced instead: its question is reused, or rewritten when `question` is given (an edit). Rejects a second concurrent answer for the same conversation
+ * (enforced by a partial unique index) and enforces the global concurrency cap.
+ */
+export async function createExchange(
+  input: ExchangeInput,
+): Promise<{ userMessage: MessageRow; assistantMessage: MessageRow; questionText: string; attachments: Attachment[] }> {
   return asUser(input.userId, async () => {
     try {
       return await db.transaction(async (tx) => {
@@ -137,101 +268,12 @@ export async function createExchange(input: {
           .for("update");
         if (!conversation) throw new ApiError("CONVERSATION_NOT_FOUND", "Conversation not found.", 404);
 
-        // An answer left streaming by a crashed instance must not block the conversation forever.
-        await tx
-          .update(messages)
-          .set(interruptedFields())
-          .where(
-            and(
-              eq(messages.conversationId, conversation.id),
-              eq(messages.status, "streaming"),
-              lte(messages.createdAt, staleBeforeSql()),
-            ),
-          );
-
-        // Counted under the advisory lock, so concurrent exchanges see each other's committed rows.
-        // The count spans every account, so it runs through an owner function (row-level security).
-        const [streaming] = (
-          await tx.execute<{ total: number; deeper: number }>(
-            sql`select total, deeper from beamling_streaming_answers(${STALE_STREAMING_SECONDS})`,
-          )
-        ).rows;
-        if (streaming.total >= maxConcurrentChats()) {
-          throw new ApiError("SERVER_BUSY", "Beamling is busy right now. Try again in a minute.", 503);
-        }
-
-        // Deeper answers run for minutes; capping their share keeps a few accounts from holding every slot.
-        if (input.mode === "deeper" && streaming.deeper >= deeperSlots()) {
-          throw new ApiError("SERVER_BUSY", "Deeper answers are busy right now. Try Deep, or try again in a minute.", 503);
-        }
-
-        const [{ value: userInFlight }] = await tx
-          .select({ value: count() })
-          .from(messages)
-          .where(
-            and(
-              eq(messages.userId, input.userId),
-              eq(messages.status, "streaming"),
-              gt(messages.createdAt, staleBeforeSql()),
-            ),
-          );
-        const perUserLimit = maxConcurrentChatsPerUser();
-        if (userInFlight >= perUserLimit) {
-          throw new ApiError(
-            "SERVER_BUSY",
-            `You already have ${plural(perUserLimit, "answer")} running. Wait for one to finish or stop it.`,
-            503,
-          );
-        }
-
+        await assertCapacity(tx, input);
         const now = new Date();
-        let userMessage: MessageRow;
-        let questionText: string;
-        let attachments: Attachment[];
-        // Set when an edit rewrote the question the conversation was titled from.
-        let retitleFrom: string | undefined;
-        if (input.retryOf) {
-          const { target, question, questionText: storedQuestion, first } = await retryTarget(tx, {
-            userId: input.userId,
-            conversationId: conversation.id,
-            messageId: input.retryOf,
-          });
-          await tx.delete(messages).where(eq(messages.id, target.id));
-          userMessage = question;
-          questionText = storedQuestion;
-          attachments = (await readAttachments(input.userId, question)) ?? [];
-          const edited = input.question === undefined ? storedQuestion : storableText(input.question);
-          if (edited !== storedQuestion) {
-            if (!edited && !attachments.length) throw new ApiError("INVALID_INPUT", "Ask a question first.", 400);
-            [userMessage] = await tx
-              .update(messages)
-              .set({ content: await encryptText(input.userId, "messages", question.id, "content", edited) })
-              .where(eq(messages.id, question.id))
-              .returning();
-            questionText = edited;
-            if (first) retitleFrom = storedQuestion;
-          }
-        } else {
-          questionText = storableText(input.question ?? "");
-          attachments = input.attachments ?? [];
-          const id = randomUUID();
-          [userMessage] = await tx
-            .insert(messages)
-            .values({
-              id,
-              conversationId: conversation.id,
-              userId: input.userId,
-              role: "user",
-              content: await encryptText(input.userId, "messages", id, "content", questionText),
-              attachments: attachments.length
-                ? await encryptText(input.userId, "messages", id, "attachments", JSON.stringify(attachments))
-                : null,
-              status: "complete",
-              mode: input.mode,
-              createdAt: now,
-            })
-            .returning();
-        }
+        const stored = input.retryOf
+          ? await reuseQuestion(tx, { ...input, retryOf: input.retryOf })
+          : await insertQuestion(tx, input, now);
+        const { userMessage, questionText, attachments } = stored;
 
         const assistantId = randomUUID();
         const [assistantMessage] = await tx
@@ -251,22 +293,7 @@ export async function createExchange(input: {
           })
           .returning();
 
-        const currentTitle = await decryptText(input.userId, "conversations", conversation.id, "title", conversation.title);
-        const titleFor = (text: string) => titleFromQuestion(text || attachmentQuestionTitle(attachments));
-        // An edited first question retitles the conversation, unless the title is no longer the one it gave.
-        const untitled = currentTitle === DEFAULT_CONVERSATION_TITLE || (retitleFrom !== undefined && currentTitle === titleFor(retitleFrom));
-        const nextTitle = untitled ? titleFor(questionText) : currentTitle;
-        await tx
-          .update(conversations)
-          .set({
-            title: nextTitle === currentTitle
-              ? conversation.title
-              : await encryptText(input.userId, "conversations", conversation.id, "title", nextTitle),
-            mode: input.mode,
-            updatedAt: now,
-          })
-          .where(eq(conversations.id, conversation.id));
-
+        await touchConversation(tx, input, conversation, stored, now);
         return { userMessage, assistantMessage, questionText, attachments };
       });
     } catch (error) {
